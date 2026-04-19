@@ -1,0 +1,241 @@
+"""
+Veda — arithmetic helpers.
+
+LLMs must NOT perform arithmetic on Veda outputs (see SKILL.md Hard Rule #8).
+All numeric fields in the decision block — expected value, p_loss, p_loss_pct,
+PEG, Kelly sizing, FX conversion, probability-sum validation — must be produced
+by this script. Paste the output verbatim into the decision block.
+
+This module is pure stdlib, deterministic, and dependency-free.
+
+Examples (from a terminal in the Veda-advisor folder):
+
+    python scripts/calc.py ev --probs 0.35 0.40 0.25 --returns 60 15 -35
+    python scripts/calc.py p_loss --probs 0.35 0.40 0.25 --returns 60 15 -35
+    python scripts/calc.py kelly --p-win 0.6 --odds 1
+    python scripts/calc.py peg --pe 32.1 --growth 78
+    python scripts/calc.py fx --amount 5000 --rate 83.2
+    python scripts/calc.py weights-sum --weights 0.15 0.18 0.05 0.08 0.02 0.05 0.08 0.03 0.10 0.18 0.08
+
+Or import the functions directly:
+
+    from scripts.calc import expected_value, p_loss_pct
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+import sys
+from typing import Sequence
+
+
+PROB_SUM_TOLERANCE = 1e-6
+
+
+def validate_probabilities(probs: Sequence[float]) -> None:
+    """Raise ValueError if probabilities are out of range or do not sum to 1.0."""
+    if not probs:
+        raise ValueError("probabilities list is empty")
+    for p in probs:
+        if p < 0.0 or p > 1.0:
+            raise ValueError(f"probability {p} is not in [0, 1]")
+    total = math.fsum(probs)
+    if abs(total - 1.0) > PROB_SUM_TOLERANCE:
+        raise ValueError(
+            f"probabilities sum to {total:.6f}; they must sum to 1.0 "
+            f"(tolerance {PROB_SUM_TOLERANCE})"
+        )
+
+
+def expected_value(probs: Sequence[float], returns_pct: Sequence[float]) -> float:
+    """Expected value in percent units.
+
+    Each element of ``returns_pct`` is a percent return (e.g. +60 for +60%).
+    Probabilities must sum to 1.0 on the 0.0-1.0 scale.
+    """
+    if len(probs) != len(returns_pct):
+        raise ValueError("probs and returns_pct must be the same length")
+    validate_probabilities(probs)
+    return math.fsum(p * r for p, r in zip(probs, returns_pct))
+
+
+def p_loss(probs: Sequence[float], returns_pct: Sequence[float]) -> float:
+    """Sum of probabilities over scenarios with negative return, 0.0-1.0 scale."""
+    if len(probs) != len(returns_pct):
+        raise ValueError("probs and returns_pct must be the same length")
+    validate_probabilities(probs)
+    return math.fsum(p for p, r in zip(probs, returns_pct) if r < 0)
+
+
+def p_loss_pct(probs: Sequence[float], returns_pct: Sequence[float]) -> float:
+    """p_loss on a 0-100 scale, for comparison with profile.max_loss_probability."""
+    return p_loss(probs, returns_pct) * 100.0
+
+
+def kelly_fraction(p_win: float, odds: float) -> float:
+    """Kelly-optimal fraction of bankroll to stake.
+
+    Plain-English version
+    ---------------------
+    "How much of my money should I put on this bet?"
+
+    Kelly answers that by balancing two forces:
+      1. Your **edge** — how much you expect to win on average.
+            edge = (payoff-if-win * probability-of-win) - probability-of-loss
+            That is the ``b*p - q`` in the numerator.
+            If edge is zero, don't bet. If edge is negative, definitely don't bet.
+      2. The **size of each win** — bigger payoffs mean you can reach the
+         optimum by staking less, because one win recovers more ground.
+            Dividing by ``b`` shrinks the bet when payoffs are big.
+
+    Two intuitive examples:
+      * Coin flip paying 1:1, you win 60% of the time.
+            edge = 1*0.6 - 0.4 = 0.2.  Divide by b=1.  Bet 20% of bankroll.
+      * Lottery paying 2:1, you win only 40% of the time.
+            edge = 2*0.4 - 0.6 = 0.2.  Same edge, but divide by b=2.  Bet 10%.
+            Fewer wins but bigger ones, so Kelly says stake less.
+
+    Why Veda uses half-Kelly by default:
+      Full Kelly is only optimal if your probabilities are exactly right.
+      In the real world they never are. Half-Kelly keeps ~75% of the growth
+      with a fraction of the drawdowns. See ``half_kelly`` below.
+
+    Formal formula
+    --------------
+        f* = (b * p - q) / b,  where
+            p = probability of winning (``p_win``)
+            q = probability of losing  (= 1 - p_win)
+            b = net odds (payoff per unit staked on a win; ``odds``)
+
+    Returns a **signed** fraction. Negative values mean the bet has no positive-EV
+    Kelly stake; in practice this is an instruction NOT to take the bet, not to
+    short it. Veda's decision pipeline should treat negative Kelly as ``wait``.
+    """
+    if not 0.0 <= p_win <= 1.0:
+        raise ValueError(f"p_win {p_win} is not in [0, 1]")
+    if odds <= 0:
+        raise ValueError("odds must be positive")
+    q = 1.0 - p_win
+    return (odds * p_win - q) / odds
+
+
+def half_kelly(p_win: float, odds: float) -> float:
+    """Half-Kelly fraction. Recommended default for real-world sizing."""
+    return kelly_fraction(p_win, odds) / 2.0
+
+
+def peg(pe: float, growth_pct: float) -> float:
+    """PEG ratio. ``growth_pct`` is the earnings growth rate in percent."""
+    if growth_pct == 0:
+        raise ValueError("growth_pct cannot be zero")
+    return pe / growth_pct
+
+
+def fx_convert(amount: float, rate: float) -> float:
+    """Currency conversion: amount * rate. Rate must be user- or source-supplied."""
+    return amount * rate
+
+
+def sum_weights(weights: Sequence[float]) -> float:
+    """Sum of framework_weights. Informational; profile allows approximately 1.0."""
+    return math.fsum(weights)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def _cmd_ev(args: argparse.Namespace) -> int:
+    ev = expected_value(args.probs, args.returns)
+    pl = p_loss(args.probs, args.returns)
+    print(f"expected_value_pct: {ev:+.4f}")
+    print(f"p_loss:             {pl:.4f}")
+    print(f"p_loss_pct:         {pl * 100:.2f}")
+    return 0
+
+
+def _cmd_p_loss(args: argparse.Namespace) -> int:
+    pl = p_loss(args.probs, args.returns)
+    print(f"p_loss:     {pl:.4f}")
+    print(f"p_loss_pct: {pl * 100:.2f}")
+    return 0
+
+
+def _cmd_kelly(args: argparse.Namespace) -> int:
+    full = kelly_fraction(args.p_win, args.odds)
+    print(f"kelly_full: {full:.4f}")
+    print(f"kelly_half: {full / 2:.4f}")
+    return 0
+
+
+def _cmd_peg(args: argparse.Namespace) -> int:
+    print(f"peg: {peg(args.pe, args.growth):.4f}")
+    return 0
+
+
+def _cmd_fx(args: argparse.Namespace) -> int:
+    print(f"converted: {fx_convert(args.amount, args.rate):.4f}")
+    return 0
+
+
+def _cmd_weights_sum(args: argparse.Namespace) -> int:
+    print(f"sum: {sum_weights(args.weights):.4f}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Veda arithmetic helpers.")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_ev = sub.add_parser("ev", help="expected value and p_loss for a scenario set")
+    p_ev.add_argument("--probs", type=float, nargs="+", required=True)
+    p_ev.add_argument(
+        "--returns", type=float, nargs="+", required=True, help="returns in percent"
+    )
+    p_ev.set_defaults(func=_cmd_ev)
+
+    p_pl = sub.add_parser("p_loss", help="p_loss for a scenario set")
+    p_pl.add_argument("--probs", type=float, nargs="+", required=True)
+    p_pl.add_argument("--returns", type=float, nargs="+", required=True)
+    p_pl.set_defaults(func=_cmd_p_loss)
+
+    p_k = sub.add_parser("kelly", help="Kelly and half-Kelly fractions")
+    p_k.add_argument(
+        "--p-win",
+        dest="p_win",
+        type=float,
+        required=True,
+        help="probability of winning (0.0 - 1.0)",
+    )
+    p_k.add_argument(
+        "--odds",
+        type=float,
+        required=True,
+        help="net odds b (payoff per unit staked on a win)",
+    )
+    p_k.set_defaults(func=_cmd_kelly)
+
+    p_peg = sub.add_parser("peg", help="PEG ratio")
+    p_peg.add_argument("--pe", type=float, required=True)
+    p_peg.add_argument(
+        "--growth", type=float, required=True, help="growth rate in percent"
+    )
+    p_peg.set_defaults(func=_cmd_peg)
+
+    p_fx = sub.add_parser("fx", help="currency conversion")
+    p_fx.add_argument("--amount", type=float, required=True)
+    p_fx.add_argument("--rate", type=float, required=True)
+    p_fx.set_defaults(func=_cmd_fx)
+
+    p_ws = sub.add_parser("weights-sum", help="sum of framework_weights")
+    p_ws.add_argument("--weights", type=float, nargs="+", required=True)
+    p_ws.set_defaults(func=_cmd_weights_sum)
+
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

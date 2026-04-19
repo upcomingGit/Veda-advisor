@@ -1,0 +1,39 @@
+name: Install / setup problem
+description: You tried to install Veda in an assistant and something didn't work.
+title: "[install] "
+labels: ["install", "triage"]
+body:
+  - type: input
+    id: assistant
+    attributes:
+      label: Assistant and version
+      placeholder: "VS Code 1.95 + Copilot Chat Agent mode / Claude Desktop 1.4 / Cursor 0.45 / other"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "Windows 11 / macOS 14.5 / Ubuntu 22.04"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Exact steps you followed
+      description: Copy the commands you ran and what you told the assistant.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: Paste error messages verbatim. Screenshots welcome.
+    validations:
+      required: true

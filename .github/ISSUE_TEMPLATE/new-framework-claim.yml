@@ -1,0 +1,51 @@
+name: Claim a framework to write
+description: You want to write one of the ten unshipped investor frameworks. Claim it here first so two people don't duplicate work.
+title: "[claim] <investor-name>"
+labels: ["framework", "help-wanted", "claim"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before writing a framework file, open this issue to claim the investor. Read [frameworks/lynch.md](https://github.com/upcomingGit/Veda-advisor/blob/main/frameworks/lynch.md) as the reference structure and [CONTRIBUTING.md](https://github.com/upcomingGit/Veda-advisor/blob/main/CONTRIBUTING.md#2-framework-edits) for the citation bar.
+  - type: dropdown
+    id: investor
+    attributes:
+      label: Which investor
+      options:
+        - Buffett
+        - Munger
+        - Fisher
+        - Druckenmiller
+        - Marks
+        - Klarman
+        - Dalio
+        - Thorp
+        - Templeton
+        - Taleb
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Primary sources you will cite
+      description: List the books / essays / shareholder letters you will draw from. Minimum one primary source (a book the investor wrote, or a collection of their letters/essays). Secondary biographies are fine as supplements but cannot be the only source.
+      placeholder: |
+        - The Essays of Warren Buffett (Cunningham, ed.), 4th ed.
+        - Berkshire Hathaway shareholder letters, 1977–2022
+        - Poor Charlie's Almanack (for Munger cross-refs)
+    validations:
+      required: true
+  - type: textarea
+    id: differentiation
+    attributes:
+      label: What this framework answers that Lynch doesn't
+      description: Keep Veda's frameworks differentiated. If your Buffett framework is 70% overlap with Lynch, something is wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: eta
+    attributes:
+      label: Rough timeline
+      description: No deadlines. Just so others know if the claim is active. "A few weeks" is a fine answer. If you abandon it, comment here so someone else can pick it up.
+    validations:
+      required: false

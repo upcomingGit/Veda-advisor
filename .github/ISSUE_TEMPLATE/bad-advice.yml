@@ -1,0 +1,56 @@
+name: Bad advice from Veda
+description: Veda gave you a recommendation that was wrong, poorly reasoned, or routed to the wrong framework.
+title: "[bad-advice] "
+labels: ["bad-advice", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The most useful bad-advice reports are specific. Fill every field.
+  - type: textarea
+    id: question
+    attributes:
+      label: The exact question you asked
+      description: Paste your prompt verbatim.
+      placeholder: "Veda: should I trim my NVDA position after a 180% run?"
+    validations:
+      required: true
+  - type: textarea
+    id: profile
+    attributes:
+      label: Relevant profile fields (anonymize numbers if you want)
+      description: Horizon, goal, experience_mode, markets, any hard constraints. Redact anything you don't want public.
+      placeholder: |
+        horizon: 25y
+        goal: balanced_growth
+        experience_mode: standard
+        markets: [india, us]
+    validations:
+      required: true
+  - type: textarea
+    id: veda-output
+    attributes:
+      label: What Veda said
+      description: Paste the recommendation, including the framework routing and EV block if present.
+    validations:
+      required: true
+  - type: textarea
+    id: why-wrong
+    attributes:
+      label: Why you think it was wrong
+      description: Be specific. "It felt off" is not enough. Cite the framework rule or source that was violated.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you think it should have said
+    validations:
+      required: true
+  - type: input
+    id: assistant
+    attributes:
+      label: Assistant used
+      placeholder: "Copilot Agent mode in VS Code / Claude Desktop / Cursor / other"
+    validations:
+      required: true

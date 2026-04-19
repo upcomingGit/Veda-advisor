@@ -1,0 +1,57 @@
+name: Framework feedback
+description: A rule in a framework file contradicts the source, is missing, or is overweighted.
+title: "[framework] "
+labels: ["framework", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Framework edits require a source citation and a worked example. This issue is the place to sketch both before opening a PR. PRs without citations will be closed — save yourself the round trip.
+  - type: dropdown
+    id: framework
+    attributes:
+      label: Which framework
+      options:
+        - Lynch
+        - Buffett (not yet shipped)
+        - Munger (not yet shipped)
+        - Fisher (not yet shipped)
+        - Druckenmiller (not yet shipped)
+        - Marks (not yet shipped)
+        - Klarman (not yet shipped)
+        - Dalio (not yet shipped)
+        - Thorp (not yet shipped)
+        - Templeton (not yet shipped)
+        - Taleb (not yet shipped)
+        - Router (routing/framework-router.md)
+        - Template (templates/decision-block.md)
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current text (or "missing")
+      description: Quote the section of the framework file you think is wrong. If the framework isn't shipped yet, say "missing" and describe what you plan to add.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: citation
+    attributes:
+      label: Source citation
+      description: Book + page, essay + year, interview + date. No citation = cannot be merged.
+      placeholder: "One Up on Wall Street, Ch. 8, pp. 111–114 (Lynch on categorizing Cyclicals)"
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Worked example
+      description: A concrete question where the old text gives the wrong answer and the proposed text gives the right one.
+    validations:
+      required: true

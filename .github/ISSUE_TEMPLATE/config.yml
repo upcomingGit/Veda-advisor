@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Read CONTRIBUTING.md first
+    url: https://github.com/upcomingGit/Veda-advisor/blob/main/CONTRIBUTING.md
+    about: The contribution guide covers voice, citation requirements, and what will not be merged. Read it before opening a framework-edit issue.
+  - name: Install help for an assistant not yet documented
+    url: https://github.com/upcomingGit/Veda-advisor/blob/main/README.md#install
+    about: If you got Veda working in Gemini, a custom GPT, or a local LLM — skip the issue and open a PR to the README Install section.
