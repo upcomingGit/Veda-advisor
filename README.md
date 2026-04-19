@@ -187,21 +187,17 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 /veda
 ```
 
-This triggers the `.github/prompts/veda.prompt.md` file shipped in the repo — Copilot auto-discovers `.prompt.md` files in that folder and surfaces them in the `/` menu. The command tells Copilot to read `SKILL.md`, adopt the Veda persona, and either run onboarding (if `profile.md` is missing) or answer your next investment question.
+Copilot auto-discovers `.prompt.md` files in `.github/prompts/` and surfaces them in the `/` menu. `/veda` tells Copilot to read `SKILL.md`, adopt the Veda persona, and drive the pipeline — onboarding if `profile.md` is missing, otherwise your next investment question. In Agent mode, `profile.md` is written to the folder root; in Ask mode, you save it yourself.
 
-If `/veda` doesn't appear in the menu, either (a) Copilot's prompt-files feature is disabled — enable `chat.promptFiles` in VS Code settings — or (b) your Copilot build is older than the feature release; in that case fall back to typing the equivalent as a plain message:
+If `/veda` doesn't appear in the menu, either (a) `chat.promptFiles` is disabled in VS Code settings, or (b) your Copilot build predates prompt files. Fall back to typing:
 
 ```
-Read SKILL.md in the Veda-advisor folder. You are now Veda. Run onboarding if profile.md doesn't exist, otherwise answer my next question.
+Read SKILL.md in the Veda-advisor folder and follow it.
 ```
 
-Copilot will read `SKILL.md`, which tells it to read `setup/onboarding.prompt.md`, and the interview starts. In Agent mode, your `profile.md` is written into the Veda-advisor folder root when onboarding completes. In Ask mode, you'll get the profile as chat output — save it manually as `profile.md` in the Veda-advisor folder (or wherever you want to keep it).
+*Where your profile lives:* by default, alongside `SKILL.md` in the cloned folder. To keep it in a separate private repo, tell the assistant: *"Write profile.md to `<your/other/path>/profile.md` and read it from there every session."*
 
-**Important:** Do **not** commit `profile.md` to git. It's already in `.gitignore`, so `git status` should not show it. If you forked the repo and want to push updates back, always check `git status` first.
-
-*Where your profile lives:* by default, it sits alongside `SKILL.md` in the cloned folder. If you prefer to keep it in a separate private repo and you're comfortable editing paths, tell the assistant: *"Write profile.md to `<your/other/path>/profile.md` and read it from there every session."*
-
-*Advanced — auto-activate in a project workspace:* if you want Veda to reason about investment questions in a project workspace **without** typing `/veda` each time, copy `SKILL.md` contents into that workspace's `.github/copilot-instructions.md` file (VS Code Copilot reads this automatically on every chat in that workspace). Optional for v0.1. Most users are fine with `/veda` per new chat.
+*Advanced — auto-activate in a project workspace:* to skip typing `/veda` on every chat, copy `SKILL.md` contents into that workspace's `.github/copilot-instructions.md` file. Most users are fine with `/veda` per new chat.
 
 ### Claude Desktop
 
@@ -233,8 +229,6 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 
 **Step 3.** Run onboarding the same way: *"Read SKILL.md. You are Veda. Run onboarding."*
 
-**Important:** Same privacy rule as Copilot — `profile.md` stays uncommitted.
-
 ### Any other LLM (ChatGPT, Gemini, etc.)
 
 The repo works with any assistant that can read markdown you paste or reference. Minimum viable setup: copy-paste `SKILL.md` as a system/custom instruction, then paste `setup/onboarding.prompt.md` to start. Save the resulting profile somewhere private and paste it back at the start of each session.
@@ -252,16 +246,9 @@ LLM assistants do not persist context across chat sessions or workspace reopens.
 | **Re-running onboarding deliberately** | `/veda` → then say *"redo onboarding"* (or just *"onboarding"*). Veda's Step 0 asks whether to **update** (targeted edits), **redo** (full re-interview, backs up existing profile to `profile.md.bak-<today>`), or **cancel**. Default is update. Never overwrites silently. |
 | **Switching from Copilot to Claude/Cursor** | Your `profile.md` is portable. Copy it into the new tool's context the same way you'd copy any workspace file. The same schema, validator, and pipeline apply. |
 
-**Across tools, the invocation patterns are:**
+For non-Copilot tools, the invocation is whatever each section under [Install](#install) already describes — Claude Desktop auto-loads via Custom Instructions, Cursor via `@SKILL.md` or a `.cursor/rules/veda.mdc` rule, ChatGPT/Gemini via pasted system instruction.
 
-- **Copilot (VS Code)** — `/veda` (slash command). Prompt file: `.github/prompts/veda.prompt.md`.
-- **Claude Desktop (Project)** — start any chat within the Veda Project; the Custom Instructions auto-load. For a fresh re-interview, type *"Run Veda onboarding"*.
-- **Cursor** — `@SKILL.md` at the start of any investment chat, or add a `.cursor/rules/veda.mdc` rule that auto-attaches `SKILL.md` whenever an investment question is asked.
-- **ChatGPT / Gemini / other** — paste `SKILL.md` as a custom/system instruction at the start of each session. No persistence; paste the profile too.
-
-**Why there is no "always-on" default:** Veda is deliberately scoped to public-markets investment questions. Auto-activating on every message would mean it would refuse half your chats (coding, email drafting, everything else) with the Stage 0 decline script. `/veda` is the on-switch; general chats stay general.
-
-If you genuinely want Veda to reason about investment questions in a dedicated *investing* workspace with no manual invocation, copy `SKILL.md` into that workspace's `.github/copilot-instructions.md` file. Then any chat in that workspace runs through the Veda pipeline. Optional; most users are fine with `/veda`.
+**Why there is no "always-on" default:** Veda is scoped to public-markets investment questions. Auto-activating on every message would mean refusing half your chats (coding, email drafting, everything else) with the Stage 0 decline script. `/veda` is the on-switch; general chats stay general.
 
 ### Connecting your portfolio (fully optional)
 
@@ -334,10 +321,6 @@ Follow progress by [watching the repo](https://github.com/upcomingGit/Veda-advis
 ## Credits
 
 Built by [Ankur Gupta](https://github.com/upcomingGit). See [CREDITS.md](CREDITS.md) for the investors whose work shaped this — the real thinking is theirs; Veda is just the scaffolding.
-
-## Contributing
-
-See the [Contribute](#contribute) section above for the three entry points (issue / example / framework). Full contribution guide, voice rules, and what will not be merged: [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
 
