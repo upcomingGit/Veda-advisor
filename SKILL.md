@@ -68,21 +68,34 @@ The full rules below add detail and edge cases. These five are the ones you will
    If a needed computation is not yet in `scripts/calc.py`, add a function to that file before using the number — do not compute it inline. This is how a miscalculation becomes a caught bug instead of a shipped decision.
 
 9. **No stale market data. Ever.** LLMs also have stale priors. FX rates, stock prices, index levels, interest rates, commodity prices, and anything else that moves day-to-day must not come from training data, a prior session, or a prior document. Every such number must either:
-   - **(a) Be fetched** in this session from a cited Tier 1–3 source, with the `as_of:` date stamped next to it. Example: `USD-INR 92.6 (RBI reference rate, as_of: 2026-04-19)`.
-   - **(b) Be asked of the user** in this session. Example: *"What's today's USD-INR rate? I won't use a stale number."* Record the answer as `fx_rate_as_of: <today>` in `notes` or inline.
+   - **(a) Be fetched** in this session from a cited Tier 1–3 source, with the `as_of:` date stamped next to it. Example: `USD-INR 92.60 (RBI reference rate, as_of: 2026-04-19)`.
+   - **(b) Be asked of the user** in this session. Example: *"What's today's USD-INR rate? I won't use a stale number."*
    - **(c) Be marked `TBD_fetch`** and left blank in the output. Example: *"Portfolio total value: TBD_fetch (need today's USD-INR rate and current MSFT quote). Showing per-position values in their native currencies instead."*
 
+   **Where FX rates are persisted.** Profile-level FX rates live in the top-level `fx_rates:` block of `profile.md`. Each entry has the shape:
+
+   ```yaml
+   fx_rates:
+     usd_inr:
+       rate: 92.60
+       as_of: 2026-04-19
+       source: "Google Finance"
+   ```
+
+   Key format: `<from_ccy>_<to_ccy>` in lowercase. `rate` converts 1 unit of from_ccy to to_ccy. `source` is free text; prefer Tier 1–2.
+
    **Forbidden practices:**
-   - Carrying an FX rate from a previous profile or session. Re-ask or re-fetch every new session. Yes, even if it was used yesterday.
+   - Carrying an FX rate from a previous profile or session without revalidating `as_of`. If today is more than 1 trading day past `fx_rates.<pair>.as_of`, the rate is stale — re-ask or re-fetch, and update the profile before using it.
    - "Approximately 90" or "around 83" or any memory-based rate without a date.
    - Mixing currencies silently. Any portfolio summary that sums INR and USD must show the rate used, the `as_of:` date, and both the converted total and the native-currency components.
    - Using a stock price or index level without a timestamp. "NVDA at $X" without an `as_of:` date is a bug.
+   - Storing FX rates in the free-text `notes:` block. Use the structured `fx_rates:` block so the validator enforces rate/as_of presence and shape.
 
    **Operating modes:**
-   - **You have web/data tools:** fetch the number, cite the source, stamp the date. One line: `USD-INR 92.6 (Yahoo Finance, 2026-04-19)`.
-   - **You do not have web/data tools:** ask the user. If they decline, switch to `TBD_fetch` and split per-currency totals — do not guess.
+   - **You have web/data tools:** fetch the number, cite the source, stamp the date. Write it to `profile.md` under `fx_rates.<pair>` as `rate`, `as_of`, `source`.
+   - **You do not have web/data tools:** ask the user. If they decline, switch to `TBD_fetch` and split per-currency totals — do not guess. Do not write a placeholder rate to `fx_rates:` in this case; leave the pair absent.
 
-   **Staleness triggers a re-ask.** Any number older than **1 trading day** for prices/FX, or older than **7 days** for macro rates (repo, Fed funds, CPI print), must be refreshed before use. If a profile records `fx_rate_as_of: 2026-04-05` and today is 2026-04-19, re-ask on the first conversion of this session and update the profile's `notes` with the new rate and date.
+   **Staleness triggers a re-ask.** Any number older than **1 trading day** for prices/FX, or older than **7 days** for macro rates (repo, Fed funds, CPI print), must be refreshed before use. If a profile records `fx_rates.usd_inr.as_of: 2026-04-05` and today is 2026-04-19, re-ask on the first conversion of this session and update the profile's `fx_rates.usd_inr` block with the new rate, date, and source.
 
    This rule exists because silent staleness compounds: one wrong FX rate propagates into every position size, every portfolio-heat calculation, every EV block. Catching it at the edge is cheaper than auditing every downstream number.
 
@@ -192,7 +205,7 @@ Extract the fields that matter for this question:
 - **`experience_mode`** — if `novice`, also load the `guardrails:` block and apply every rule in Hard Rule #2
 - **`max_loss_probability`** — enforced as the Stage 8 second gate
 - **`disclosure_acknowledged`** — checked already, but carry the value for audit
-- **`notes.fx_rate_used` / `notes.fx_rate_as_of`** — if present and older than 1 trading day, trigger a Hard Rule #9 re-ask on the first currency conversion of this session. Do not reuse a stale rate silently.
+- **`fx_rates.<pair>.*`** — if present and `as_of` is older than 1 trading day, trigger a Hard Rule #9 re-ask on the first currency conversion of this session. Do not reuse a stale rate silently. Update `rate`, `as_of`, and `source` in the profile before proceeding.
 
 ### Stage 1.5 — Load or gather portfolio (only when the question needs it)
 
@@ -234,8 +247,8 @@ Onboarding (see [setup/onboarding.prompt.md](setup/onboarding.prompt.md) Step 4)
 **Procedure:**
 
 1. Scan `profile.md` for fields listed in the onboarding Step 4 trigger table that are **absent from the YAML** (the key is not written at all). That is the definition of "first time" — no separate tracking is needed. Do **not** accept `null` or `TBD` as the absent signal: those will have already failed Stage 1 validation for enum fields. If a field is present with any value, treat it as filled.
-2. For each empty field, check whether its trigger fires for the user's current question (e.g., *"buy ₹2L of HDFC"* fires `capital.pct_net_worth_in_market`; *"should I add a 6th position?"* fires `concentration.target_position_count`).
-3. If two or more triggers fire on the same turn, ask **at most one** progressive-profiling question this turn. Priority, high to low: `capital.pct_net_worth_in_market` → `concentration.target_position_count` / `concentration.style` → `instruments.*` → `style_lean.primary` → `experience.level` → `self_identified_weakness` → `data_access`. Pick the highest-priority fired trigger; the rest will be captured on later turns.
+2. For each empty field, check whether its trigger fires for the user's current question (e.g., *"buy ₹2L of HDFC"* fires `capital.pct_net_worth_in_market`; *"should I add a 6th position?"* fires `concentration.current.position_count` and/or `concentration.target.position_count`).
+3. If two or more triggers fire on the same turn, ask **at most one** progressive-profiling question this turn. Priority, high to low: `capital.pct_net_worth_in_market` → `concentration.current.*` → `concentration.target.*` → `instruments.*` → `style_lean.primary` → `experience.level` → `self_identified_weakness` → `data_access`. Pick the highest-priority fired trigger; the rest will be captured on later turns.
 4. Ask the question inline using the wording from the onboarding Step 4 table. Wait for the answer.
 5. **Write back.** Update `profile.md` with the new value. Set `profile_last_updated:` to today. If the completion-threshold fields (onboarding Step 4) are all filled, set `incomplete: false`. Run `python scripts/validate_profile.py profile.md` before proceeding to Stage 2.
 6. Continue to Stage 2 with the user's original question.

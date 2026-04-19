@@ -186,6 +186,55 @@ def section_present(yaml_text: str, header: str) -> bool:
     return re.search(rf"(?m)^{re.escape(header)}:\s*$", yaml_text) is not None
 
 
+def list_children(yaml_text: str, parent_path: str) -> list[str]:
+    """Return the immediate child key names under the given dotted parent path.
+
+    Used to enumerate dynamic sub-blocks (e.g., currency pairs under
+    `fx_rates`) where the key names are not fixed in the schema.
+    Only returns keys that define a value or sub-block (`name:`); list items
+    (`- value`) are ignored. Returns an empty list if the parent is absent.
+    """
+    parts = parent_path.split(".")
+    current_text = yaml_text
+    current_indent = 0
+    for parent in parts:
+        indent_prefix = " " * current_indent
+        parent_re = re.compile(
+            rf"(?m)^{re.escape(indent_prefix)}{re.escape(parent)}:\s*$"
+        )
+        pm = parent_re.search(current_text)
+        if not pm:
+            return []
+        rest = current_text[pm.end():]
+        block_lines: list[str] = []
+        child_indent: int | None = None
+        for line in rest.splitlines():
+            if line.strip() == "" or line.lstrip().startswith("#"):
+                block_lines.append(line)
+                continue
+            leading = len(line) - len(line.lstrip(" "))
+            if leading <= current_indent:
+                break
+            if child_indent is None:
+                child_indent = leading
+            block_lines.append(line)
+        if child_indent is None:
+            return []
+        current_text = "\n".join(block_lines)
+        current_indent = child_indent
+
+    indent_prefix = " " * current_indent
+    child_re = re.compile(rf"^{re.escape(indent_prefix)}([a-zA-Z_][a-zA-Z0-9_]*):")
+    children: list[str] = []
+    for line in current_text.splitlines():
+        if line.strip() == "" or line.lstrip().startswith("#"):
+            continue
+        m = child_re.match(line)
+        if m:
+            children.append(m.group(1))
+    return children
+
+
 def strip_quotes(s: str) -> str:
     if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
         return s[1:-1]
@@ -315,6 +364,42 @@ def validate(profile_path: Path) -> list[str]:
             if not 0.9 <= s <= 1.1:
                 errors.append(
                     f"framework_weights: sum {s:.3f} outside allowed band [0.9, 1.1]"
+                )
+
+    # fx_rates: optional top-level block. When present, each currency-pair
+    # sub-block must carry a positive `rate` and a parseable `as_of` date.
+    # Pair keys are free-form (e.g., usd_inr, eur_usd) so we enumerate them
+    # via list_children(). Staleness of `as_of` is NOT enforced here -- that
+    # is a runtime concern handled by Hard Rule #9 in SKILL.md. The
+    # validator only enforces schema presence and type correctness.
+    if section_present(yaml_text, "fx_rates"):
+        pairs = list_children(yaml_text, "fx_rates")
+        if not pairs:
+            errors.append(
+                "fx_rates: block is present but contains no currency pairs; "
+                "either add at least one pair (e.g., usd_inr:) or remove the block"
+            )
+        for pair in pairs:
+            rate_v = find_scalar(yaml_text, f"fx_rates.{pair}.rate")
+            as_of_v = find_scalar(yaml_text, f"fx_rates.{pair}.as_of")
+            if rate_v is None:
+                errors.append(f"fx_rates.{pair}.rate: missing")
+            else:
+                try:
+                    r = float(rate_v)
+                    if r <= 0:
+                        errors.append(
+                            f"fx_rates.{pair}.rate: must be positive, got {r}"
+                        )
+                except ValueError:
+                    errors.append(
+                        f"fx_rates.{pair}.rate: not a number ({rate_v!r})"
+                    )
+            if as_of_v is None:
+                errors.append(f"fx_rates.{pair}.as_of: missing")
+            elif not DATE_RE.match(strip_quotes(as_of_v)):
+                errors.append(
+                    f"fx_rates.{pair}.as_of: expected YYYY-MM-DD, got {as_of_v!r}"
                 )
 
     return errors

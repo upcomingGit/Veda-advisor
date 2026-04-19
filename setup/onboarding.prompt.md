@@ -33,7 +33,7 @@ Two places to be especially careful:
 4. **Do not judge.** The profile's job is to describe reality, not reform the user.
 5. **Offer concrete options** when the user seems uncertain.
 6. **Read back before saving.**
-7. **No stale numbers (Hard Rule #9).** If a question requires an FX rate, stock price, index level, or any market-data number — ask the user for today's value, or fetch it with a timestamped source. Never carry a rate from memory or from a prior session. When the user gives you approximate holdings in a non-reporting currency (e.g., INR holdings in a USD-reporting profile), **ask for today's USD-INR rate before converting** and record `fx_rate_used` and `fx_rate_as_of: YYYY-MM-DD` in `notes`. If you cannot get a live rate, write `fx_rate_as_of: UNKNOWN` and refuse to produce converted totals; record both sides in original currency instead.
+7. **No stale numbers (Hard Rule #9).** If a question requires an FX rate, stock price, index level, or any market-data number — ask the user for today's value, or fetch it with a timestamped source. Never carry a rate from memory or from a prior session. When the user gives you approximate holdings in a non-reporting currency (e.g., INR holdings in a USD-reporting profile), **ask for today's USD-INR rate before converting** and write it to the top-level `fx_rates:` block of the profile with `rate`, `as_of: YYYY-MM-DD`, and `source`. If you cannot get a live rate, **do not write a placeholder to `fx_rates:`** — leave the block (or that pair) absent, mark any converted totals as `TBD_fetch`, and split the portfolio summary into per-currency totals instead. See SKILL.md Hard Rule #9 for the full operating modes.
 
 ---
 
@@ -165,7 +165,7 @@ Read back the merged profile (preset defaults + user's six answers) in a compact
 
 ### If the user picks "interview me" instead of a preset
 
-Use the same six questions above, but skip the preset defaults. **Omit** `concentration.style`, `style_lean.primary`, and the `instruments.*` keys entirely from the saved YAML — do not write `TBD` or `null` as placeholders (the validator rejects those for enum fields). Capture them **progressively** during real questions per the next section. Mark the profile `incomplete: true` until the threshold fields (see below) are filled.
+Use the same six questions above, but skip the preset defaults. **Omit** `concentration.current.*`, `concentration.target.*`, `style_lean.primary`, and the `instruments.*` keys entirely from the saved YAML — do not write `TBD` or `null` as placeholders (the validator rejects those for enum fields). Capture them **progressively** during real questions per the next section. Mark the profile `incomplete: true` until the threshold fields (see below) are filled.
 
 ---
 
@@ -209,7 +209,7 @@ The rest will be captured on later turns as they keep firing.
 | `experience.level` / `years_investing` | First question that would calibrate explanation depth | *"Quick one: roughly how many years have you been actively investing? I'll dial the explanation depth accordingly."* |
 | `self_identified_weakness` | First time the user seems to be talking themselves into overriding a framework | *"Before we go further: what decision do you most often screw up in investing? Hold losers too long? Sell winners too early? FOMO buy? I want to flag this at the right moments."* |
 | `data_access` | First time Veda asks the user to fetch a number | *"Which data tools do you have? Yahoo Finance, Screener.in, Bloomberg, Seeking Alpha, your broker's research, your own notes?"* |
-| `notes.fx_rate_used` / `notes.fx_rate_as_of` | First time a USD-INR (or any cross-currency) conversion is needed | *"What's today's USD-INR rate? If you don't know, I'll look it up and cite the source."* Record the rate and date; re-ask on every new session rather than reusing. See Hard Rule #9 (SKILL.md) and Step 5 below. |
+| `fx_rates.<pair>.rate` / `as_of` / `source` | First time a USD-INR (or any cross-currency) conversion is needed, OR existing `fx_rates.<pair>.as_of` is more than 1 trading day old | *"What's today's USD-INR rate? If you don't know, I'll look it up and cite the source."* Write to the top-level `fx_rates:` block with `rate`, `as_of: YYYY-MM-DD`, and `source`. Re-ask on every new session if stale rather than reusing. See Hard Rule #9 (SKILL.md) and Step 5 below. |
 | `notes` | Any time the user volunteers context that doesn't fit elsewhere | Write it to `notes` without asking. |
 
 ### Completion threshold — when `incomplete` flips to false
@@ -250,7 +250,7 @@ If the user asks *"interview me fully"*, *"ask me everything"*, or *"complete my
    - `max_loss_probability:` = derived value from step 3
    - `incomplete:` = `true` unless the completion-threshold fields are all filled
    - For novices, also emit the `guardrails:` block.
-   - **If the user has mentioned any cross-currency exposure** (e.g., Indian tax resident with USD holdings), record in `notes`: `fx_rate_used: <today's rate>` and `fx_rate_as_of: YYYY-MM-DD`. Ask the user for today's rate or fetch it with a citation. **Never carry a rate from memory or a previous session.** If you cannot get a live rate, set `fx_rate_as_of: UNKNOWN` and split the `notes` portfolio summary into per-currency totals rather than a single converted number. This is Hard Rule #9 (SKILL.md).
+   - **If the user has mentioned any cross-currency exposure** (e.g., Indian tax resident with USD holdings), write a top-level `fx_rates:` block. Each pair uses the shape `<from_ccy>_<to_ccy>:` with `rate: <float>`, `as_of: YYYY-MM-DD`, and (recommended) `source: "<Tier 1–2 source name>"`. Ask the user for today's rate or fetch it with a citation. **Never carry a rate from memory or a previous session.** If you cannot get a live rate, **do not write the `fx_rates:` block at all** — leave it absent and split the portfolio summary into per-currency totals rather than a single converted number. This is Hard Rule #9 (SKILL.md).
 6. **Validate before declaring onboarding complete.** Run `python scripts/validate_profile.py profile.md` and paste the output.
    - If it prints `OK: ... is valid.` — proceed.
    - If it prints validation errors — do not continue. Fix the profile for each error (usually an enum paraphrase, a missing required field, or a capital-split that doesn't sum to 100), re-run the validator, and only continue once it passes. Do not ask the user to manually fix YAML; you made the profile, you fix it.

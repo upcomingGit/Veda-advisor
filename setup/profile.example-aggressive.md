@@ -54,6 +54,15 @@ markets:
   - india
   - us
 
+# Priya holds both INR-denominated (India) and USD-denominated (US) equities, so
+# the profile pins today's rate. Every session refreshes this before use per
+# Hard Rule #9 (SKILL.md).
+fx_rates:
+  usd_inr:
+    rate: 92.58
+    as_of: 2026-04-15
+    source: "Google Finance"
+
 style_lean:
   primary: quality
   secondary: growth

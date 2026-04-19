@@ -66,10 +66,11 @@ Path argument defaults to `./profile.md`. Exit codes: `0` valid, `1` validation 
 - `disclosure_acknowledged` is literally `true`.
 - Date fields (`generated`, `profile_last_updated`) match `YYYY-MM-DD`.
 - `max_loss_probability` is an int in `[0, 100]`.
-- All enum fields are one of the exact allowed strings (see the `ENUM_VALUES` table in the script source): `experience_mode`, `goal.primary`, `risk.stated_tolerance`, `risk.calibrated_tolerance`, `concentration.style`, `style_lean.primary`, `experience.level`, `experience.explanation_depth`.
+- All enum fields are one of the exact allowed strings (see the `ENUM_VALUES` table in the script source): `experience_mode`, `goal.primary`, `risk.stated_tolerance`, `risk.calibrated_tolerance`, `concentration.current.style`, `concentration.target.style`, `style_lean.primary`, `experience.level`, `experience.explanation_depth`.
 - Boolean fields (`instruments.*`, `guardrails.block_*`, etc.) are literally `true` or `false`.
-- `capital.split` components sum to exactly 100.
+- `capital.split` and `capital.target_split` components each sum to exactly 100 when the block is present (all four buckets written). Partial blocks are tolerated so progressive profiling can leave a block absent entirely.
 - When `experience_mode: novice`, the `guardrails` block is present and every required guardrail field is filled.
+- `fx_rates.<pair>.rate` is a positive number and `fx_rates.<pair>.as_of` is `YYYY-MM-DD` for every pair listed. See Hard Rule #9 in SKILL.md; staleness is enforced at runtime by the orchestrator, not by this script.
 - If present, `framework_weights` contains all 11 investors and the sum lies in the loose band `[0.9, 1.1]`. (Weights are ordinal tie-breakers, not probabilities — the band is deliberate.)
 
 What it does **not** check: free-text fields (`notes`, `self_identified_weakness`, `risk.behavioral_history`), list contents beyond presence, or anything requiring judgment. Those remain the LLM's job and the read-back step's job.

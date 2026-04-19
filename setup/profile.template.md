@@ -90,6 +90,22 @@ markets:  # multi-select
   - crypto
   - private
 
+# Session-scoped cache of FX rates used in this profile. Present only when the
+# user has cross-currency exposure (e.g., `markets` contains both `us` and
+# `india`). Every entry is treated by Hard Rule #9 (SKILL.md) as STALE once
+# its `as_of` date is more than 1 trading day old — Veda must re-ask or
+# re-fetch before using it.
+#
+# Key format: `<from_ccy>_<to_ccy>` in lowercase (e.g., `usd_inr`, `eur_usd`,
+# `gbp_inr`). `rate` is the multiplier to convert 1 unit of from_ccy into
+# to_ccy. `source` is free text; prefer Tier 1–2 (RBI, Bloomberg, Google
+# Finance, Yahoo Finance) and cite the exact page when possible.
+fx_rates:
+  usd_inr:
+    rate: <float>         # e.g., 92.60
+    as_of: <YYYY-MM-DD>   # date the rate was fetched or user-supplied
+    source: <string>      # optional but recommended, e.g., "Google Finance"
+
 style_lean:
   primary: <value | quality | growth | macro | thematic | quant | passive_plus>
   secondary: <same set, optional>

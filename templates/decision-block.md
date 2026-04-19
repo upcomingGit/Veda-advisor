@@ -17,7 +17,7 @@ classification:
 context:
   ticker: <e.g., NVDA>
   currency: <USD | INR | ...>               # currency of all figures in this block; if mixed, declare FX rate + date below
-  fx_reference: <e.g., "USD/INR 83.2 as of 2026-04-18, Yahoo Finance"> # required only when cross-market figures appear
+  fx_reference: <e.g., "USD/INR 92.60 as of 2026-04-19, Google Finance (Tier 2); profile.fx_rates.usd_inr"> # required only when cross-market figures appear; always cite source + date per Hard Rule #9
   current_price: <number + source + tier, e.g., "$875 (Yahoo Finance T2, 2026-04-19)">
   current_position: <e.g., "50 shares, cost basis $210, current value $43,750 USD">
   key_metrics:
