@@ -42,9 +42,14 @@ risk:
   calibrated_tolerance: medium  # Veda downgrades until behaviorally validated
 
 concentration:
-  style: diversified         # defaulted for novices
-  target_position_count: 20
-  max_single_position_pct: 8 # tight cap — novice guardrail
+  current:
+    style: diversified
+    position_count: 18
+    largest_position_pct: 7
+  target:
+    style: diversified
+    position_count: 20
+    max_single_position_pct: 8   # tight cap — novice guardrail (matches guardrails.max_single_position_pct below)
 
 markets:
   - india

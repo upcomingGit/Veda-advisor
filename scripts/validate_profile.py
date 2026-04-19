@@ -48,7 +48,11 @@ ENUM_VALUES: dict[str, set[str]] = {
     },
     "risk.stated_tolerance": {"low", "medium", "high", "very_high"},
     "risk.calibrated_tolerance": {"low", "medium", "high", "very_high"},
-    "concentration.style": {"index_like", "diversified", "focused", "concentrated"},
+    # Concentration is split into current-state vs target-state sub-blocks.
+    # Both are optional at the schema level (captured progressively) but when
+    # present, each style field must be one of the allowed enums.
+    "concentration.current.style": {"index_like", "diversified", "focused", "concentrated"},
+    "concentration.target.style": {"index_like", "diversified", "focused", "concentrated"},
     "style_lean.primary": {
         "value",
         "quality",
@@ -132,8 +136,9 @@ def extract_yaml_block(text: str) -> str:
 def find_scalar(yaml_text: str, dotted_path: str) -> str | None:
     """Find `key: value` at the right indentation for a dotted path.
 
-    Example: `goal.primary` matches a `primary: <value>` line that appears
-    nested under a `goal:` header.
+    Supports arbitrary nesting depth. `concentration.current.style` narrows
+    first to the `concentration:` block, then to the `current:` sub-block,
+    then reads the `style:` scalar at the correct indent.
     """
     parts = dotted_path.split(".")
     if len(parts) == 1:
@@ -141,27 +146,40 @@ def find_scalar(yaml_text: str, dotted_path: str) -> str | None:
         m = re.search(pattern, yaml_text)
         return m.group(1).strip() if m else None
 
-    # Nested: find the parent header, then the child key in its block.
-    parent, child = parts[0], parts[-1]
-    parent_re = re.compile(rf"(?m)^{re.escape(parent)}:\s*$")
-    pm = parent_re.search(yaml_text)
-    if not pm:
-        return None
-    # Scan forward until we leave the parent block (line with no leading space,
-    # other than blanks or comments).
-    rest = yaml_text[pm.end():]
-    block_lines: list[str] = []
-    for line in rest.splitlines():
-        if line.strip() == "" or line.lstrip().startswith("#"):
+    # Narrow to the deepest block by walking parents one at a time.
+    current_text = yaml_text
+    current_indent = 0  # indent (in spaces) of keys in the current scope
+    for parent in parts[:-1]:
+        indent_prefix = " " * current_indent
+        parent_re = re.compile(
+            rf"(?m)^{re.escape(indent_prefix)}{re.escape(parent)}:\s*$"
+        )
+        pm = parent_re.search(current_text)
+        if not pm:
+            return None
+        rest = current_text[pm.end():]
+        block_lines: list[str] = []
+        child_indent: int | None = None
+        for line in rest.splitlines():
+            if line.strip() == "" or line.lstrip().startswith("#"):
+                block_lines.append(line)
+                continue
+            leading = len(line) - len(line.lstrip(" "))
+            if leading <= current_indent:
+                break
+            if child_indent is None:
+                child_indent = leading
             block_lines.append(line)
-            continue
-        if not line.startswith((" ", "\t")):
-            break
-        block_lines.append(line)
-    block = "\n".join(block_lines)
-    child_re = re.compile(rf"(?m)^\s+{re.escape(child)}:\s*(.+?)\s*(?:#.*)?$")
-    cm = child_re.search(block)
-    return cm.group(1).strip() if cm else None
+        if child_indent is None:
+            return None
+        current_text = "\n".join(block_lines)
+        current_indent = child_indent
+
+    last = parts[-1]
+    indent_prefix = " " * current_indent
+    pattern = rf"(?m)^{re.escape(indent_prefix)}{re.escape(last)}:\s*(.+?)\s*(?:#.*)?$"
+    m = re.search(pattern, current_text)
+    return m.group(1).strip() if m else None
 
 
 def section_present(yaml_text: str, header: str) -> bool:
@@ -237,21 +255,29 @@ def validate(profile_path: Path) -> list[str]:
         except ValueError:
             errors.append(f"max_loss_probability: expected int, got {mlp!r}")
 
-    # capital.split sums to 100
-    split_parts = {
-        k: find_scalar(yaml_text, f"split.{k}")
-        for k in ("core_long_term", "tactical", "short_term_trades", "speculation")
-    }
-    if all(v is not None for v in split_parts.values()):
-        try:
-            total = sum(int(v) for v in split_parts.values())  # type: ignore[arg-type]
-            if total != 100:
+    # capital.split (current state) sums to 100 when present.
+    # capital.target_split (desired future state) is optional; when present,
+    # it must also sum to 100. Both blocks are treated as "present" only if
+    # all four bucket components are written out (partial blocks are ignored,
+    # so progressive profiling can leave them absent without tripping the
+    # validator).
+    _buckets = ("core_long_term", "tactical", "short_term_trades", "speculation")
+    for block_name in ("split", "target_split"):
+        parts_by_bucket = {
+            k: find_scalar(yaml_text, f"capital.{block_name}.{k}") for k in _buckets
+        }
+        if all(v is not None for v in parts_by_bucket.values()):
+            try:
+                total = sum(int(v) for v in parts_by_bucket.values())  # type: ignore[arg-type]
+                if total != 100:
+                    errors.append(
+                        f"capital.{block_name}: components must sum to 100, got {total} "
+                        f"({parts_by_bucket})"
+                    )
+            except ValueError:
                 errors.append(
-                    f"capital.split: components must sum to 100, got {total} "
-                    f"({split_parts})"
+                    f"capital.{block_name}: non-integer component in {parts_by_bucket}"
                 )
-        except ValueError:
-            errors.append(f"capital.split: non-integer component in {split_parts}")
 
     # Novice: guardrails block required and complete
     exp_mode = find_scalar(yaml_text, "experience_mode")

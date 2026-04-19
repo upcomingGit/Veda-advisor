@@ -33,27 +33,53 @@ horizon:
   effective_horizon_years: <int>  # derived
 
 capital:
-  pct_net_worth_in_market: <int>  # 0-100
+  pct_net_worth_in_market: <int>  # 0-100; refers to current state
+  # split = CURRENT state of deployed capital. Must sum to 100 when all four
+  # buckets are present. Captured progressively during the first portfolio
+  # question if not elicited at onboarding.
   split:
     core_long_term: <int>    # %
     tactical: <int>          # %
     short_term_trades: <int> # %
     speculation: <int>       # %
-  # must sum to 100
+  # target_split = DESIRED future state of deployed capital. Optional; only
+  # write it when the user's current and target splits differ. When present,
+  # must also sum to 100. Veda uses current for feasibility checks and target
+  # for direction-of-travel. A mismatch biases recommendations toward moves
+  # that close the gap.
+  target_split:
+    core_long_term: <int>    # %
+    tactical: <int>          # %
+    short_term_trades: <int> # %
+    speculation: <int>       # %
 
 goal:
   primary: <capital_preservation | income | balanced_growth | aggressive_growth | speculation>
-  notes: <string>  # any nuance
+  notes: <string>  # any nuance, including multi-phase plans (e.g., growth now -> income at retirement)
 
 risk:
   stated_tolerance: <low | medium | high | very_high>
   behavioral_history: <string>  # what they actually did in last drawdown
   calibrated_tolerance: <low | medium | high | very_high>  # Veda's read after stated + behavioral
 
+# Concentration is split into CURRENT state (what the portfolio actually looks
+# like today) and TARGET state (where the user wants it to be). Every sizing
+# recommendation reads both:
+#   - current for feasibility: "given you already hold 33 names, can you add a 34th?"
+#   - target  for direction:   "does this action close the gap or widen it?"
+# A large current-vs-target mismatch (e.g., current.style=diversified but
+# target.style=focused) biases Veda toward consolidate / trim / don't-add-new
+# rather than buy. Record the bridge in glide_notes.
 concentration:
-  style: <index_like | diversified | focused | concentrated>
-  target_position_count: <int>
-  max_single_position_pct: <int>  # implied ceiling based on style
+  current:
+    style: <index_like | diversified | focused | concentrated>
+    position_count: <int>            # how many names the user holds today
+    largest_position_pct: <int>      # size of the single largest position today (0-100)
+  target:
+    style: <index_like | diversified | focused | concentrated>
+    position_count: <int>            # how many names the user wants to hold
+    max_single_position_pct: <int>   # ceiling the user wants to enforce going forward
+  glide_notes: <string>              # optional; how the user plans to bridge current -> target
 
 markets:  # multi-select
   - us
@@ -156,6 +182,7 @@ When generating `framework_weights` from the user's answers:
 | Style = growth | Lynch, Fisher |
 | Style = macro | Druckenmiller, Dalio |
 | Concentration = concentrated | Buffett, Thorp |
+| Concentration current=diversified AND target=focused (mismatch) | Munger (inversion — don't add new names), Lynch (categorize what you already own) |
 | Concentration = index-like | Dalio |
 | Uses options/shorts | Taleb (vol awareness), Thorp (sizing) |
 | Self-weakness = holds losers | Druckenmiller (first loss = best loss) always surfaces |

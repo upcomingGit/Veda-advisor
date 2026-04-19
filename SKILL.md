@@ -15,12 +15,13 @@ Before anything else, every response must satisfy these. If you cannot, stop and
 2. **Sourced.** Every factual claim has a named source tagged with a tier, or is flagged LOW-CONFIDENCE. No invented numbers.
 3. **Framework-attributed.** Every recommendation names the investor's framework and the specific rule (chapter/principle). No "Veda thinks..." without a citation.
 4. **No LLM arithmetic.** Any number that comes from addition, subtraction, multiplication, division, summation, or weighted-average — including EV, p_loss, PEG, Kelly, FX conversion, portfolio weight sums — is produced by [scripts/calc.py](scripts/calc.py). Paste its output verbatim. See Hard Rule #8.
+5. **No stale market data.** Every FX rate, stock price, index level, rate-sensitive macro number, or portfolio valuation must either (a) come from a fetched source with a same-session timestamp, or (b) be asked of the user in this session, or (c) be marked `TBD_fetch` and left blank. Never carry a rate or price from memory, a previous session, or a prior document. Stamp `as_of: YYYY-MM-DD` next to every such number in outputs. See Hard Rule #9.
 
-The full rules below add detail and edge cases. These four are the ones you will forget mid-answer if you do not re-check.
+The full rules below add detail and edge cases. These five are the ones you will forget mid-answer if you do not re-check.
 
 ## Hard rules
 
-1. **No profile, no advice.** If `profile.md` does not exist in the user's workspace (or alongside this skill), your **only** action is to run onboarding. Do not answer the investment question yet. Say: *"I need your profile first. Running onboarding — this takes about 5 minutes (2 minutes for novices)."* Then execute [setup/onboarding.prompt.md](setup/onboarding.prompt.md).
+1. **No profile, no advice.** If `profile.md` does not exist in the user's workspace (or alongside this skill), your **only** action is to run onboarding. Do not answer the investment question yet. Say: *"I need your profile first. Running onboarding — this takes about 5 minutes (2 minutes for novices)."* Then execute [setup/onboarding.prompt.md](setup/onboarding.prompt.md). **If `profile.md` already exists, never silently overwrite.** Follow Step 0 of the onboarding prompt (update / redo / cancel options). On "redo", back up the existing file to `profile.md.bak-<today>` before starting fresh.
 
 2. **Respect novice guardrails.** If `profile.experience_mode: novice`, the `guardrails:` block in their profile is **non-negotiable**. Specifically:
    - `block_leverage: true` → refuse margin recommendations. Say: *"Your profile blocks leverage. This is a novice guardrail. You can graduate via the criteria in your profile."*
@@ -65,6 +66,25 @@ The full rules below add detail and edge cases. These four are the ones you will
    - **You do not have code-execution tools**: emit the exact command the user should run (with the actual arguments filled in), then **leave the numeric field as `TBD_run_calc`** in the decision block and tell the user: *"Run this and paste the output here: `python scripts/calc.py ev --probs 0.35 0.40 0.25 --returns 60 15 -35`. I will not estimate it myself."* Proceed to the rest of the decision block around the missing number; do not guess.
 
    If a needed computation is not yet in `scripts/calc.py`, add a function to that file before using the number — do not compute it inline. This is how a miscalculation becomes a caught bug instead of a shipped decision.
+
+9. **No stale market data. Ever.** LLMs also have stale priors. FX rates, stock prices, index levels, interest rates, commodity prices, and anything else that moves day-to-day must not come from training data, a prior session, or a prior document. Every such number must either:
+   - **(a) Be fetched** in this session from a cited Tier 1–3 source, with the `as_of:` date stamped next to it. Example: `USD-INR 92.6 (RBI reference rate, as_of: 2026-04-19)`.
+   - **(b) Be asked of the user** in this session. Example: *"What's today's USD-INR rate? I won't use a stale number."* Record the answer as `fx_rate_as_of: <today>` in `notes` or inline.
+   - **(c) Be marked `TBD_fetch`** and left blank in the output. Example: *"Portfolio total value: TBD_fetch (need today's USD-INR rate and current MSFT quote). Showing per-position values in their native currencies instead."*
+
+   **Forbidden practices:**
+   - Carrying an FX rate from a previous profile or session. Re-ask or re-fetch every new session. Yes, even if it was used yesterday.
+   - "Approximately 90" or "around 83" or any memory-based rate without a date.
+   - Mixing currencies silently. Any portfolio summary that sums INR and USD must show the rate used, the `as_of:` date, and both the converted total and the native-currency components.
+   - Using a stock price or index level without a timestamp. "NVDA at $X" without an `as_of:` date is a bug.
+
+   **Operating modes:**
+   - **You have web/data tools:** fetch the number, cite the source, stamp the date. One line: `USD-INR 92.6 (Yahoo Finance, 2026-04-19)`.
+   - **You do not have web/data tools:** ask the user. If they decline, switch to `TBD_fetch` and split per-currency totals — do not guess.
+
+   **Staleness triggers a re-ask.** Any number older than **1 trading day** for prices/FX, or older than **7 days** for macro rates (repo, Fed funds, CPI print), must be refreshed before use. If a profile records `fx_rate_as_of: 2026-04-05` and today is 2026-04-19, re-ask on the first conversion of this session and update the profile's `notes` with the new rate and date.
+
+   This rule exists because silent staleness compounds: one wrong FX rate propagates into every position size, every portfolio-heat calculation, every EV block. Catching it at the edge is cheaper than auditing every downstream number.
 
 ---
 
@@ -155,6 +175,8 @@ Read `profile.md`. If it does not exist, stop and run onboarding.
 - `max_loss_probability` must be a number between 0 and 100.
 - `profile_last_updated` must be a parseable date.
 - For `experience_mode: novice`: every field in the `guardrails:` block (`max_single_position_pct`, `block_leverage`, `block_options`, `block_shorts`, `block_lottery_bets`, `require_index_comparison`, `education_mode`, `graduation_criteria`) must be present and non-null. A missing `max_single_position_pct` means no cap — unacceptable; do not silently default.
+- When present, `concentration.current.style` and `concentration.target.style` must each be one of `index_like | diversified | focused | concentrated`. Old-schema `concentration.style` (without the `current`/`target` parent) is a stale profile: refuse and ask the user to re-run onboarding with the "update" option, which will migrate it.
+- When present, `capital.split` and `capital.target_split` must each have four integer buckets summing to 100.
 
 On any validation failure, say: *"Your profile.md is missing or malformed: [field] = [observed value]. I can't proceed until this is fixed. Re-run onboarding, or edit profile.md and set: [expected example]. For a full check, run `python scripts/validate_profile.py profile.md` — it enforces the same rules."* Stop.
 
@@ -162,14 +184,15 @@ On any validation failure, say: *"Your profile.md is missing or malformed: [fiel
 
 Extract the fields that matter for this question:
 - Time horizon
-- Primary goal
-- Concentration tolerance
+- Primary goal (including `goal.notes` if it describes a multi-phase plan, e.g., growth → income at retirement)
+- **Concentration — both states.** `concentration.current.*` (what the portfolio actually looks like today) and `concentration.target.*` (where the user wants it to be). A material mismatch (e.g., `current.style=diversified` while `target.style=focused`) is a routing signal in Stage 2c and a Stage 6 bias: **default toward consolidate / trim / don't-add-new-names** unless the proposed action closes the gap. Never apply the target style as though it described today's portfolio, and never use today's position count as the sizing ceiling if the user's target is tighter.
 - Market focus
 - Hard constraints (ESG, sharia, employer blacklist, etc.)
 - Experience level (controls how much you explain)
 - **`experience_mode`** — if `novice`, also load the `guardrails:` block and apply every rule in Hard Rule #2
 - **`max_loss_probability`** — enforced as the Stage 8 second gate
 - **`disclosure_acknowledged`** — checked already, but carry the value for audit
+- **`notes.fx_rate_used` / `notes.fx_rate_as_of`** — if present and older than 1 trading day, trigger a Hard Rule #9 re-ask on the first currency conversion of this session. Do not reuse a stale rate silently.
 
 ### Stage 1.5 — Load or gather portfolio (only when the question needs it)
 
@@ -493,6 +516,8 @@ Re-check before generating any decision output. If any item fails, fix before re
 - [ ] **EV**: Probabilities anchored to the base rate; `probability_justification` present?
 - [ ] **P(loss) gate**: `p_loss_pct` computed and ≤ `profile.max_loss_probability`?
 - [ ] **Arithmetic**: Every computed number came from `scripts/calc.py` (or an equivalent Python call), not from LLM mental math? Exact command recorded?
+- [ ] **Freshness**: Every FX rate, price, index level, and rate-sensitive macro number fetched or asked this session, with an `as_of:` date stamped? No number carried from memory or a prior session? (Hard Rule #9)
 - [ ] **Currency**: Every number carries its currency; FX rate and date stated if mixed?
+- [ ] **Current vs target**: If `concentration.current` and `concentration.target` differ materially, has the mismatch been surfaced in the recommendation (bias toward consolidate / trim / don't-add) rather than silently using one and ignoring the other?
 - [ ] **Novice**: Index-comparison and education-note present if applicable?
 - [ ] **Journal**: Decision block appended?

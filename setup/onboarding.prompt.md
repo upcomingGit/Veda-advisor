@@ -33,6 +33,30 @@ Two places to be especially careful:
 4. **Do not judge.** The profile's job is to describe reality, not reform the user.
 5. **Offer concrete options** when the user seems uncertain.
 6. **Read back before saving.**
+7. **No stale numbers (Hard Rule #9).** If a question requires an FX rate, stock price, index level, or any market-data number — ask the user for today's value, or fetch it with a timestamped source. Never carry a rate from memory or from a prior session. When the user gives you approximate holdings in a non-reporting currency (e.g., INR holdings in a USD-reporting profile), **ask for today's USD-INR rate before converting** and record `fx_rate_used` and `fx_rate_as_of: YYYY-MM-DD` in `notes`. If you cannot get a live rate, write `fx_rate_as_of: UNKNOWN` and refuse to produce converted totals; record both sides in original currency instead.
+
+---
+
+## Step 0 — Existing-profile check (ALWAYS first)
+
+Before the disclosure, before any question, check whether `profile.md` already exists in the workspace root.
+
+**If it does not exist** → proceed to Step 1.
+
+**If it exists** → do **not** silently overwrite. Read it and tell the user:
+
+> *"I found an existing profile (generated YYYY-MM-DD, experience_mode: <value>, goal: <value>). Pick one:*
+> *(a) **update** — targeted edits to specific fields, keeps everything else intact. Default.*
+> *(b) **redo** — full re-interview. Your existing profile will be backed up to `profile.md.bak-YYYY-MM-DD` before I start.*
+> *(c) **cancel** — stop, don't touch the file."*
+
+Default choice if the user just says "onboarding" or answers ambiguously: **(a) update**. Overwriting a working profile is worse than asking one extra question.
+
+**On (a) update:** ask *"Which fields do you want to change?"* Make targeted edits only. Do not re-run the full interview. Bump `profile_last_updated:` to today. Re-run `scripts/validate_profile.py` at the end.
+
+**On (b) redo:** rename the existing file to `profile.md.bak-<today>` (e.g., `profile.md.bak-2026-04-19`). Then proceed to Step 1 as if starting fresh. Tell the user: *"Existing profile backed up to `profile.md.bak-2026-04-19`. Starting a fresh onboarding."*
+
+**On (c) cancel:** stop. Say *"No changes made. Run onboarding any time with `/veda` or 'Veda: redo onboarding'."*
 
 ---
 
@@ -88,8 +112,10 @@ The novice path is already a "preset" — most fields have safe defaults. Ask on
 | `goal.primary` | `balanced_growth` | Safer than aggressive; adjustable once they know what they want |
 | `risk.stated_tolerance` | `medium` | Novice stated tolerance is unreliable |
 | `risk.calibrated_tolerance` | `medium` | Until they live through a drawdown, treat as medium |
-| `concentration.style` | `diversified` | No concentrated bets until earned |
-| `concentration.max_single_position_pct` | `8` | Hard cap |
+| `concentration.target.style` | `diversified` | No concentrated bets until earned |
+| `concentration.target.position_count` | `20` | Diversified-end default |
+| `concentration.target.max_single_position_pct` | `8` | Hard cap (matches `guardrails.max_single_position_pct`) |
+| `concentration.current.*` | Captured during Q7 of Step 3N, or progressively on first portfolio question | Current state may differ from target; Veda won't assume they match |
 | `style_lean.primary` | `passive_plus` | Matches reality: most novices should be mostly indexed |
 | `instruments.long_only_cash` | `true` | All others blocked |
 | `instruments.*` (margin, options, shorts) | `false` | Guardrails |
@@ -113,15 +139,17 @@ For Intermediate / Advanced / Professional users, **do not launch into 15 questi
 
 ### The three presets
 
+Each preset writes **target** concentration fields. Current concentration (what the portfolio actually looks like today) is captured in question 7 below or progressively on the first portfolio question.
+
 | # | Preset | Who it fits | Defaulted fields |
 |---|---|---|---|
-| 1 | **Long-horizon index-plus** | "Mostly indexed, a few active bets, long runway. I don't want to trade often." | `goal: balanced_growth`, `concentration.style: diversified`, `style_lean.primary: passive_plus`, `instruments.long_only_cash: true`, all other instruments `false`, `experience.explanation_depth: standard`, `max_loss_probability: 35` |
-| 2 | **Active quality compounder** | "I pick great businesses, hold for years, concentrated book. Buffett/Munger/Fisher temperament." | `goal: aggressive_growth`, `concentration.style: focused`, `style_lean.primary: quality`, `instruments.long_only_cash: true`, all others `false`, `experience.explanation_depth: minimal`, `max_loss_probability: 45` (cap before behavioral history is documented) |
-| 3 | **Macro tactical** | "I trade themes and cycles. Shorter holding periods, macro-driven, sometimes use hedges." | `goal: balanced_growth`, `concentration.style: diversified`, `style_lean.primary: macro`, `instruments.long_only_cash: true`, `instruments.options_hedging: true` (confirm), others `false`, `experience.explanation_depth: minimal`, `max_loss_probability: 35` |
+| 1 | **Long-horizon index-plus** | "Mostly indexed, a few active bets, long runway. I don't want to trade often." | `goal: balanced_growth`, `concentration.target.style: diversified`, `concentration.target.position_count: 20`, `concentration.target.max_single_position_pct: 10`, `style_lean.primary: passive_plus`, `instruments.long_only_cash: true`, all other instruments `false`, `experience.explanation_depth: standard`, `max_loss_probability: 35` |
+| 2 | **Active quality compounder** | "I pick great businesses, hold for years, concentrated book. Buffett/Munger/Fisher temperament." | `goal: aggressive_growth`, `concentration.target.style: focused`, `concentration.target.position_count: 12`, `concentration.target.max_single_position_pct: 20`, `style_lean.primary: quality`, `instruments.long_only_cash: true`, all others `false`, `experience.explanation_depth: minimal`, `max_loss_probability: 45` (cap before behavioral history is documented) |
+| 3 | **Macro tactical** | "I trade themes and cycles. Shorter holding periods, macro-driven, sometimes use hedges." | `goal: balanced_growth`, `concentration.target.style: diversified`, `concentration.target.position_count: 15`, `concentration.target.max_single_position_pct: 15`, `style_lean.primary: macro`, `instruments.long_only_cash: true`, `instruments.options_hedging: true` (confirm), others `false`, `experience.explanation_depth: minimal`, `max_loss_probability: 35` |
 
-### After they pick a preset, ask these six (not fifteen)
+### After they pick a preset, ask these seven (not fifteen)
 
-These six must be filled upfront because they are load-bearing for safety and calibration. They cannot be lazily captured.
+These must be filled upfront because they are load-bearing for safety and calibration. They cannot be lazily captured.
 
 1. **Name + display name.** What should Veda call you?
 2. **Age and target retirement age** (or "never retiring"). Derive `effective_horizon_years = target_retirement_age - current_age` (or `30` for "never retiring"; document this assumption in `horizon`).
@@ -129,6 +157,7 @@ These six must be filled upfront because they are load-bearing for safety and ca
 4. **Markets** — multi-select: US / India / Europe / Other developed / Emerging / Crypto / Private. *(Frameworks don't change by geography, but data sources and macro overlays do.)*
 5. **Hard constraints** — religious/ethical, employer blacklist, tax regime (country + account types like Roth/PPF/ISA/401k), forced concentration (e.g., unvested RSUs). *(Non-negotiable filters applied before any recommendation.)*
 6. **Biggest drawdown lived through, and how you reacted.** *(Self-reported risk tolerance lies. Behavioral history tells the truth. If no drawdown has been lived through, record that explicitly; it caps `max_loss_probability` at 35 regardless of stated goal.)*
+7. **Current concentration** — "Roughly how many positions do you hold today, and what's the biggest as a percent of the total? Is today's shape where you want to stay, or are you trying to get somewhere different?" *(Captures `concentration.current.position_count`, `concentration.current.largest_position_pct`, and `concentration.current.style`. If the user says they want a different shape, confirm the preset's target values fit; otherwise adjust them. If current and target differ materially, write a one-line `concentration.glide_notes` summary — e.g., "consolidate 33 → 12 over 18–24 months, no new names unless >3%".)*
 
 ### After the six, confirm the preset
 
@@ -151,7 +180,7 @@ After the upfront interview, the profile is usable but not complete. The remaini
 **Precedence when multiple triggers fire.** Ask at most **one** progressive-profiling question per turn (design principle: one question at a time). If two or more triggers fire, pick the highest-priority empty field. Priority, high to low:
 
 1. `capital.pct_net_worth_in_market`
-2. `concentration.target_position_count` / `concentration.style`
+2. `concentration.current.position_count` / `concentration.target.position_count` / `concentration.target.style`
 3. `instruments.*`
 4. `style_lean.primary`
 5. `experience.level`
@@ -169,15 +198,18 @@ The rest will be captured on later turns as they keep firing.
 | Field | Trigger to ask | Prompt wording |
 |---|---|---|
 | `capital.pct_net_worth_in_market` | First `buy` / `add` / `size` question involving a specific rupee/dollar amount | *"Before I size this: roughly what fraction of your net worth is already in the market? Ballpark is fine — 20%, 50%, 90%."* |
-| `capital.split` (4 buckets) | First `portfolio`-scope question, or first time Veda has to reason about speculation vs core | *"Of what's in the market, roughly what split between long-term holds, tactical 3–18 month positions, short-term trades, and speculative bets? They must sum to 100."* |
-| `concentration.target_position_count` | First sizing question, or first time position count matters (e.g., "should I add a 6th position?") | *"How many total positions do you want to hold? Rough bucket: index-like 30+, diversified 15–25, focused 8–15, concentrated under 8."* |
-| `concentration.style` (if not preset-filled) | Same as above | Derive from the count answer; confirm. |
+| `capital.split` (4 buckets, current state) | First `portfolio`-scope question, or first time Veda has to reason about speculation vs core | *"Of what's in the market today, roughly what split between long-term holds, tactical 3–18 month positions, short-term trades, and speculative bets? Must sum to 100."* |
+| `capital.target_split` (4 buckets, future state) | When the user's answer to `capital.split` hints at a glide plan (e.g., "speculation is 30% today but I want to bring it down") | *"And what split would you like it to be in, say, 2 years? Must also sum to 100. If it's the same as today, say 'same' and I'll leave it blank."* |
+| `concentration.current.position_count` / `current.largest_position_pct` / `current.style` | First sizing question, or first portfolio-scope question, if not elicited at onboarding | *"How many positions do you hold today, and roughly what's the biggest as a percent of the total? Index-like 30+, diversified 15–25, focused 8–15, concentrated under 8."* |
+| `concentration.target.position_count` / `target.style` / `target.max_single_position_pct` (if not preset-filled) | Same as above; ask after current | *"Is today's shape where you want to stay, or are you trying to get somewhere different? If different, give me the target."* |
+| `concentration.glide_notes` | When current and target differ materially | Write a one-line plan after the target answer — e.g., "consolidate 33 → 12 over 18–24 months, no new names unless >3%." No separate prompt required. |
 | `instruments.margin` / `options_*` / `shorts` | First time the user asks about a derivative product, or Veda would recommend a hedge | *"Before I suggest this: do you use margin / options / shorts? One-word answers each."* |
 | `style_lean.primary` (if not preset-filled) | First time style would change framework routing (e.g., value vs growth) | *"Which style feels most like you: value, quality, growth, macro, thematic, quant, or passive-plus?"* |
 | `style_lean.secondary` | Optional; only ask if the user equivocates between two styles in question #1 | *"You said value but also mentioned quality — should I tag quality as your secondary lean?"* |
 | `experience.level` / `years_investing` | First question that would calibrate explanation depth | *"Quick one: roughly how many years have you been actively investing? I'll dial the explanation depth accordingly."* |
 | `self_identified_weakness` | First time the user seems to be talking themselves into overriding a framework | *"Before we go further: what decision do you most often screw up in investing? Hold losers too long? Sell winners too early? FOMO buy? I want to flag this at the right moments."* |
 | `data_access` | First time Veda asks the user to fetch a number | *"Which data tools do you have? Yahoo Finance, Screener.in, Bloomberg, Seeking Alpha, your broker's research, your own notes?"* |
+| `notes.fx_rate_used` / `notes.fx_rate_as_of` | First time a USD-INR (or any cross-currency) conversion is needed | *"What's today's USD-INR rate? If you don't know, I'll look it up and cite the source."* Record the rate and date; re-ask on every new session rather than reusing. See Hard Rule #9 (SKILL.md) and Step 5 below. |
 | `notes` | Any time the user volunteers context that doesn't fit elsewhere | Write it to `notes` without asking. |
 
 ### Completion threshold — when `incomplete` flips to false
@@ -186,7 +218,7 @@ The profile graduates from `incomplete: true` to `incomplete: false` when **all*
 
 - The 6 upfront fields (disclosure, experience_mode, goal, horizon, markets, hard_constraints — completed in Step 3S or 3N).
 - `capital.pct_net_worth_in_market`
-- `concentration.style` and `concentration.target_position_count`
+- `concentration.current.style`, `concentration.current.position_count`, and at least one `concentration.target.*` field (style or position_count)
 - `style_lean.primary`
 - `experience.level`
 - At least one `instruments.*` field set (even if all false — confirms the user saw the question)
@@ -218,6 +250,7 @@ If the user asks *"interview me fully"*, *"ask me everything"*, or *"complete my
    - `max_loss_probability:` = derived value from step 3
    - `incomplete:` = `true` unless the completion-threshold fields are all filled
    - For novices, also emit the `guardrails:` block.
+   - **If the user has mentioned any cross-currency exposure** (e.g., Indian tax resident with USD holdings), record in `notes`: `fx_rate_used: <today's rate>` and `fx_rate_as_of: YYYY-MM-DD`. Ask the user for today's rate or fetch it with a citation. **Never carry a rate from memory or a previous session.** If you cannot get a live rate, set `fx_rate_as_of: UNKNOWN` and split the `notes` portfolio summary into per-currency totals rather than a single converted number. This is Hard Rule #9 (SKILL.md).
 6. **Validate before declaring onboarding complete.** Run `python scripts/validate_profile.py profile.md` and paste the output.
    - If it prints `OK: ... is valid.` — proceed.
    - If it prints validation errors — do not continue. Fix the profile for each error (usually an enum paraphrase, a missing required field, or a capital-split that doesn't sum to 100), re-run the validator, and only continue once it passes. Do not ask the user to manually fix YAML; you made the profile, you fix it.
@@ -259,7 +292,7 @@ Do **not** run this by default. Run it only if the user explicitly says *"interv
 ### 4. Of the money that IS in the market, split between core long-term (5+ yrs), tactical (3–18 months), short-term trades (days to weeks), speculation (could go to zero). Must sum to 100.
 ### 5. Primary goal — one of: `capital_preservation`, `income`, `balanced_growth`, `aggressive_growth`, `speculation`.
 ### 6. Largest drawdown lived through, and how you reacted.
-### 7. How many positions do you want to hold? Index-like 30+, diversified 15–25, focused 8–15, concentrated <8.
+### 7. Concentration — current AND target. Two parts: (a) "How many positions do you hold today, and roughly what is the biggest as a percent of the total?" → `concentration.current.*`. (b) "How many do you want to hold, and what is the max any single position should be?" → `concentration.target.*`. Buckets for both: index-like 30+, diversified 15–25, focused 8–15, concentrated <8. If current and target differ materially, add a one-line `concentration.glide_notes`.
 ### 8. Markets (multi-select): US, India, Europe, Other developed, Emerging, Crypto, Private.
 ### 9. Style lean (one): value, quality, growth, macro, thematic, quant, passive_plus.
 ### 10. Leverage/derivatives: long-only cash, occasional margin, options for hedging, options for speculation, shorts.

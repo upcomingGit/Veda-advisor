@@ -41,9 +41,14 @@ risk:
   calibrated_tolerance: high
 
 concentration:
-  style: focused
-  target_position_count: 12
-  max_single_position_pct: 15
+  current:
+    style: focused
+    position_count: 11
+    largest_position_pct: 14
+  target:
+    style: focused
+    position_count: 12
+    max_single_position_pct: 15
 
 markets:
   - india
