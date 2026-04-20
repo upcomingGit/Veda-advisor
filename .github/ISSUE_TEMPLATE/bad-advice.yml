@@ -51,6 +51,6 @@ body:
     id: assistant
     attributes:
       label: Assistant used
-      placeholder: "Copilot Agent mode in VS Code / Claude Desktop / Cursor / other"
+      placeholder: "Copilot Agent mode in VS Code / Claude Code / Gemini CLI / Cursor / other"
     validations:
       required: true

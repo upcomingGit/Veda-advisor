@@ -1,6 +1,6 @@
 # Veda
 
-**Your personal AI investment advisor — structured wisdom from 11 of the greatest investors, as a skill for Copilot, Claude, and Cursor.**
+**Your personal AI investment advisor — structured wisdom from 11 of the greatest investors, as a skill for Copilot, Claude Code, and Cursor.**
 
 Veda is not a stock tipping service. It does not predict prices. It does not tell you what to buy.
 
@@ -171,7 +171,7 @@ Onboarding writes a `profile.md` file containing your personal investment profil
 The repo's `.gitignore` already excludes `profile.md` and `journal.md`, so if you cloned Veda and work inside that folder, you're protected by default. But be aware of two things:
 
 1. **Don't push to the public `upcomingGit/Veda-advisor` repo.** You don't have write access, but if you fork the repo to your own account and then push your profile by accident, your financial profile is public. The `.gitignore` prevents this, but only if you don't modify it.
-2. **Prefer keeping your profile outside the cloned Veda folder** if you're nervous about mistakes. You can point your assistant at Veda (for frameworks) and at a separate private folder (for your profile and journal). The [Claude Desktop flow](#claude-desktop) already works this way since it has no filesystem. For Copilot/Cursor, see the "profile location" tip under each install section.
+2. **Prefer keeping your profile outside the cloned Veda folder** if you're nervous about mistakes. You can point your assistant at Veda (for frameworks) and at a separate private folder (for your profile and journal). See the "profile location" tip under each install section.
 
 If you want a clean setup: make a **separate private repo** (e.g., `my-investing-notes`) for `profile.md` and `journal.md`, and keep the Veda clone untouched as a read-only framework reference.
 
@@ -205,13 +205,13 @@ Read SKILL.md in the Veda-advisor folder and follow it.
 
 *Advanced — auto-activate in a project workspace:* to skip typing `/veda` on every chat, copy `SKILL.md` contents into that workspace's `.github/copilot-instructions.md` file. Most users are fine with `/veda` per new chat.
 
-### Claude Code (CLI)
+### Claude Code
 
-[Claude Code](https://code.claude.com/docs/en/overview) is Anthropic's terminal-and-IDE coding agent. Veda ships a ready-to-use skill at `.claude/skills/veda/SKILL.md` that Claude Code auto-discovers.
+[Claude Code](https://code.claude.com/docs/en/overview) is Anthropic's terminal-and-IDE coding agent. Veda ships a ready-to-use [skill](https://code.claude.com/docs/en/skills) at `.claude/skills/veda/SKILL.md`. Because it lives in the project's `.claude/skills/` directory, Claude Code auto-discovers it whenever you run `claude` inside the Veda-advisor folder.
 
 **Step 1.** Install Claude Code if you don't have it — see [code.claude.com](https://code.claude.com/docs/en/overview) for the installer appropriate to your OS. On Windows PowerShell, the one-liner is `irm https://claude.ai/install.ps1 | iex`; on macOS/Linux/WSL it's `curl -fsSL https://claude.ai/install.sh | bash`.
 
-**Step 2.** Clone the repo and start Claude Code inside it:
+**Step 2.** Clone the repo and start Claude Code inside it. Claude Code is a project-scoped agent — the folder you launch it from determines which skills, memory files, and working directory it sees — so `cd` into the Veda-advisor folder before running `claude`:
 
 ```powershell
 git clone https://github.com/upcomingGit/Veda-advisor.git
@@ -219,41 +219,27 @@ cd Veda-advisor
 claude
 ```
 
-**Step 3.** Invoke Veda:
+On first run, Claude Code will prompt you to sign in with your Claude account (or paste an Anthropic API key). Either works for Veda.
+
+**Step 3.** Invoke Veda from the Claude Code prompt:
 
 ```
 /veda
 ```
 
-The shim skill at `.claude/skills/veda/SKILL.md` tells Claude Code to read the root `SKILL.md` and run the Veda pipeline. Onboarding triggers automatically if `profile.md` is missing.
+Or with an initial question on the same line:
 
-*Persistence:* unlike the browser/Desktop Projects flow, Claude Code reads and writes files on your local machine, so your `profile.md` persists across sessions in the repo folder just like it does for Copilot. `profile.md` is already in `.gitignore`.
-
-*Optional — always-on context:* Claude Code also loads any `CLAUDE.md` file at the project root on every session. If you want Veda to apply to every chat in the Veda-advisor workspace (not only when you type `/veda`), create a minimal `CLAUDE.md` containing `@SKILL.md` at the repo root. Most users prefer `/veda` per chat.
-
-### Claude Desktop / Claude.ai Projects
-
-This is the browser-and-desktop-app Projects flow (different from the Claude Code CLI above). Use this if you don't want a local install and are happy to keep your profile inside a Claude Project instead of on disk.
-
-**Step 1.** Clone the repo:
-
-```bash
-git clone https://github.com/upcomingGit/Veda-advisor.git
+```
+/veda should I add to TSMC here?
 ```
 
-**Step 2.** Create a new Project in Claude Desktop. In the project's Knowledge section, upload these files (Knowledge accepts individual file uploads, so you'll add them one at a time or multi-select within a folder — there's no folder-level upload):
+The skill's `name: veda` frontmatter is what registers `/veda` as a slash command; the skill body instructs Claude to read the root `SKILL.md` and run the full pipeline. Onboarding triggers automatically if `profile.md` is missing, so the very first `/veda` in a fresh clone kicks off the interview.
 
-- `SKILL.md`
-- `setup/onboarding.prompt.md`, `setup/profile.template.md`, `setup/profile.example-aggressive.md`, `setup/profile.example-novice.md`
-- `routing/framework-router.md`
-- `templates/decision-block.md`
-- Every file in `frameworks/` (currently just `frameworks/lynch.md`)
+*Persistence:* Claude Code has filesystem tools, so your `profile.md` and `portfolio.md` persist across sessions in the repo folder just like they do for Copilot and Gemini CLI. Both files are in `.gitignore` by default.
 
-*(Claude Desktop can't execute Python, so [scripts/import_portfolio.py](scripts/import_portfolio.py) isn't useful there. If you want portfolio-aware advice in Claude, run the importer locally first and upload the generated `portfolio.md`.)*
+*Where your profile lives:* by default, at the repo root next to `SKILL.md`. To keep it in a separate private folder, tell Veda at onboarding: *"Write profile.md to `<your/other/path>/profile.md` and read it from there every session."* Then also point Claude Code at that folder by starting with `claude --add-dir <your/other/path>` — skills inside `.claude/skills/` of an added directory are still auto-loaded.
 
-**Step 3.** In the project's Custom Instructions, paste: *"You are Veda. Follow SKILL.md on every investment question. Run onboarding if no profile exists in this conversation."*
-
-**Step 4.** Start the conversation with *"Run Veda onboarding"*. Claude will produce your profile inline in chat. **Copy it and save it somewhere private** (your own notes app, a private GitHub repo, a local file) — Claude Desktop doesn't persist arbitrary files for you outside the Project Knowledge store. At the start of each future session, paste your saved profile back in before asking investment questions.
+*Optional — always-on context:* Claude Code loads any `CLAUDE.md` at the project root into every session. If you want Veda's playbook applied automatically to every chat in the Veda-advisor workspace (not only after `/veda`), create a one-line `CLAUDE.md` containing `@SKILL.md`. Most users prefer the explicit `/veda` switch so general-coding chats stay general.
 
 ### Cursor
 
@@ -263,37 +249,41 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 
 **Step 3.** Run onboarding the same way: *"Read SKILL.md. You are Veda. Run onboarding."*
 
-### Gemini CLI
+### Gemini (web)
 
-[Gemini CLI](https://geminicli.com/) is Google's open-source terminal agent. Veda ships a ready-to-use custom command at `.gemini/commands/veda.toml`.
+Gemini's web app supports custom instructions plus knowledge file uploads via **[Gems](https://support.google.com/gemini/answer/15235603)**. You set up a Gem once, and every conversation with it has Veda's full playbook loaded. This is the tool-of-choice for users who don't want to install anything locally.
 
-**Step 1.** Install the CLI:
+**Trade-off versus Copilot / Claude Code:** no filesystem. Your `profile.md` lives in the chat, not on disk — you copy it out at the end of onboarding and paste it back at the start of every future session. Python scripts like [scripts/calc.py](scripts/calc.py) can't execute, so Veda shows its EV / Kelly / FX math inline (still verifiable) rather than calling the deterministic calculator.
 
-```powershell
-npm install -g @google/gemini-cli
-```
-
-Homebrew (`brew install gemini-cli`) and `npx @google/gemini-cli` (no install) also work. See [geminicli.com installation docs](https://geminicli.com/docs/get-started/installation/) for the full list.
-
-**Step 2.** Clone the repo and start Gemini CLI inside it:
+**Step 1.** Clone the repo locally so you have the files to upload:
 
 ```powershell
 git clone https://github.com/upcomingGit/Veda-advisor.git
-cd Veda-advisor
-gemini
 ```
 
-First run will prompt you to sign in with Google or paste a Gemini API key. Either works for Veda.
+**Step 2.** Go to [gemini.google.com](https://gemini.google.com/), open the sidebar, click **Explore Gems → New Gem**. Name it `Veda`.
 
-**Step 3.** Invoke Veda:
+**Step 3.** In the **Instructions** field, paste:
 
-```
-/veda
-```
+> *You are Veda. On every investment question, follow the playbook in `SKILL.md` (attached as Knowledge). If no profile has been pasted into this conversation yet, run the onboarding interview from `setup/onboarding.prompt.md` before anything else. Do not answer investment questions from prior knowledge — drive the 9-stage pipeline from `SKILL.md` every time. State uncertainty explicitly; refuse out-of-scope questions per the Stage 0 decline script.*
 
-The command at `.gemini/commands/veda.toml` injects the root `SKILL.md` into the prompt and runs the Veda pipeline. Gemini CLI has filesystem tools, so your `profile.md` persists in the repo folder just like for Copilot and Claude Code. `profile.md` is gitignored by default.
+**Step 4.** Under **Knowledge**, upload these files from your clone (the Gems upload dialog takes files one at a time or multi-select within a folder — there's no folder-level upload):
 
-*Optional — always-on context:* Gemini CLI also loads any `GEMINI.md` at the project root (or up the directory tree) on every session. To make Veda's playbook part of default context, create a one-line `GEMINI.md` at the repo root containing `@SKILL.md`. Most users prefer `/veda` per chat.
+- `SKILL.md`
+- `setup/onboarding.prompt.md`, `setup/profile.template.md`, `setup/profile.example-aggressive.md`, `setup/profile.example-novice.md`
+- `routing/framework-router.md`
+- `templates/decision-block.md`
+- Every file in `frameworks/` (currently just `frameworks/lynch.md`)
+
+Click **Save**.
+
+**Step 5.** Start a chat with the Veda Gem. Type *"Run onboarding."* Gemini will interview you and produce your profile inline. **Copy the profile and save it somewhere private** — your own notes app, a private GitHub repo, a local file. The Gem's Knowledge is static; newly-produced profiles do not get written back to it.
+
+**Step 6.** At the start of every future session, paste your saved profile into the first message before asking your investment question. That makes the profile part of that conversation's context.
+
+*Refreshing your profile:* when something material changes (goals, risk tolerance, drawdown tolerance), ask Veda to *"update my profile"* mid-chat. It will produce a revised version inline — overwrite your saved copy.
+
+*CLI alternative:* if you prefer the terminal, Veda also ships a `.gemini/commands/veda.toml` command that [Gemini CLI](https://geminicli.com/) auto-discovers (install with `npm install -g @google/gemini-cli`, then `cd Veda-advisor && gemini && /veda`). The CLI path has filesystem access, so your profile persists on disk the same way it does for Copilot and Claude Code. Most users prefer the web Gem above.
 
 ### Gemini Code Assist (VS Code) and other web chat assistants
 
@@ -308,14 +298,14 @@ LLM assistants do not persist context across chat sessions or workspace reopens.
 
 | Situation | What to do |
 |---|---|
-| **First time (onboarding)** | Type `/veda` in your tool of choice. In Copilot, Claude Code, and Gemini CLI, `/veda` is a registered slash command. In Claude Desktop / Claude.ai Projects, Custom Instructions auto-load — just start a chat. In Cursor, `@SKILL.md`. Veda detects `profile.md` is missing and runs onboarding. |
+| **First time (onboarding)** | Type `/veda` in your tool of choice. In Copilot and Claude Code, `/veda` is a registered slash command. In Gemini (web), start a new chat with your Veda Gem. In Cursor, `@SKILL.md`. Veda detects `profile.md` is missing (or that no profile has been pasted into the chat, for web tools) and runs onboarding. |
 | **New chat, same workspace** | Invoke `/veda` again (or equivalent). The assistant reads `SKILL.md` and your `profile.md` fresh each chat — there is no "auto-start." This is intentional: every session re-validates the profile (Hard Rule #9 re-asks FX if stale, Stage 1 re-checks `profile_last_updated`). |
 | **Reopened your editor after a week** | Same — `/veda` in a new chat. If `profile_last_updated` is >6 months old, Veda surfaces the stale-profile check before answering. |
 | **Returning after a month away** | `/veda` still works. Veda will re-ask any market data that moves day-to-day (FX, prices) before using them. If you want to refresh specific profile fields, say *"Veda: update my profile"* — that runs onboarding's Step 0 in "update" mode (targeted edits, no re-interview). |
 | **Re-running onboarding deliberately** | `/veda` → then say *"redo onboarding"* (or just *"onboarding"*). Veda's Step 0 asks whether to **update** (targeted edits), **redo** (full re-interview, backs up existing profile to `profile.md.bak-<today>`), or **cancel**. Default is update. Never overwrites silently. |
-| **Switching between tools** | Your `profile.md` is portable across Copilot, Claude Code, Claude Desktop, Gemini CLI, and Cursor. Copy or point to it from the new tool's context. The same schema, validator, and pipeline apply. |
+| **Switching between tools** | Your `profile.md` is portable across Copilot, Claude Code, and Cursor (all have filesystem access). For Gemini web, keep a saved copy of your profile outside the tool and paste it at the start of each new chat. The schema, validator, and pipeline are identical across tools. |
 
-Invocation varies by tool — see the [Install](#install) section for exact details: Copilot and Claude Code and Gemini CLI use `/veda`; Claude Desktop auto-loads via Custom Instructions; Cursor uses `@SKILL.md` or a `.cursor/rules/veda.mdc` rule; web ChatGPT and similar need `SKILL.md` pasted as a system instruction.
+Invocation varies by tool — see the [Install](#install) section for exact details: Copilot and Claude Code use `/veda`; Gemini web loads Veda automatically when you chat with your Veda Gem; Cursor uses `@SKILL.md` or a `.cursor/rules/veda.mdc` rule; web ChatGPT and similar need `SKILL.md` pasted as a system instruction.
 
 **Why there is no "always-on" default:** Veda is scoped to public-markets investment questions. Auto-activating on every message would mean refusing half your chats (coding, email drafting, everything else) with the Stage 0 decline script. `/veda` is the on-switch; general chats stay general.
 

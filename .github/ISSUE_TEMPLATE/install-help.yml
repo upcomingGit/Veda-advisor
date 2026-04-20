@@ -7,7 +7,7 @@ body:
     id: assistant
     attributes:
       label: Assistant and version
-      placeholder: "VS Code 1.95 + Copilot Chat Agent mode / Claude Desktop 1.4 / Cursor 0.45 / other"
+      placeholder: "VS Code 1.95 + Copilot Chat Agent mode / Claude Code / Gemini CLI / Cursor 0.45 / other"
     validations:
       required: true
   - type: input
