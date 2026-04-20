@@ -1,12 +1,12 @@
 # Veda
 
-**Your personal AI investment advisor — structured wisdom from 11 of the greatest investors, as a skill for Copilot, Claude Code, Cursor, and Gemini.**
+**Your personal AI investment advisor — structured wisdom from 11 of the greatest investors, as a skill for Copilot, Claude Code, Antigravity, Cursor, ChatGPT, and Gemini.**
 
 Veda is not a stock tipping service. It does not predict prices. It does not tell you what to buy.
 
-Veda is a **decision framework** that plugs into your AI coding assistant and makes it reason about your investment decisions the way Warren Buffett, Peter Lynch, Stanley Druckenmiller, Howard Marks, Ray Dalio, Seth Klarman, Ed Thorp, John Templeton, Charlie Munger, Philip Fisher, and Nassim Taleb would — calibrated to **your** risk profile, time horizon, and goals.
+Veda is a **decision framework** that plugs into your AI assistant and makes it reason about your investment decisions the way Warren Buffett, Peter Lynch, Stanley Druckenmiller, Howard Marks, Ray Dalio, Seth Klarman, Ed Thorp, John Templeton, Charlie Munger, Philip Fisher, and Nassim Taleb would — calibrated to **your** risk profile, time horizon, and goals.
 
-Technically, Veda is a folder of markdown files: instructions for your AI assistant on how to reason about investments, a profile of you written once during onboarding, and decision templates your assistant fills in so every recommendation is journal-ready. No app, no server, no subscription.
+Technically, Veda is a folder of markdown files: instructions for your AI assistant on how to reason about investments, a profile of you written at onboarding and refined as you use it, and decision templates your assistant fills in so every recommendation is journal-ready. Veda itself is free and has no backend; some host platforms (ChatGPT Plus, Gemini Advanced) may require their own paid tier.
 
 ---
 
@@ -32,7 +32,7 @@ Across experience levels — novice to professional — with one filter:
 
 If you want "just tell me what to buy," Veda is the wrong tool. The honest answer from every investor in [CREDITS.md](CREDITS.md) is the same: **buy a low-cost index fund, set up a monthly SIP / DCA, and don't check the price more than quarterly.** Veda is for people who want to go beyond that and understand that going beyond comes with homework.
 
-**Novice mode.** Tell Veda you''re a novice and it switches to a shorter 6-question interview with hard guardrails: no position larger than 8%, no leverage, no options, no shorts, and every single-stock buy shown side-by-side with the index-fund alternative. Every recommendation includes a 1-line principle and a book reference. Graduation criteria (lived through a 20%+ drawdown, 2+ years invested, read 2 canon books) are written into your profile. See [setup/profile.example-novice.md](setup/profile.example-novice.md).
+**Novice mode.** Tell Veda you're a novice and it switches to a shorter 6-question interview with hard guardrails: no position larger than 8%, no leverage, no options, no shorts, and every single-stock buy shown side-by-side with the index-fund alternative. Every recommendation includes a 1-line principle and a book reference. Graduation criteria (lived through a 20%+ drawdown, 2+ years invested, read 2 canon books) are written into your profile. See [setup/profile.example-novice.md](setup/profile.example-novice.md).
 
 **Intermediate / advanced** investors get the full framework system weighted by stated style. **Professionals** get conclusions, not explanations — depth is a profile setting.
 
@@ -40,10 +40,10 @@ If you want "just tell me what to buy," Veda is the wrong tool. The honest answe
 
 ## What Veda is not
 
-- **Not a data feed.** Veda reasons over data you or your assistant''s web tools provide. It does not fetch live prices.
+- **Not a data feed.** Veda reasons over data you or your assistant's web tools provide. It does not fetch live prices.
 - **Not financial advice.** Every recommendation comes with reasoning you can inspect and reject. You are responsible for your own money.
 - **Not a replacement for reading the books.** Frameworks are compressed distillations. If Buffett resonates, go read *The Essays of Warren Buffett*.
-- **Not a portfolio tracker.** For portfolio questions, Veda asks you to paste holdings (any format) at the moment they''re needed. An optional CSV importer persists them; native broker integration is on the v1.0 roadmap.
+- **Not a portfolio tracker.** Veda parses holdings in any format — a broker-app screenshot, a CSV, or rough natural language — and persists them to a gitignored `portfolio.md` on hosts that have filesystem access. An optional CSV importer (`scripts/import_portfolio.py`) supports Zerodha and a generic schema today; native broker integration is on the roadmap. See [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -55,10 +55,12 @@ Pick your assistant — each has a native install path. Full instructions, priva
 |---|---|
 | **GitHub Copilot** (VS Code, Agent mode) | `/veda` |
 | **Claude Code** | `/veda` |
-| **Gemini** (web Gem) | start a chat with your Veda Gem |
+| **Google Antigravity** | `/veda` (or `AGENTS.md` shim — [setup](INSTALL.md#google-antigravity)) |
+| **Gemini** (web Gem) | start a chat with your Veda Gem ([setup needs a shim + Knowledge upload](INSTALL.md#gemini-web)) |
 | **Gemini CLI** | `/veda` |
+| **ChatGPT** (web, Plus/Pro/Team/Business) | start a chat with your Veda GPT ([setup as Custom GPT or Project](INSTALL.md#chatgpt-web)) |
 | **Cursor** | `@SKILL.md` or a `.cursor/rules/veda.mdc` rule |
-| **ChatGPT / other web chat** | paste `SKILL.md` as a system instruction |
+| **Other web chat** (Claude web, Perplexity, Grok) | paste `SKILL.md` as a system instruction |
 
 > **Privacy first.** Onboarding writes a `profile.md` containing your personal financial context. It is gitignored by default. Never commit it. See [INSTALL.md](INSTALL.md#before-you-install--a-word-on-privacy).
 
@@ -68,9 +70,9 @@ Pick your assistant — each has a native install path. Full instructions, priva
 
 1. **Install.** Clone the repo and wire it into your assistant using [INSTALL.md](INSTALL.md).
 2. **Run onboarding.** Invoke `/veda` (or equivalent). The assistant interviews you in about 5 minutes (2 minutes on the novice path) and writes `profile.md`.
-3. **Ask an investment question.** Example: *"Veda: should I add to my TSMC position at today''s price?"*
+3. **Ask an investment question.** Example: *"Veda: should I add to my TSMC position at today's price?"*
 
-Veda reads your profile, identifies which of the three problems you''re asking about, routes to the 2–3 frameworks that apply, and returns a recommendation with an expected-value block and a pre-commit block (thesis, kill criteria, re-evaluate trigger) you can paste into your journal.
+Veda reads your profile, identifies which of the three problems you're asking about, routes to the 2–3 frameworks that apply, and returns a recommendation with an expected-value block and a pre-commit block (thesis, kill criteria, re-evaluate trigger) you can paste into your journal.
 
 See [examples/01-hold-check-winner.md](examples/01-hold-check-winner.md) for an end-to-end walkthrough.
 
@@ -82,7 +84,7 @@ Veda is early. The bottleneck is other investors stress-testing it. Three entry 
 
 - **5 minutes — [open an issue](CONTRIBUTING.md#1-issues-highest-value).** Wrong framework routed? Onboarding felt off? A rule contradicts the source book?
 - **1 hour — add a worked example.** Real decision where a framework helped. Use [examples/01-hold-check-winner.md](examples/01-hold-check-winner.md) as the template.
-- **1 day — ship a framework.** Eight of the eleven are unwritten. Pick one, mirror [frameworks/lynch.md](frameworks/lynch.md), cite by page. See [CONTRIBUTING.md](CONTRIBUTING.md#2-framework-edits).
+- **1 day — deepen a framework.** All eleven are shipped, but each is a working draft. Pick one, mirror [frameworks/lynch.md](frameworks/lynch.md), deepen citations by page, add worked examples. See [CONTRIBUTING.md](CONTRIBUTING.md#2-framework-edits).
 
 Full guide and voice rules: [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
@@ -90,12 +92,12 @@ Full guide and voice rules: [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [CODE_O
 
 ## Status
 
-**v0.1 — early preview.** Walking skeleton with three frameworks shipped (Lynch — the reference implementation — plus Buffett and Munger), one worked example, two profile templates, and install paths for every major assistant. Eight frameworks, more examples, and more broker importers are in flight. [Watch the repo](https://github.com/upcomingGit/Veda-advisor) for progress.
+**v0.1 — early preview.** Walking skeleton with all eleven frameworks shipped (Lynch is the reference implementation; Buffett, Munger, Fisher, Druckenmiller, Marks, Klarman, Thorp, Dalio, Templeton, and Taleb ship alongside it), one worked example, a profile template with two worked examples (aggressive and novice), and install paths for every major assistant. More worked examples, deeper per-framework citations, and more broker importers are in flight.
 
 ---
 
 ## Credits & License
 
 - Started by [Ankur Gupta](https://github.com/upcomingGit). 
-- The real thinking is the investors mindset. Veda is scaffolding — see [CREDITS.md](CREDITS.md).
+- The real thinking is the investors' mindset. Veda is scaffolding — see [CREDITS.md](CREDITS.md).
 - [MIT Licence](LICENSE). Use it, fork it, build on it. Attribution appreciated.

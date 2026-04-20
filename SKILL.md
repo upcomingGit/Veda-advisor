@@ -462,7 +462,7 @@ When the user is making a psychological error (anchoring to purchase price, hold
 
 ## Versioning
 
-Veda v0.1 — walking skeleton. Lynch is the reference implementation; Buffett and Munger have shipped alongside it. The remaining eight frameworks are being added. If a framework file you need does not exist yet, say: *"Veda v0.1 doesn't include [framework] yet. Falling back to [closest available] — result may be partial."*
+Veda v0.1 — walking skeleton. All eleven frameworks ship: Lynch (reference implementation), Buffett, Munger, Fisher, Druckenmiller, Marks, Klarman, Thorp, Dalio, Templeton, and Taleb. If a framework file you need is thin or the rule you want to cite is not documented in its file yet, say so explicitly: *"Veda v0.1 has [framework] but the specific rule I'd cite here is not yet in the file. Falling back to [closest available] — result may be partial."* Do not fabricate a citation to paper over a gap.
 
 ---
 
