@@ -148,6 +148,12 @@ scripts/
 .github/
   PULL_REQUEST_TEMPLATE.md               Auto-populated on every PR. Fill every section.
   ISSUE_TEMPLATE/                        Structured forms for bad-advice reports, framework feedback, install help, framework claims.
+  prompts/
+    veda.prompt.md                       GitHub Copilot slash command (`/veda`).
+.claude/
+  skills/veda/SKILL.md                   Claude Code skill (`/veda`). Shim that loads the root SKILL.md.
+.gemini/
+  commands/veda.toml                     Gemini CLI custom command (`/veda`). Injects the root SKILL.md.
 ```
 
 See the [Status](#status) section below for what's shipped and what's in flight.
@@ -189,7 +195,7 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 
 Copilot auto-discovers `.prompt.md` files in `.github/prompts/` and surfaces them in the `/` menu. `/veda` tells Copilot to read `SKILL.md`, adopt the Veda persona, and drive the pipeline — onboarding if `profile.md` is missing, otherwise your next investment question. In Agent mode, `profile.md` is written to the folder root; in Ask mode, you save it yourself.
 
-If `/veda` doesn't appear in the menu, either (a) `chat.promptFiles` is disabled in VS Code settings, or (b) your Copilot build predates prompt files. Fall back to typing:
+If `/veda` doesn't appear in the menu, the most likely reasons are that your Copilot extension predates prompt files (update it), or you opened a parent folder rather than the `Veda-advisor` folder itself so `.github/prompts/veda.prompt.md` is out of the workspace's prompt-discovery path. (VS Code discovers prompt files from each workspace folder's `.github/prompts/`; additional locations can be added via the `chat.promptFilesLocations` setting.) As a fallback, type:
 
 ```
 Read SKILL.md in the Veda-advisor folder and follow it.
@@ -199,7 +205,35 @@ Read SKILL.md in the Veda-advisor folder and follow it.
 
 *Advanced — auto-activate in a project workspace:* to skip typing `/veda` on every chat, copy `SKILL.md` contents into that workspace's `.github/copilot-instructions.md` file. Most users are fine with `/veda` per new chat.
 
-### Claude Desktop
+### Claude Code (CLI)
+
+[Claude Code](https://code.claude.com/docs/en/overview) is Anthropic's terminal-and-IDE coding agent. Veda ships a ready-to-use skill at `.claude/skills/veda/SKILL.md` that Claude Code auto-discovers.
+
+**Step 1.** Install Claude Code if you don't have it — see [code.claude.com](https://code.claude.com/docs/en/overview) for the installer appropriate to your OS. On Windows PowerShell, the one-liner is `irm https://claude.ai/install.ps1 | iex`; on macOS/Linux/WSL it's `curl -fsSL https://claude.ai/install.sh | bash`.
+
+**Step 2.** Clone the repo and start Claude Code inside it:
+
+```powershell
+git clone https://github.com/upcomingGit/Veda-advisor.git
+cd Veda-advisor
+claude
+```
+
+**Step 3.** Invoke Veda:
+
+```
+/veda
+```
+
+The shim skill at `.claude/skills/veda/SKILL.md` tells Claude Code to read the root `SKILL.md` and run the Veda pipeline. Onboarding triggers automatically if `profile.md` is missing.
+
+*Persistence:* unlike the browser/Desktop Projects flow, Claude Code reads and writes files on your local machine, so your `profile.md` persists across sessions in the repo folder just like it does for Copilot. `profile.md` is already in `.gitignore`.
+
+*Optional — always-on context:* Claude Code also loads any `CLAUDE.md` file at the project root on every session. If you want Veda to apply to every chat in the Veda-advisor workspace (not only when you type `/veda`), create a minimal `CLAUDE.md` containing `@SKILL.md` at the repo root. Most users prefer `/veda` per chat.
+
+### Claude Desktop / Claude.ai Projects
+
+This is the browser-and-desktop-app Projects flow (different from the Claude Code CLI above). Use this if you don't want a local install and are happy to keep your profile inside a Claude Project instead of on disk.
 
 **Step 1.** Clone the repo:
 
@@ -229,9 +263,44 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 
 **Step 3.** Run onboarding the same way: *"Read SKILL.md. You are Veda. Run onboarding."*
 
-### Any other LLM (ChatGPT, Gemini, etc.)
+### Gemini CLI
 
-The repo works with any assistant that can read markdown you paste or reference. Minimum viable setup: copy-paste `SKILL.md` as a system/custom instruction, then paste `setup/onboarding.prompt.md` to start. Save the resulting profile somewhere private and paste it back at the start of each session.
+[Gemini CLI](https://geminicli.com/) is Google's open-source terminal agent. Veda ships a ready-to-use custom command at `.gemini/commands/veda.toml`.
+
+**Step 1.** Install the CLI:
+
+```powershell
+npm install -g @google/gemini-cli
+```
+
+Homebrew (`brew install gemini-cli`) and `npx @google/gemini-cli` (no install) also work. See [geminicli.com installation docs](https://geminicli.com/docs/get-started/installation/) for the full list.
+
+**Step 2.** Clone the repo and start Gemini CLI inside it:
+
+```powershell
+git clone https://github.com/upcomingGit/Veda-advisor.git
+cd Veda-advisor
+gemini
+```
+
+First run will prompt you to sign in with Google or paste a Gemini API key. Either works for Veda.
+
+**Step 3.** Invoke Veda:
+
+```
+/veda
+```
+
+The command at `.gemini/commands/veda.toml` injects the root `SKILL.md` into the prompt and runs the Veda pipeline. Gemini CLI has filesystem tools, so your `profile.md` persists in the repo folder just like for Copilot and Claude Code. `profile.md` is gitignored by default.
+
+*Optional — always-on context:* Gemini CLI also loads any `GEMINI.md` at the project root (or up the directory tree) on every session. To make Veda's playbook part of default context, create a one-line `GEMINI.md` at the repo root containing `@SKILL.md`. Most users prefer `/veda` per chat.
+
+### Gemini Code Assist (VS Code) and other web chat assistants
+
+This catch-all covers web ChatGPT, Gemini Code Assist in VS Code, and any assistant that doesn't have a native install path above.
+
+- **Gemini Code Assist (VS Code extension):** place a `GEMINI.md` at the Veda-advisor folder root containing `@SKILL.md`. Gemini Code Assist's agent mode picks it up automatically. Your `profile.md` lives on disk as usual.
+- **ChatGPT and other web chat:** paste the contents of `SKILL.md` as a system / custom instruction at the start of each session. Paste `setup/onboarding.prompt.md` when running onboarding. Save the resulting `profile.md` somewhere private and paste it back at the start of every session — web assistants without a filesystem can't persist it for you.
 
 ### Invoking Veda across sessions
 
@@ -239,14 +308,14 @@ LLM assistants do not persist context across chat sessions or workspace reopens.
 
 | Situation | What to do |
 |---|---|
-| **First time (onboarding)** | Type `/veda` in Copilot Chat (Agent mode). In other tools, use the tool-specific invocation below. Veda detects `profile.md` is missing and runs onboarding. |
-| **New chat in VS Code, same workspace** | Type `/veda` again. Copilot reads `SKILL.md` and your `profile.md` fresh each chat — there is no "auto-start." This is intentional: every session re-validates the profile (Hard Rule #9 re-asks FX if stale, Stage 1 re-checks `profile_last_updated`). |
-| **Reopened VS Code after a week** | Same — `/veda` in a new chat. If `profile_last_updated` is >6 months old, Veda surfaces the stale-profile check before answering. |
+| **First time (onboarding)** | Type `/veda` in your tool of choice. In Copilot, Claude Code, and Gemini CLI, `/veda` is a registered slash command. In Claude Desktop / Claude.ai Projects, Custom Instructions auto-load — just start a chat. In Cursor, `@SKILL.md`. Veda detects `profile.md` is missing and runs onboarding. |
+| **New chat, same workspace** | Invoke `/veda` again (or equivalent). The assistant reads `SKILL.md` and your `profile.md` fresh each chat — there is no "auto-start." This is intentional: every session re-validates the profile (Hard Rule #9 re-asks FX if stale, Stage 1 re-checks `profile_last_updated`). |
+| **Reopened your editor after a week** | Same — `/veda` in a new chat. If `profile_last_updated` is >6 months old, Veda surfaces the stale-profile check before answering. |
 | **Returning after a month away** | `/veda` still works. Veda will re-ask any market data that moves day-to-day (FX, prices) before using them. If you want to refresh specific profile fields, say *"Veda: update my profile"* — that runs onboarding's Step 0 in "update" mode (targeted edits, no re-interview). |
 | **Re-running onboarding deliberately** | `/veda` → then say *"redo onboarding"* (or just *"onboarding"*). Veda's Step 0 asks whether to **update** (targeted edits), **redo** (full re-interview, backs up existing profile to `profile.md.bak-<today>`), or **cancel**. Default is update. Never overwrites silently. |
-| **Switching from Copilot to Claude/Cursor** | Your `profile.md` is portable. Copy it into the new tool's context the same way you'd copy any workspace file. The same schema, validator, and pipeline apply. |
+| **Switching between tools** | Your `profile.md` is portable across Copilot, Claude Code, Claude Desktop, Gemini CLI, and Cursor. Copy or point to it from the new tool's context. The same schema, validator, and pipeline apply. |
 
-For non-Copilot tools, the invocation is whatever each section under [Install](#install) already describes — Claude Desktop auto-loads via Custom Instructions, Cursor via `@SKILL.md` or a `.cursor/rules/veda.mdc` rule, ChatGPT/Gemini via pasted system instruction.
+Invocation varies by tool — see the [Install](#install) section for exact details: Copilot and Claude Code and Gemini CLI use `/veda`; Claude Desktop auto-loads via Custom Instructions; Cursor uses `@SKILL.md` or a `.cursor/rules/veda.mdc` rule; web ChatGPT and similar need `SKILL.md` pasted as a system instruction.
 
 **Why there is no "always-on" default:** Veda is scoped to public-markets investment questions. Auto-activating on every message would mean refusing half your chats (coding, email drafting, everything else) with the Stage 0 decline script. `/veda` is the on-switch; general chats stay general.
 
@@ -254,7 +323,7 @@ For non-Copilot tools, the invocation is whatever each section under [Install](#
 
 Portfolio-level questions — *"am I too concentrated in semis?"*, *"does this new position overlap with what I already own?"*, *"what's my real portfolio heat?"* — need Veda to see your holdings.
 
-**You don't have to do anything up front.** The default workflow is: when Veda needs your holdings, it will ask, and you paste them in any format — a copy from your broker app, a spreadsheet dump, or rough natural language (*"40% NVDA, 15% TSMC, 10% AVGO, rest cash"*). Veda parses whatever you send. No CSV required, no script to run, no markdown to hand-write. After answering, Veda will offer to save those holdings to `portfolio.md` so you don't have to re-paste them next time — you can say no.
+**You don't have to do anything up front.** The default workflow is: when Veda needs your holdings, it will ask, and you paste them in any format — a copy from your broker app, a spreadsheet dump, or rough natural language (*"40% NVDA, 15% TSMC, 10% AVGO, rest cash"*). Veda parses whatever you send. No CSV required, no script to run, no markdown to hand-write. Veda will save those holdings to `portfolio.md` in your workspace (gitignored by default) and tell you it did so — that way you don't have to re-paste them next session. If you don't want persistence, say *"don't save"* in the same message as the paste, or delete `portfolio.md` afterwards.
 
 **Optional power-user shortcut.** If you trade often and want persistence without pasting, there's a CSV importer:
 

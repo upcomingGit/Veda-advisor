@@ -34,6 +34,7 @@ Two places to be especially careful:
 5. **Offer concrete options** when the user seems uncertain.
 6. **Read back before saving.**
 7. **No stale numbers (Hard Rule #9).** If a question requires an FX rate, stock price, index level, or any market-data number — ask the user for today's value, or fetch it with a timestamped source. Never carry a rate from memory or from a prior session. When the user gives you approximate holdings in a non-reporting currency (e.g., INR holdings in a USD-reporting profile), **ask for today's USD-INR rate before converting** and write it to the top-level `fx_rates:` block of the profile with `rate`, `as_of: YYYY-MM-DD`, and `source`. If you cannot get a live rate, **do not write a placeholder to `fx_rates:`** — leave the block (or that pair) absent, mark any converted totals as `TBD_fetch`, and split the portfolio summary into per-currency totals instead. See SKILL.md Hard Rule #9 for the full operating modes.
+8. **Plain language only — no jargon leaks.** Never read YAML field names, enum values, or internal identifiers aloud to the user. Wrong: *"I'm setting goal aggressive_growth, concentration target style focused, max loss probability 45 provisional before behavioral-history check."* Right: *"Aggressive growth, concentrated book — around 12 names, up to 20% in any one. Veda will cap loss tolerance at the moderate level until you've documented how you handled a real drawdown, then lift it."* This applies to preset summaries, read-backs, progressive-profiling questions, and the After-the-interview recap. The YAML in this document is for you to write to disk, not to narrate.
 
 ---
 
@@ -141,11 +142,39 @@ For Intermediate / Advanced / Professional users, **do not launch into 15 questi
 
 Each preset writes **target** concentration fields. Current concentration (what the portfolio actually looks like today) is captured in question 7 below or progressively on the first portfolio question.
 
-| # | Preset | Who it fits | Defaulted fields |
-|---|---|---|---|
-| 1 | **Long-horizon index-plus** | "Mostly indexed, a few active bets, long runway. I don't want to trade often." | `goal: balanced_growth`, `concentration.target.style: diversified`, `concentration.target.position_count: 20`, `concentration.target.max_single_position_pct: 10`, `style_lean.primary: passive_plus`, `instruments.long_only_cash: true`, all other instruments `false`, `experience.explanation_depth: standard`, `max_loss_probability: 35` |
-| 2 | **Active quality compounder** | "I pick great businesses, hold for years, concentrated book. Buffett/Munger/Fisher temperament." | `goal: aggressive_growth`, `concentration.target.style: focused`, `concentration.target.position_count: 12`, `concentration.target.max_single_position_pct: 20`, `style_lean.primary: quality`, `instruments.long_only_cash: true`, all others `false`, `experience.explanation_depth: minimal`, `max_loss_probability: 45` (cap before behavioral history is documented) |
-| 3 | **Macro tactical** | "I trade themes and cycles. Shorter holding periods, macro-driven, sometimes use hedges." | `goal: balanced_growth`, `concentration.target.style: diversified`, `concentration.target.position_count: 15`, `concentration.target.max_single_position_pct: 15`, `style_lean.primary: macro`, `instruments.long_only_cash: true`, `instruments.options_hedging: true` (confirm), others `false`, `experience.explanation_depth: minimal`, `max_loss_probability: 35` |
+**Presenting presets to the user: read aloud only the bold name and the short plain-English description below it.** Do not narrate YAML field names, enum values, or internal identifiers (e.g., do not say *"goal aggressive_growth, concentration target style focused, max loss probability 45"* — say *"concentrated book, around 10–12 names, up to 20% in any one, targets higher returns, no leverage"*). The YAML-mapping blocks below are for you (the LLM) to use when writing the profile; they are not scripts for the chat.
+
+---
+
+#### Preset 1 — Long-horizon index-plus
+
+*Who it fits (quote back to the user):* "Mostly indexed, a few active bets, long runway. I don't want to trade often."
+
+*Show the user (plain English):* Balanced-growth goal. Diversified — around 20 positions, no single name above 10% of the book. Mostly index-and-ETF with a small active sleeve. No leverage, no options, long-only cash. Standard explanations on every recommendation.
+
+*YAML to write (internal, not narrated):* `goal.primary: balanced_growth`, `concentration.target.style: diversified`, `concentration.target.position_count: 20`, `concentration.target.max_single_position_pct: 10`, `style_lean.primary: passive_plus`, `instruments.long_only_cash: true`, all other instruments `false`, `experience.explanation_depth: standard`, `max_loss_probability: 35`.
+
+---
+
+#### Preset 2 — Active quality compounder
+
+*Who it fits (quote back to the user):* "I pick great businesses, hold for years, concentrated book. Buffett/Munger/Fisher temperament."
+
+*Show the user (plain English):* Targets higher returns than the index by running a concentrated book — around 10–12 holdings, up to 20% in any single name. Quality-bias style. No leverage, no options, long-only cash. Minimal explanations (conclusions first, reasoning on request). Ruin-aversion is set at the higher end reserved for investors who have lived through a real drawdown; until that's documented in your history, Veda will use the conservative cap and explain why.
+
+*YAML to write (internal, not narrated):* `goal.primary: aggressive_growth`, `concentration.target.style: focused`, `concentration.target.position_count: 12`, `concentration.target.max_single_position_pct: 20`, `style_lean.primary: quality`, `instruments.long_only_cash: true`, all other instruments `false`, `experience.explanation_depth: minimal`, `max_loss_probability: 45` (Step 5 rule will downgrade to 35 if behavioral history has no lived drawdown).
+
+---
+
+#### Preset 3 — Macro tactical
+
+*Who it fits (quote back to the user):* "I trade themes and cycles. Shorter holding periods, macro-driven, sometimes use hedges."
+
+*Show the user (plain English):* Balanced-growth goal held through theme and cycle trades — around 15 positions, no single name above 15% of the book. Macro-driven style. Long-only cash by default; options allowed for hedging if you confirm. Minimal explanations.
+
+*Ask the user to confirm hedging before writing it:* *"You said 'sometimes use hedges' — should I enable options for hedging only (not speculation)?"*
+
+*YAML to write (internal, not narrated):* `goal.primary: balanced_growth`, `concentration.target.style: diversified`, `concentration.target.position_count: 15`, `concentration.target.max_single_position_pct: 15`, `style_lean.primary: macro`, `instruments.long_only_cash: true`, `instruments.options_hedging: true` only if the user confirms hedging, all other instruments `false`, `experience.explanation_depth: minimal`, `max_loss_probability: 35`.
 
 ### After they pick a preset, ask these seven (not fifteen)
 
