@@ -14,12 +14,13 @@ Examples (from a terminal in the Veda-advisor folder):
     python scripts/calc.py p_loss --probs 0.35 0.40 0.25 --returns 60 15 -35
     python scripts/calc.py kelly --p-win 0.6 --odds 1
     python scripts/calc.py peg --pe 32.1 --growth 78
+    python scripts/calc.py margin-of-safety --intrinsic-low 200 --price 165
     python scripts/calc.py fx --amount 5000 --rate 83.2
     python scripts/calc.py weights-sum --weights 0.15 0.18 0.05 0.08 0.02 0.05 0.08 0.03 0.10 0.18 0.08
 
 Or import the functions directly:
 
-    from scripts.calc import expected_value, p_loss_pct
+    from scripts.calc import expected_value, p_loss_pct, margin_of_safety
 """
 
 from __future__ import annotations
@@ -132,6 +133,61 @@ def peg(pe: float, growth_pct: float) -> float:
     return pe / growth_pct
 
 
+def margin_of_safety(intrinsic_low: float, price: float) -> float:
+    """Buffett / Graham margin of safety, in percent.
+
+    Plain-English version
+    ---------------------
+    "How much cheaper than my conservative estimate of fair value am I
+    buying this?"
+
+    The discount is computed against the **low end** of the intrinsic-value
+    range, not the midpoint. That is the Buffett / Graham discipline: size
+    the cushion against the conservative case so that ordinary error and
+    bad luck still leave an acceptable outcome. Using the midpoint or high
+    end would let optimism creep back into the cushion itself.
+
+    Formal formula
+    --------------
+        MoS (%) = (intrinsic_low - price) / intrinsic_low * 100
+
+    Sign convention
+    ---------------
+    - Positive value: the price is below the conservative intrinsic
+      estimate; MoS exists at the reported level.
+    - Zero: price equals intrinsic_low; no cushion.
+    - Negative: the price is **above** intrinsic_low, so there is no
+      margin of safety at all. The function returns the negative number
+      verbatim so the decision block records it honestly; Veda's
+      orchestrator decides what to do with it (typically: `wait`).
+
+    Buffett's quality-adjusted thresholds (applied by the orchestrator, not
+    by this function): 10-20% MoS for wonderful businesses, 25-35% for
+    good businesses, 40%+ for average businesses. See frameworks/buffett.md.
+
+    Parameters
+    ----------
+    intrinsic_low : float
+        Low end of the intrinsic-value range, same currency as ``price``.
+        Must be strictly positive (a zero or negative intrinsic value has
+        no economic meaning for MoS; division by zero is also undefined).
+    price : float
+        Current market price, same currency as ``intrinsic_low``. Must be
+        strictly positive (a zero or negative price is a data error, not
+        an opportunity; fail loudly rather than emit a wrong MoS).
+
+    Both inputs must be user- or source-supplied per SKILL.md Hard Rule #5;
+    this function does not sanity-check their magnitudes, only their signs.
+    """
+    if intrinsic_low <= 0:
+        raise ValueError(
+            f"intrinsic_low {intrinsic_low} must be > 0 (MoS is undefined otherwise)"
+        )
+    if price <= 0:
+        raise ValueError(f"price {price} must be > 0")
+    return (intrinsic_low - price) / intrinsic_low * 100.0
+
+
 def fx_convert(amount: float, rate: float) -> float:
     """Currency conversion: amount * rate. Rate must be user- or source-supplied."""
     return amount * rate
@@ -172,6 +228,12 @@ def _cmd_kelly(args: argparse.Namespace) -> int:
 
 def _cmd_peg(args: argparse.Namespace) -> int:
     print(f"peg: {peg(args.pe, args.growth):.4f}")
+    return 0
+
+
+def _cmd_margin_of_safety(args: argparse.Namespace) -> int:
+    mos = margin_of_safety(args.intrinsic_low, args.price)
+    print(f"margin_of_safety_pct: {mos:+.4f}")
     return 0
 
 
@@ -223,6 +285,25 @@ def main(argv: list[str] | None = None) -> int:
         "--growth", type=float, required=True, help="growth rate in percent"
     )
     p_peg.set_defaults(func=_cmd_peg)
+
+    p_mos = sub.add_parser(
+        "margin-of-safety",
+        help="Buffett/Graham margin of safety (percent) vs. conservative intrinsic-value low",
+    )
+    p_mos.add_argument(
+        "--intrinsic-low",
+        dest="intrinsic_low",
+        type=float,
+        required=True,
+        help="low end of the intrinsic-value range (same currency as --price)",
+    )
+    p_mos.add_argument(
+        "--price",
+        type=float,
+        required=True,
+        help="current market price (same currency as --intrinsic-low)",
+    )
+    p_mos.set_defaults(func=_cmd_margin_of_safety)
 
     p_fx = sub.add_parser("fx", help="currency conversion")
     p_fx.add_argument("--amount", type=float, required=True)

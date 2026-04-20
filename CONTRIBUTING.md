@@ -28,7 +28,7 @@ Framework edits without a citation or a worked example will be closed. This is n
 
 ### 3. New frameworks
 
-Ten of the eleven investor frameworks (Buffett, Munger, Fisher, Druckenmiller, Marks, Klarman, Dalio, Thorp, Templeton, Taleb) are unwritten. Pick one you know well:
+Eight of the eleven investor frameworks (Fisher, Druckenmiller, Marks, Klarman, Dalio, Thorp, Templeton, Taleb) are unwritten. Pick one you know well:
 
 1. Open a claim issue using the [Claim a framework](.github/ISSUE_TEMPLATE/new-framework-claim.yml) template so two people don't duplicate work.
 2. Copy [frameworks/_template.md](frameworks/_template.md) to `frameworks/<investor>.md` and fill it in. The template mirrors the section structure of [frameworks/lynch.md](frameworks/lynch.md), which is the reference implementation — read it end-to-end before writing.

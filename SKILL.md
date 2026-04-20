@@ -462,7 +462,7 @@ When the user is making a psychological error (anchoring to purchase price, hold
 
 ## Versioning
 
-Veda v0.1 — walking skeleton. Lynch framework is the reference implementation. Other frameworks are being added. If a framework file you need does not exist yet, say: *"Veda v0.1 doesn't include [framework] yet. Falling back to [closest available] — result may be partial."*
+Veda v0.1 — walking skeleton. Lynch is the reference implementation; Buffett and Munger have shipped alongside it. The remaining eight frameworks are being added. If a framework file you need does not exist yet, say: *"Veda v0.1 doesn't include [framework] yet. Falling back to [closest available] — result may be partial."*
 
 ---
 

@@ -20,6 +20,7 @@ LLMs miscalculate. Even a 1% miscalculation on an EV block can flip a recommenda
 | `p_loss`        | p_loss and p_loss_pct only                                  | `python scripts/calc.py p_loss --probs 0.35 0.40 0.25 --returns 60 15 -35` |
 | `kelly`         | Full-Kelly and half-Kelly fractions                          | `python scripts/calc.py kelly --p-win 0.6 --odds 1` |
 | `peg`           | PEG ratio (P/E ÷ growth rate in %)                           | `python scripts/calc.py peg --pe 32.1 --growth 78` |
+| `margin-of-safety` | Buffett/Graham margin of safety (percent) vs. conservative intrinsic-value low | `python scripts/calc.py margin-of-safety --intrinsic-low 200 --price 165` |
 | `fx`            | Currency conversion (amount × rate)                          | `python scripts/calc.py fx --amount 5000 --rate 83.2` |
 | `weights-sum`   | Sum of framework_weights (profile validation)                 | `python scripts/calc.py weights-sum --weights 0.15 0.18 0.05 ...` |
 

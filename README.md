@@ -82,7 +82,7 @@ Veda is early. The bottleneck is other investors stress-testing it. Three entry 
 
 - **5 minutes — [open an issue](CONTRIBUTING.md#1-issues-highest-value).** Wrong framework routed? Onboarding felt off? A rule contradicts the source book?
 - **1 hour — add a worked example.** Real decision where a framework helped. Use [examples/01-hold-check-winner.md](examples/01-hold-check-winner.md) as the template.
-- **1 day — ship a framework.** Ten of the eleven are unwritten. Pick one, mirror [frameworks/lynch.md](frameworks/lynch.md), cite by page. See [CONTRIBUTING.md](CONTRIBUTING.md#2-framework-edits).
+- **1 day — ship a framework.** Eight of the eleven are unwritten. Pick one, mirror [frameworks/lynch.md](frameworks/lynch.md), cite by page. See [CONTRIBUTING.md](CONTRIBUTING.md#2-framework-edits).
 
 Full guide and voice rules: [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
@@ -90,7 +90,7 @@ Full guide and voice rules: [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [CODE_O
 
 ## Status
 
-**v0.1 — early preview.** Walking skeleton with one framework (Lynch), one worked example, two profile templates, and install paths for every major assistant. Ten frameworks, more examples, and more broker importers are in flight. [Watch the repo](https://github.com/upcomingGit/Veda-advisor) for progress.
+**v0.1 — early preview.** Walking skeleton with three frameworks shipped (Lynch — the reference implementation — plus Buffett and Munger), one worked example, two profile templates, and install paths for every major assistant. Eight frameworks, more examples, and more broker importers are in flight. [Watch the repo](https://github.com/upcomingGit/Veda-advisor) for progress.
 
 ---
 

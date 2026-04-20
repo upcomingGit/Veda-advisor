@@ -113,7 +113,7 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 - `setup/onboarding.prompt.md`, `setup/profile.template.md`, `setup/profile.example-aggressive.md`, `setup/profile.example-novice.md`
 - `routing/framework-router.md`
 - `templates/decision-block.md`
-- Every file in `frameworks/` (currently just `frameworks/lynch.md`)
+- Every file in `frameworks/` (currently `frameworks/lynch.md`, `frameworks/buffett.md`, `frameworks/munger.md`)
 
 Click **Save**.
 
