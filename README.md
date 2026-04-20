@@ -96,6 +96,6 @@ Full guide and voice rules: [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [CODE_O
 
 ## Credits & License
 
-Built by [Ankur Gupta](https://github.com/upcomingGit). The real thinking is the investors''; Veda is scaffolding — see [CREDITS.md](CREDITS.md).
-
-[MIT](LICENSE). Use it, fork it, build on it. Attribution appreciated.
+- Started by [Ankur Gupta](https://github.com/upcomingGit). 
+- The real thinking is the investors mindset. Veda is scaffolding — see [CREDITS.md](CREDITS.md).
+- [MIT Licence](LICENSE). Use it, fork it, build on it. Attribution appreciated.
