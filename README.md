@@ -164,6 +164,8 @@ See the [Status](#status) section below for what's shipped and what's in flight.
 
 Veda is not a plugin. It's a repo of instructions you point your AI assistant at. The exact mechanism differs by assistant — pick your tool below.
 
+> **Tested models:** GPT-5.4, Claude Opus 4.7, Claude Opus 4.6. Other frontier models from the same families should work but have not been verified. If you run Veda on a different model and it misbehaves, please [open an issue](CONTRIBUTING.md#1-issues-highest-value).
+
 ### Before you install — a word on privacy
 
 Onboarding writes a `profile.md` file containing your personal investment profile: net worth exposure, goals, risk tolerance, hard constraints. **Never commit this file.**
