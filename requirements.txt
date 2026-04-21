@@ -1,0 +1,13 @@
+# Veda runtime dependencies.
+#
+# Most of Veda is prose + stdlib Python (scripts/calc.py, scripts/validate_profile.py).
+# This file lists the few third-party packages needed by the scripts that reach
+# outside the repo.
+#
+# Install with:
+#   python -m pip install -r requirements.txt
+
+# scripts/fetch_quote.py - live quotes & FX via yfinance.
+# Pinned with a lower bound; newer versions are expected to be compatible.
+# yfinance is unofficial Yahoo Finance and may rate-limit on heavy use.
+yfinance>=0.2.40

@@ -25,7 +25,11 @@ horizon:
 
 capital:
   pct_net_worth_in_market: 65
-  split:
+  # Priya's current capital split (e.g., 70/20/0/10 today) is tactical and
+  # lives in her assets.md > dynamic.capital_split_current. Only the target
+  # goes here. If current and target match, Veda derives target from the
+  # assets-side snapshot on the first portfolio question.
+  target_split:
     core_long_term: 70
     tactical: 20
     short_term_trades: 0
@@ -41,10 +45,9 @@ risk:
   calibrated_tolerance: high
 
 concentration:
-  current:
-    style: focused
-    position_count: 11
-    largest_position_pct: 14
+  # Priya's current snapshot (focused, 11 positions, largest 14%) lives in
+  # her assets.md > dynamic.concentration_snapshot. Only the target is a
+  # profile fact.
   target:
     style: focused
     position_count: 12
@@ -54,14 +57,10 @@ markets:
   - india
   - us
 
-# Priya holds both INR-denominated (India) and USD-denominated (US) equities, so
-# the profile pins today's rate. Every session refreshes this before use per
-# Hard Rule #9 (SKILL.md).
-fx_rates:
-  usd_inr:
-    rate: 92.58
-    as_of: 2026-04-15
-    source: "Google Finance"
+# Priya holds both INR- and USD-denominated equities, so her assets.md pins
+# today's USD-INR rate in `dynamic.fx_rates.usd_inr`. Every session refreshes
+# that entry before use per Hard Rule #9 (SKILL.md). FX is tactical and does
+# not belong in profile.md.
 
 style_lean:
   primary: quality

@@ -94,7 +94,7 @@ devils_advocate:
       not the base downside? -40% vs -25% is a different trade.>
 
   concentration_attack: |
-    <if profile_signals.concentration.current.style differs from .target.style, or
+    <if profile_signals.concentration_snapshot.style (from assets.md) differs from profile_signals.concentration.target.style (from profile.md), or
     if this action moves the portfolio further from .target, argue for the consolidation
     path instead. Example: "Current style is 'diversified' (11 positions), target is
     'focused' (5-7). Adding a new name takes the user further from the target.

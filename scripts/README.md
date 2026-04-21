@@ -4,7 +4,7 @@ Helper scripts for Veda. Three categories:
 
 1. **`calc.py` — required.** Veda's Hard Rule #8 forbids LLM arithmetic. Every EV, p_loss, PEG, Kelly, FX, or weight-sum number comes from this script. See SKILL.md Hard Rule #8.
 2. **`validate_profile.py` — required at onboarding.** Deterministic schema check for `profile.md`. Run at the end of onboarding to catch enum typos and missing fields before they reach Stage 1.
-3. **`import_portfolio.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
+3. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
 
 ---
 
@@ -67,11 +67,11 @@ Path argument defaults to `./profile.md`. Exit codes: `0` valid, `1` validation 
 - `disclosure_acknowledged` is literally `true`.
 - Date fields (`generated`, `profile_last_updated`) match `YYYY-MM-DD`.
 - `max_loss_probability` is an int in `[0, 100]`.
-- All enum fields are one of the exact allowed strings (see the `ENUM_VALUES` table in the script source): `experience_mode`, `goal.primary`, `risk.stated_tolerance`, `risk.calibrated_tolerance`, `concentration.current.style`, `concentration.target.style`, `style_lean.primary`, `experience.level`, `experience.explanation_depth`.
+- All enum fields are one of the exact allowed strings (see the `ENUM_VALUES` table in the script source): `experience_mode`, `goal.primary`, `risk.stated_tolerance`, `risk.calibrated_tolerance`, `concentration.target.style`, `style_lean.primary`, `experience.level`, `experience.explanation_depth`. (`concentration.current.style` is still accepted for backward compat with legacy profiles, but new profiles should put current-state concentration in `assets.md > dynamic.concentration_snapshot` per SKILL.md Hard Rule #10.)
 - Boolean fields (`instruments.*`, `guardrails.block_*`, etc.) are literally `true` or `false`.
-- `capital.split` and `capital.target_split` components each sum to exactly 100 when the block is present (all four buckets written). Partial blocks are tolerated so progressive profiling can leave a block absent entirely.
+- `capital.target_split` components sum to exactly 100 when the block is present (all four buckets written). Partial blocks are tolerated. (`capital.split` — current state — is still accepted for backward compat but new profiles should put it in `assets.md > dynamic.capital_split_current`.)
 - When `experience_mode: novice`, the `guardrails` block is present and every required guardrail field is filled.
-- `fx_rates.<pair>.rate` is a positive number and `fx_rates.<pair>.as_of` is `YYYY-MM-DD` for every pair listed. See Hard Rule #9 in SKILL.md; staleness is enforced at runtime by the orchestrator, not by this script.
+- FX rate validation moved to `assets.md > dynamic.fx_rates.<pair>` per SKILL.md Hard Rule #9. This validator does not check `fx_rates` in `profile.md` — the field no longer belongs there. Staleness is enforced at runtime by the orchestrator against the assets-side copy.
 - If present, `framework_weights` contains all 11 investors and the sum lies in the loose band `[0.9, 1.1]`. (Weights are ordinal tie-breakers, not probabilities — the band is deliberate.)
 
 What it does **not** check: free-text fields (`notes`, `self_identified_weakness`, `risk.behavioral_history`), list contents beyond presence, or anything requiring judgment. Those remain the LLM's job and the read-back step's job.
@@ -84,11 +84,11 @@ What it does **not** check: free-text fields (`notes`, `self_identified_weakness
 
 ---
 
-## `import_portfolio.py` — optional persistence shortcut
+## `import_assets.py` — optional persistence shortcut
 
 Veda's default portfolio workflow is: when it needs your holdings for a question, it asks, and you paste them in any format — a copy from your broker app, a spreadsheet dump, or rough natural language. No file generation, no CSV export, no script to run. This script exists only as a shortcut for users who ask enough portfolio-level questions that re-pasting becomes annoying.
 
-Convert a broker CSV export into `portfolio.md` (the structured holdings file Veda reads for portfolio-level questions).
+Convert a broker CSV export into the equities-holdings section of `assets.md` (Veda's tactical-state file — see internal/assets-schema.md). The script emits a valid starter `assets.md` with stub values in the `dynamic:` block; Veda fills those (FX, totals, concentration snapshot, capital split, forced-concentration snapshot) on the first session after import.
 
 ### When to use it
 
@@ -104,13 +104,13 @@ Convert a broker CSV export into `portfolio.md` (the structured holdings file Ve
 
 ```powershell
 # From the Veda-advisor folder
-python scripts/import_portfolio.py zerodha holdings.csv
+python scripts/import_assets.py zerodha holdings.csv
 
 # Or a generic CSV (ticker / shares / avg_cost / current_price columns)
-python scripts/import_portfolio.py generic my_broker_export.csv
+python scripts/import_assets.py generic my_broker_export.csv
 
 # Custom output path
-python scripts/import_portfolio.py zerodha holdings.csv --out ~/notes/portfolio.md
+python scripts/import_assets.py zerodha holdings.csv --out ~/notes/assets.md
 ```
 
 ### Supported brokers (v0.1)
@@ -120,13 +120,13 @@ python scripts/import_portfolio.py zerodha holdings.csv --out ~/notes/portfolio.
 | `zerodha` | Kite → Holdings → Download CSV | Works with the current and recent column-name variants. |
 | `generic` | Any CSV | Columns: `ticker`, `shares`/`quantity`, `avg_cost`/`cost_basis`, `current_price`/`price`/`ltp`. `name` and `sector` optional. |
 
-Adding a new broker is a ~20-line function. See the docstrings at the top of `import_portfolio.py` and the `parse_zerodha` reference implementation.
+Adding a new broker is a ~20-line function. See the docstrings at the top of `import_assets.py` and the `parse_zerodha` reference implementation.
 
 ### What the script does NOT do
 
 - **Does not fetch live prices.** Current prices come from the CSV, which is usually end-of-day.
 - **Does not ask for theses.** The `thesis` and `tags` columns are left blank and Veda fills them *lazily* — when you ask about a specific holding, Veda asks for the one-line thesis and saves it back. You never batch-fill the file.
-- **Does not commit for you.** `portfolio.md` is gitignored. After generating, verify with `git check-ignore -v portfolio.md`.
+- **Does not commit for you.** `assets.md` is gitignored. After generating, verify with `git check-ignore -v assets.md`.
 
 ### Roadmap
 

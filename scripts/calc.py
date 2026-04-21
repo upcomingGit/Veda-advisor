@@ -198,6 +198,18 @@ def sum_weights(weights: Sequence[float]) -> float:
     return math.fsum(weights)
 
 
+def sum_values(values: Sequence[float]) -> float:
+    """Sum an arbitrary list of values (e.g. portfolio position values)."""
+    return math.fsum(values)
+
+
+def pct_of(part: float, whole: float) -> float:
+    """Return (part / whole) * 100. Used for position weights, drawdowns, etc."""
+    if whole == 0:
+        raise ValueError("whole cannot be zero")
+    return (part / whole) * 100.0
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -244,6 +256,17 @@ def _cmd_fx(args: argparse.Namespace) -> int:
 
 def _cmd_weights_sum(args: argparse.Namespace) -> int:
     print(f"sum: {sum_weights(args.weights):.4f}")
+    return 0
+
+
+def _cmd_sum(args: argparse.Namespace) -> int:
+    total = sum_values(args.values)
+    print(f"sum: {total:.4f}")
+    return 0
+
+
+def _cmd_pct(args: argparse.Namespace) -> int:
+    print(f"pct: {pct_of(args.part, args.whole):.4f}")
     return 0
 
 
@@ -313,6 +336,15 @@ def main(argv: list[str] | None = None) -> int:
     p_ws = sub.add_parser("weights-sum", help="sum of framework_weights")
     p_ws.add_argument("--weights", type=float, nargs="+", required=True)
     p_ws.set_defaults(func=_cmd_weights_sum)
+
+    p_s = sub.add_parser("sum", help="sum a list of values (e.g. portfolio position values)")
+    p_s.add_argument("--values", type=float, nargs="+", required=True)
+    p_s.set_defaults(func=_cmd_sum)
+
+    p_pct = sub.add_parser("pct", help="(part / whole) * 100 for position weights")
+    p_pct.add_argument("--part", type=float, required=True)
+    p_pct.add_argument("--whole", type=float, required=True)
+    p_pct.set_defaults(func=_cmd_pct)
 
     args = parser.parse_args(argv)
     return args.func(args)

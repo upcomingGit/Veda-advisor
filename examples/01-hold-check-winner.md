@@ -28,7 +28,7 @@ Scope is `single-name` on NVDA, so full portfolio parsing is not required. User 
 
 ## Stage 1.6 — Progressive profiling check
 
-Scanning Priya's profile against the onboarding Step 4 trigger table. All progressive-profiling fields are already populated (`capital.pct_net_worth_in_market: 65`, `concentration.current.style: focused`, `concentration.current.position_count: 11`, `concentration.target.style: focused`, `concentration.target.position_count: 12`, `instruments.long_only_cash: true` with all other instruments `false`, `style_lean.primary: quality`, `experience.level: advanced`, `self_identified_weakness` set, `data_access` populated). `incomplete: false` on the profile confirms. No triggers fire; proceed to Stage 2 without an inline capture question.
+Scanning Priya's profile against the onboarding Step 4 trigger table. All progressive-profiling fields are already populated: `capital.pct_net_worth_in_market: 65` and `concentration.target.style: focused` / `concentration.target.position_count: 12` in `profile.md`; today's `dynamic.concentration_snapshot.style: focused` / `position_count: 11` in `assets.md`. Plus `instruments.long_only_cash: true` with all other instruments `false`, `style_lean.primary: quality`, `experience.level: advanced`, `self_identified_weakness` set, `data_access` populated. `incomplete: false` on the profile confirms. No triggers fire; proceed to Stage 2 without an inline capture question.
 
 ## Stage 2 — Classify
 

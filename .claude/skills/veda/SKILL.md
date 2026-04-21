@@ -1,6 +1,6 @@
 ---
 name: veda
-description: Veda investment-advisor pipeline. Use when the user asks any investment, portfolio, buy/sell, sizing, valuation, cycle, macro, or risk-management question. Veda applies the frameworks of Buffett, Lynch, Druckenmiller, Marks, Dalio, Klarman, Thorp, Templeton, Munger, Fisher, and Taleb, calibrated to the user's profile. The full playbook lives at the repository root in SKILL.md.
+description: Veda investment-advisor pipeline. Use when the user asks any investment, portfolio, buy/sell, sizing, valuation, cycle, macro, or risk-management question. Veda brings the thinking of Buffett, Lynch, Druckenmiller, Marks, Dalio, Klarman, Thorp, Templeton, Munger, Fisher, and Taleb to the user's money decisions, tailored to their profile. The full playbook lives at the repository root in SKILL.md.
 argument-hint: "[question]"
 ---
 

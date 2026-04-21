@@ -4,6 +4,27 @@ Veda is not a plugin. It's a repo of instructions you point your AI assistant at
 
 > **Tested models:** GPT-5.4, Claude Opus 4.7, Claude Opus 4.6. Other frontier models from the same families should work but have not been verified. If you run Veda on a different model and it misbehaves, please [open an issue](CONTRIBUTING.md#1-issues-highest-value).
 
+## Optional — enable live quotes and FX
+
+Out of the box, Veda reasons over prices you or your assistant's web tools provide. If you want Veda to pull live prices and FX rates itself via [scripts/fetch_quote.py](scripts/fetch_quote.py), install the one third-party dependency once:
+
+```powershell
+git clone https://github.com/upcomingGit/Veda-advisor.git
+cd Veda-advisor
+python -m pip install -r requirements.txt
+```
+
+This installs `yfinance`, which covers US equities, India NSE/BSE equities (use the `.NS` suffix for NSE tickers), and major FX pairs. Quick smoke test:
+
+```powershell
+python scripts/fetch_quote.py quote --ticker MSFT
+python scripts/fetch_quote.py fx --pair usd_inr
+```
+
+Everything else in Veda — onboarding, the 9-stage pipeline, frameworks, decision blocks, journaling, `scripts/calc.py`, `scripts/validate_profile.py`, `scripts/import_assets.py` — is standard-library Python and needs no install step. You can skip this section entirely if you're happy pasting prices into the chat yourself.
+
+> `yfinance` is an unofficial Yahoo Finance client and may rate-limit under heavy use. It is adequate for personal use but not production-grade; the roadmap replaces it with paid feeds behind the same adapter interface. See [ROADMAP.md](ROADMAP.md#tier-5--live-market-data-and-fundamentals).
+
 ## Before you install — a word on privacy
 
 Onboarding writes a `profile.md` file containing your personal investment profile: net worth exposure, goals, risk tolerance, hard constraints. **Never commit this file.**
@@ -75,7 +96,7 @@ Or with an initial question on the same line:
 
 The skill's `name: veda` frontmatter is what registers `/veda` as a slash command; the skill body instructs Claude to read the root `SKILL.md` and run the full pipeline. Onboarding triggers automatically if `profile.md` is missing, so the very first `/veda` in a fresh clone kicks off the interview.
 
-*Persistence:* Claude Code has filesystem tools, so your `profile.md` and `portfolio.md` persist across sessions in the repo folder just like they do for Copilot and Gemini CLI. Both files are in `.gitignore` by default.
+*Persistence:* Claude Code has filesystem tools, so your `profile.md` and `assets.md` persist across sessions in the repo folder just like they do for Copilot and Gemini CLI. Both files are in `.gitignore` by default.
 
 *Where your profile lives:* by default, at the repo root next to `SKILL.md`. To keep it in a separate private folder, tell Veda at onboarding: *"Write profile.md to `<your/other/path>/profile.md` and read it from there every session."* Then also point Claude Code at that folder by starting with `claude --add-dir <your/other/path>` — skills inside `.claude/skills/` of an added directory are still auto-loaded.
 
@@ -117,7 +138,7 @@ Antigravity reuses the Gemini CLI command convention and auto-discovers the `.ge
 
 Antigravity reads `AGENTS.md` on workspace open and loads the referenced file into every chat's context. Restart the workspace after creating it. As a second fallback, the Claude Code convention also works — a `CLAUDE.md` at the root with `@SKILL.md` is honored.
 
-*Persistence:* same as Copilot and Claude Code — `profile.md` and `portfolio.md` live at the repo root and survive across chats. Both are gitignored.
+*Persistence:* same as Copilot and Claude Code — `profile.md` and `assets.md` live at the repo root and survive across chats. Both are gitignored.
 
 *Missions (optional, power-user):* use Antigravity's Mission feature to run Veda's outcome-review loop on a schedule. Example prompt to kick off a Mission: *"Every Monday, read `journal.md`, fetch current prices for each open decision, compare against kill criteria, and append a review entry. Stop when I say stop."* This is the closest approximation of Tier 1's scheduled outcome review available on any host before the real backend ships.
 
@@ -177,7 +198,7 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 9. `internal/base-rates.md` (Stage 4 reference)
 10. `setup/profile.template.md`
 
-Files omitted in the 10-file budget: `internal/portfolio-schema.md`, `internal/subagents.md`, `setup/profile.example-aggressive.md`, `setup/profile.example-novice.md`, `frameworks/_template.md`. The examples are nice-to-have; the orchestrator will work without them.
+Files omitted in the 10-file budget: `internal/assets-schema.md`, `internal/subagents.md`, `setup/profile.example-aggressive.md`, `setup/profile.example-novice.md`, `frameworks/_template.md`. The examples are nice-to-have; the orchestrator will work without them.
 
 Click **Save**.
 
@@ -214,7 +235,7 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 **Step 3.** Fill in the Configure fields:
 
 - **Name**: `Veda`
-- **Description**: *Investment-decision skill. Routes your question through the frameworks of 11 great investors (Buffett, Lynch, Druckenmiller, Marks, Dalio, Klarman, Thorp, Templeton, Munger, Fisher, Taleb), calibrated to your profile. Educational use only — not financial advice.*
+- **Description**: *Personal investment advisor. Brings the thinking of 11 of the world's greatest investors (Buffett, Lynch, Druckenmiller, Marks, Dalio, Klarman, Thorp, Templeton, Munger, Fisher, Taleb) to your money decisions, tailored to your profile. Educational use only — not financial advice.*
 - **Instructions**: paste the shim below (~1,600 characters, fits comfortably inside the cap).
 
 > *You are Veda, an investment-decision skill.*
@@ -255,7 +276,7 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 11. `frameworks/_template.md`
 12. `internal/scope-and-abuse.md`
 13. `internal/base-rates.md`
-14. `internal/portfolio-schema.md`
+14. `internal/assets-schema.md`
 15. `internal/subagents.md`
 16. `scripts/calc.py`
 17. `CREDITS.md`
@@ -326,20 +347,20 @@ Invocation varies by tool — see the sections above for exact details: Copilot 
 
 Portfolio-level questions — *"am I too concentrated in semis?"*, *"does this new position overlap with what I already own?"*, *"what's my real portfolio heat?"* — need Veda to see your holdings.
 
-**You don't have to do anything up front.** The default workflow is: when Veda needs your holdings, it will ask, and you paste them in any format — a copy from your broker app, a spreadsheet dump, or rough natural language (*"40% NVDA, 15% TSMC, 10% AVGO, rest cash"*). Veda parses whatever you send. No CSV required, no script to run, no markdown to hand-write. Veda will save those holdings to `portfolio.md` in your workspace (gitignored by default) and tell you it did so — that way you don't have to re-paste them next session. If you don't want persistence, say *"don't save"* in the same message as the paste, or delete `portfolio.md` afterwards.
+**You don't have to do anything up front.** The default workflow is: when Veda needs your holdings, it will ask, and you paste them in any format — a copy from your broker app, a spreadsheet dump, or rough natural language (*"40% NVDA, 15% TSMC, 10% AVGO, rest cash"*). Veda parses whatever you send. No CSV required, no script to run, no markdown to hand-write. Veda will save those holdings to `assets.md` in your workspace (gitignored by default) and tell you it did so — that way you don't have to re-paste them next session. If you don't want persistence, say *"don't save"* in the same message as the paste, or delete `assets.md` afterwards.
 
 **Optional power-user shortcut.** If you trade often and want persistence without pasting, there's a CSV importer:
 
 ```powershell
 # Export your holdings from Zerodha Kite (or any broker) as a CSV, then:
-python scripts/import_portfolio.py zerodha holdings.csv
+python scripts/import_assets.py zerodha holdings.csv
 # Or, for any broker whose CSV has ticker / shares / avg_cost / current_price columns:
-python scripts/import_portfolio.py generic my_export.csv
+python scripts/import_assets.py generic my_export.csv
 ```
 
-The script writes `portfolio.md`. Theses and tags are filled in *lazily* — when you ask Veda about a specific holding, it asks you for the one-line thesis and saves it back. You never batch-fill the whole file.
+The script writes `assets.md` (a starter file with the `dynamic:` block as stubs plus the holdings table). Theses and tags are filled in *lazily* — when you ask Veda about a specific holding, it asks you for the one-line thesis and saves it back. Veda fills the `dynamic:` block (FX, totals, concentration snapshot) on the first session after import. You never batch-fill the whole file.
 
-- `portfolio.md` is gitignored by default. Never commit it.
+- `assets.md` is gitignored by default. Never commit it.
 - Supported brokers today: Zerodha, plus a generic CSV importer.
 - More brokers coming in v0.2 (Groww, ICICI Direct, Interactive Brokers, Fidelity).
 - Native broker integration via MCP is on the v1.0 roadmap.

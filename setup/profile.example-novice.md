@@ -26,11 +26,15 @@ horizon:
 
 capital:
   pct_net_worth_in_market: 15
-  split:
-    core_long_term: 70       # defaulted for novices — long-term is the safer default
+  # Current split (today's 70/0/0/30 after honest tip-chasing disclosure)
+  # is tactical and lives in Rahul's assets.md > dynamic.capital_split_current.
+  # Only the target goes here. For novices, the target is usually the safer
+  # default and Veda biases recommendations to close the gap.
+  target_split:
+    core_long_term: 70
     tactical: 0
     short_term_trades: 0
-    speculation: 30          # user admitted tip-chasing; captured honestly
+    speculation: 5           # tightened from current 30% — the glide target over 1-2 years
 
 goal:
   primary: balanced_growth   # defaulted for novices without strong stated preference
@@ -42,10 +46,8 @@ risk:
   calibrated_tolerance: medium  # Veda downgrades until behaviorally validated
 
 concentration:
-  current:
-    style: diversified
-    position_count: 18
-    largest_position_pct: 7
+  # Current snapshot (diversified, 18 positions, largest 7%) lives in
+  # Rahul's assets.md > dynamic.concentration_snapshot. Only target is here.
   target:
     style: diversified
     position_count: 20

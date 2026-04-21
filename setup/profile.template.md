@@ -33,20 +33,15 @@ horizon:
   effective_horizon_years: <int>  # derived
 
 capital:
-  pct_net_worth_in_market: <int>  # 0-100; refers to current state
-  # split = CURRENT state of deployed capital. Must sum to 100 when all four
-  # buckets are present. Captured progressively during the first portfolio
-  # question if not elicited at onboarding.
-  split:
-    core_long_term: <int>    # %
-    tactical: <int>          # %
-    short_term_trades: <int> # %
-    speculation: <int>       # %
+  pct_net_worth_in_market: <int>  # 0-100; stable profile fact (how much of net worth is deployed in market assets)
+  # Current-state split (today's deployed capital by bucket) is TACTICAL and
+  # lives in assets.md > dynamic.capital_split_current, NOT here. Per SKILL.md
+  # Hard Rule #10 per-file boundary, profile.md holds only the target split.
   # target_split = DESIRED future state of deployed capital. Optional; only
-  # write it when the user's current and target splits differ. When present,
-  # must also sum to 100. Veda uses current for feasibility checks and target
-  # for direction-of-travel. A mismatch biases recommendations toward moves
-  # that close the gap.
+  # write it when the user's current (in assets.md) and target splits differ.
+  # When present, must sum to 100. Veda uses current for feasibility checks
+  # and target for direction-of-travel. A mismatch biases recommendations
+  # toward moves that close the gap.
   target_split:
     core_long_term: <int>    # %
     tactical: <int>          # %
@@ -62,19 +57,21 @@ risk:
   behavioral_history: <string>  # what they actually did in last drawdown
   calibrated_tolerance: <low | medium | high | very_high>  # Veda's read after stated + behavioral
 
-# Concentration is split into CURRENT state (what the portfolio actually looks
-# like today) and TARGET state (where the user wants it to be). Every sizing
-# recommendation reads both:
-#   - current for feasibility: "given you already hold 33 names, can you add a 34th?"
-#   - target  for direction:   "does this action close the gap or widen it?"
-# A large current-vs-target mismatch (e.g., current.style=diversified but
+# Concentration TARGET state (where the user wants to be) is a stable profile
+# fact and lives here. CURRENT state (what the portfolio actually looks like
+# today: style, position_count, largest_position_pct, largest_position_ticker)
+# is TACTICAL and lives in assets.md > dynamic.concentration_snapshot, NOT
+# here. Per SKILL.md Hard Rule #10 per-file boundary.
+#
+# Every sizing recommendation reads BOTH files:
+#   - assets.md > dynamic.concentration_snapshot for feasibility: "given you
+#     already hold 33 names, can you add a 34th?"
+#   - profile.md > concentration.target for direction: "does this action
+#     close the gap or widen it?"
+# A large current-vs-target mismatch (e.g., today's style=diversified but
 # target.style=focused) biases Veda toward consolidate / trim / don't-add-new
-# rather than buy. Record the bridge in glide_notes.
+# rather than buy. Record the bridge in glide_notes (below).
 concentration:
-  current:
-    style: <index_like | diversified | focused | concentrated>
-    position_count: <int>            # how many names the user holds today
-    largest_position_pct: <int>      # size of the single largest position today (0-100)
   target:
     style: <index_like | diversified | focused | concentrated>
     position_count: <int>            # how many names the user wants to hold
@@ -90,21 +87,11 @@ markets:  # multi-select
   - crypto
   - private
 
-# Session-scoped cache of FX rates used in this profile. Present only when the
-# user has cross-currency exposure (e.g., `markets` contains both `us` and
-# `india`). Every entry is treated by Hard Rule #9 (SKILL.md) as STALE once
-# its `as_of` date is more than 1 trading day old — Veda must re-ask or
-# re-fetch before using it.
-#
-# Key format: `<from_ccy>_<to_ccy>` in lowercase (e.g., `usd_inr`, `eur_usd`,
-# `gbp_inr`). `rate` is the multiplier to convert 1 unit of from_ccy into
-# to_ccy. `source` is free text; prefer Tier 1–2 (RBI, Bloomberg, Google
-# Finance, Yahoo Finance) and cite the exact page when possible.
-fx_rates:
-  usd_inr:
-    rate: <float>         # e.g., 92.60
-    as_of: <YYYY-MM-DD>   # date the rate was fetched or user-supplied
-    source: <string>      # optional but recommended, e.g., "Google Finance"
+# FX rates used for portfolio roll-ups are TACTICAL (they move day-to-day) and
+# live in assets.md > dynamic.fx_rates, NOT here. Per SKILL.md Hard Rule #9
+# and Hard Rule #10 per-file boundary. profile.md records only the stable
+# preference that the user holds cross-currency exposure (implied by `markets`
+# containing more than one currency zone above).
 
 style_lean:
   primary: <value | quality | growth | macro | thematic | quant | passive_plus>
@@ -199,6 +186,7 @@ When generating `framework_weights` from the user's answers:
 | Style = macro | Druckenmiller, Dalio |
 | Concentration = concentrated | Buffett, Thorp |
 | Concentration current=diversified AND target=focused (mismatch) | Munger (inversion — don't add new names), Lynch (categorize what you already own) |
+<!-- Read "current" as assets.md > dynamic.concentration_snapshot.style and "target" as profile.md > concentration.target.style. -->
 | Concentration = index-like | Dalio |
 | Uses options/shorts | Taleb (vol awareness), Thorp (sizing) |
 | Self-weakness = holds losers | Druckenmiller (first loss = best loss) always surfaces |

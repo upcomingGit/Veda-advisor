@@ -1,18 +1,18 @@
 # Veda
 
-**Your personal AI investment advisor — structured wisdom from 11 of the greatest investors, as a skill for Copilot, Claude Code, Antigravity, Cursor, ChatGPT, and Gemini.**
+**The world's greatest investors, in your pocket. You've read Buffett and Lynch. You've watched Druckenmiller and Marks. Veda brings their thinking back the moment you face a real money decision — so it shows up when it counts, not just when you're reading.**
 
-Veda is not a stock tipping service. It does not predict prices. It does not tell you what to buy.
+Veda works inside Copilot, Claude Code, Antigravity, Cursor, ChatGPT, or Gemini. When you ask it a money question, it thinks the way 11 of the greatest investors would — Buffett, Lynch, Druckenmiller, Marks, Dalio, Klarman, Thorp, Templeton, Munger, Fisher, Taleb — and tailors their rules to your money, your time horizon, and your goals.
 
-Veda is a **decision framework** that plugs into your AI assistant and makes it reason about your investment decisions the way Warren Buffett, Peter Lynch, Stanley Druckenmiller, Howard Marks, Ray Dalio, Seth Klarman, Ed Thorp, John Templeton, Charlie Munger, Philip Fisher, and Nassim Taleb would — calibrated to **your** risk profile, time horizon, and goals.
+Every answer names the investor whose rule was used, walks you through the reasoning, and says what would prove the idea wrong. Save it, come back in six months, and see if it worked. Your decisions build a record you can learn from.
 
-Technically, Veda is a folder of markdown files: instructions for your AI assistant on how to reason about investments, a profile of you written at onboarding and refined as you use it, and decision templates your assistant fills in so every recommendation is journal-ready. Veda itself is free and has no backend; some host platforms (ChatGPT Plus, Gemini Advanced) may require their own paid tier.
+Veda is free and open source. No server, no data sale, no cut when you trade. It's a folder of text files your AI reads. (ChatGPT Plus or Gemini Advanced cost money on their own; Veda itself never will.)
 
 ---
 
-## The three problems Veda is organized around
+## The three problems every investment decision reduces to
 
-Every active investing decision reduces to one of these. Most AI advisors collapse them into one vague answer; Veda keeps them separate because the frameworks that answer each are different, and applying a *what* framework to a *when* question is how investors lose money.
+Most AI advisors roll these into one answer. Veda keeps them apart, because the rules that answer "what to buy" are different from the rules that answer "when to buy" — and using the wrong rule for the wrong question is how people lose money.
 
 | Problem | Question | Frameworks |
 |---|---|---|
@@ -20,30 +20,31 @@ Every active investing decision reduces to one of these. Most AI advisors collap
 | **When** to buy or sell | Right cycle? Right price? Macro hostile? | Marks (cycles), Druckenmiller (regimes, first loss is best), Templeton (maximum pessimism), Lynch (cyclical inversion) |
 | **How much** to hold | Right size? Real diversification? Blow-up risk? | Thorp (Kelly), Dalio (uncorrelated streams), Taleb (barbell), Buffett (concentrated conviction) |
 
-When you ask Veda a question, it first identifies which of the three problems you're asking about, then routes to the 2–3 frameworks that apply and calibrates them to your profile. Opinionated, framework-grounded, reproducible.
+When you ask Veda a question, it figures out which of the three problems you're really asking about, picks the 2–3 investors whose rules fit, and adapts their thinking to your situation.
 
 ---
 
 ## Who Veda is for
 
-Across experience levels — novice to professional — with one filter:
+Every experience level — novice to professional — with one filter:
 
-> **You have to be willing to spend time becoming a better investor.** Read the occasional book, journal your decisions, review what went wrong. Veda gives you structure; it does not replace the work.
+> **You have to be willing to do the work.** Read the occasional book, journal your decisions, review what went wrong. Veda gives you structure; it does not replace the thinking.
 
-If you want "just tell me what to buy," Veda is the wrong tool. The honest answer from every investor in [CREDITS.md](CREDITS.md) is the same: **buy a low-cost index fund, set up a monthly SIP / DCA, and don't check the price more than quarterly.** Veda is for people who want to go beyond that and understand that going beyond comes with homework.
+If what you want is "just tell me what to buy," Veda is the wrong tool — and the honest answer from every investor in [CREDITS.md](CREDITS.md) is the same: **buy a low-cost index fund, set up a monthly SIP or DCA, and don't check the price more than quarterly.** Veda is for people who have decided to go beyond that and accept that going beyond comes with homework.
 
-**Novice mode.** Tell Veda you're a novice and it switches to a shorter 6-question interview with hard guardrails: no position larger than 8%, no leverage, no options, no shorts, and every single-stock buy shown side-by-side with the index-fund alternative. Every recommendation includes a 1-line principle and a book reference. Graduation criteria (lived through a 20%+ drawdown, 2+ years invested, read 2 canon books) are written into your profile. See [setup/profile.example-novice.md](setup/profile.example-novice.md).
+**Novice mode** swaps in a 6-question interview and hard guardrails: no position larger than 8%, no leverage, no options, no shorts, and every single-stock buy shown side-by-side with the index-fund alternative. Graduation criteria (lived through a 20%+ drawdown, 2+ years invested, read 2 canon books) are written into your profile. See [setup/profile.example-novice.md](setup/profile.example-novice.md).
 
-**Intermediate / advanced** investors get the full framework system weighted by stated style. **Professionals** get conclusions, not explanations — depth is a profile setting.
+**Intermediate and advanced** investors get the full framework system weighted by stated style. **Professionals** get conclusions, not explanations — depth is a profile setting.
 
 ---
 
 ## What Veda is not
 
-- **Not a data feed.** Veda reasons over data you or your assistant's web tools provide. It does not fetch live prices.
+- **Not a stock tipper.** Veda does not predict prices, name winners, or promise outperformance. It makes the reasoning behind your decisions explicit and auditable.
+- **Not a data feed by default.** Veda reasons over data you or your assistant's web tools provide. For live quotes and FX rates, an optional helper `scripts/fetch_quote.py` uses `yfinance` — install with `python -m pip install -r requirements.txt` once. Everything else (onboarding, frameworks, decisions, journaling) works with zero dependencies.
 - **Not financial advice.** Every recommendation comes with reasoning you can inspect and reject. You are responsible for your own money.
 - **Not a replacement for reading the books.** Frameworks are compressed distillations. If Buffett resonates, go read *The Essays of Warren Buffett*.
-- **Not a portfolio tracker.** Veda parses holdings in any format — a broker-app screenshot, a CSV, or rough natural language — and persists them to a gitignored `portfolio.md` on hosts that have filesystem access. An optional CSV importer (`scripts/import_portfolio.py`) supports Zerodha and a generic schema today; native broker integration is on the roadmap. See [ROADMAP.md](ROADMAP.md).
+- **Not a portfolio tracker.** Veda parses holdings in any format — a broker-app screenshot, a CSV, or rough natural language — and persists them to a gitignored `assets.md` on hosts that have filesystem access. An optional CSV importer (`scripts/import_assets.py`) supports Zerodha and a generic schema today; native broker integration is on the roadmap. See [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -69,7 +70,9 @@ Pick your assistant — each has a native install path. Full instructions, priva
 ## Quick start
 
 1. **Install.** Clone the repo and wire it into your assistant using [INSTALL.md](INSTALL.md).
-2. **Run onboarding.** Invoke `/veda` (or equivalent). The assistant interviews you in about 5 minutes (2 minutes on the novice path) and writes `profile.md`.
+2. **(Optional) Enable live quotes.** Run `python -m pip install -r requirements.txt` if you want Veda to pull live prices and FX rates. Skip this if you're happy pasting prices yourself — every other feature still works.
+3. **Run onboarding.** Invoke `/veda` (or equivalent). The assistant interviews you in about 5 minutes (2 minutes on the novice path) and writes `profile.md`.
+4. **Ask an investment question.** Example: *"Veda: should I add to my TSMC position at today's price?"*
 3. **Ask an investment question.** Example: *"Veda: should I add to my TSMC position at today's price?"*
 
 Veda reads your profile, identifies which of the three problems you're asking about, routes to the 2–3 frameworks that apply, and returns a recommendation with an expected-value block and a pre-commit block (thesis, kill criteria, re-evaluate trigger) you can paste into your journal.
