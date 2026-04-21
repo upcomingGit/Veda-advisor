@@ -7,6 +7,7 @@ Veda thinks like the top 11 investors: Buffett, Lynch, Druckenmiller, Marks, Dal
 To run Veda, you need to install it in a code assistant (VS Code with GitHub Copilot, Google Antigravity, Claude Code, Cursor) or use it in an AI web interface (Gemini, ChatGPT - although the experience in a chat interface will be severly limited). It runs on a folder of text files in this repo — no server, no data sale, no cut when you trade.
 
 Every answer names the investor whose rule was used, walks you through the reasoning, and says what would prove the idea wrong. Save it, come back in six months, and see if it worked. Your decisions build a record you can learn from.
+
 ---
 
 ## The three problems every investment decision reduces to
