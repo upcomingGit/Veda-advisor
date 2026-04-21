@@ -1,18 +1,17 @@
 # Veda
 
-**The world's greatest investors, in your pocket. You've read Buffett and Lynch. You've watched Druckenmiller and Marks. Veda brings their thinking back the moment you face a real money decision — so it shows up when it counts, not just when you're reading.**
+**The world's greatest investors, at your fingertips. Veda is an AI-powered Investment Advisor chat interface that brings back the thinking of the world's greatest investors and applies that thinking to your personalised situations and money problems.**
 
-Veda works inside Copilot, Claude Code, Antigravity, Cursor, ChatGPT, or Gemini. When you ask it a money question, it thinks the way 11 of the greatest investors would — Buffett, Lynch, Druckenmiller, Marks, Dalio, Klarman, Thorp, Templeton, Munger, Fisher, Taleb — and tailors their rules to your money, your time horizon, and your goals.
+Veda thinks like the top 11 investors: Buffett, Lynch, Druckenmiller, Marks, Dalio, Klarman, Thorp, Templeton, Munger, Fisher, and Taleb. It applies their frameworks to your money decisions — what to buy or sell, when to buy or sell, how much to hold — tailored to your profile. The full playbook lives in [SKILL.md](SKILL.md) at the repo root.
+
+To run Veda, you need to install it in a code assistant (VS Code with GitHub Copilot, Google Antigravity, Claude Code, Cursor) or use it in an AI web interface (Gemini, ChatGPT - although the experience in a chat interface will be severly limited). It runs on a folder of text files in this repo — no server, no data sale, no cut when you trade.
 
 Every answer names the investor whose rule was used, walks you through the reasoning, and says what would prove the idea wrong. Save it, come back in six months, and see if it worked. Your decisions build a record you can learn from.
-
-Veda is free and open source. No server, no data sale, no cut when you trade. It's a folder of text files your AI reads. (ChatGPT Plus or Gemini Advanced cost money on their own; Veda itself never will.)
-
 ---
 
 ## The three problems every investment decision reduces to
 
-Most AI advisors roll these into one answer. Veda keeps them apart, because the rules that answer "what to buy" are different from the rules that answer "when to buy" — and using the wrong rule for the wrong question is how people lose money.
+Veda operates on the principle that all investing can be reduced to three core problems — what to buy, when to buy, and how much to hold (capital allocation). Veda analyses the question you asked, and applies the right frameworks from the right investors so that you get an idea of how you can proceed in your specific situation.
 
 | Problem | Question | Frameworks |
 |---|---|---|
@@ -20,13 +19,13 @@ Most AI advisors roll these into one answer. Veda keeps them apart, because the 
 | **When** to buy or sell | Right cycle? Right price? Macro hostile? | Marks (cycles), Druckenmiller (regimes, first loss is best), Templeton (maximum pessimism), Lynch (cyclical inversion) |
 | **How much** to hold | Right size? Real diversification? Blow-up risk? | Thorp (Kelly), Dalio (uncorrelated streams), Taleb (barbell), Buffett (concentrated conviction) |
 
-When you ask Veda a question, it figures out which of the three problems you're really asking about, picks the 2–3 investors whose rules fit, and adapts their thinking to your situation.
-
 ---
 
 ## Who Veda is for
 
-Every experience level — novice to professional — with one filter:
+Veda is for everyone who wants to become a better investor by learning to think like the best. The frameworks are timeless, but the application is personalised. Your profile (style, markets, constraints, experience) shapes how Veda applies the frameworks to your questions.
+
+Whether you are a professional or a novice, Veda works for both situations with one filter:
 
 > **You have to be willing to do the work.** Read the occasional book, journal your decisions, review what went wrong. Veda gives you structure; it does not replace the thinking.
 
@@ -44,7 +43,6 @@ If what you want is "just tell me what to buy," Veda is the wrong tool — and t
 - **Not a data feed by default.** Veda reasons over data you or your assistant's web tools provide. For live quotes and FX rates, an optional helper `scripts/fetch_quote.py` uses `yfinance` — install with `python -m pip install -r requirements.txt` once. Everything else (onboarding, frameworks, decisions, journaling) works with zero dependencies.
 - **Not financial advice.** Every recommendation comes with reasoning you can inspect and reject. You are responsible for your own money.
 - **Not a replacement for reading the books.** Frameworks are compressed distillations. If Buffett resonates, go read *The Essays of Warren Buffett*.
-- **Not a portfolio tracker.** Veda parses holdings in any format — a broker-app screenshot, a CSV, or rough natural language — and persists them to a gitignored `assets.md` on hosts that have filesystem access. An optional CSV importer (`scripts/import_assets.py`) supports Zerodha and a generic schema today; native broker integration is on the roadmap. See [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -57,10 +55,10 @@ Pick your assistant — each has a native install path. Full instructions, priva
 | **GitHub Copilot** (VS Code, Agent mode) | `/veda` |
 | **Claude Code** | `/veda` |
 | **Google Antigravity** | `/veda` (or `AGENTS.md` shim — [setup](INSTALL.md#google-antigravity)) |
+| **Cursor** | `@SKILL.md` or a `.cursor/rules/veda.mdc` rule |
 | **Gemini** (web Gem) | start a chat with your Veda Gem ([setup needs a shim + Knowledge upload](INSTALL.md#gemini-web)) |
 | **Gemini CLI** | `/veda` |
 | **ChatGPT** (web, Plus/Pro/Team/Business) | start a chat with your Veda GPT ([setup as Custom GPT or Project](INSTALL.md#chatgpt-web)) |
-| **Cursor** | `@SKILL.md` or a `.cursor/rules/veda.mdc` rule |
 | **Other web chat** (Claude web, Perplexity, Grok) | paste `SKILL.md` as a system instruction |
 
 > **Privacy first.** Onboarding writes a `profile.md` containing your personal financial context. It is gitignored by default. Never commit it. See [INSTALL.md](INSTALL.md#before-you-install--a-word-on-privacy).
