@@ -3,6 +3,13 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Secrets — never commit. Ignore contents of secrets/, but track the
+# *.example.yaml templates. Note: must be `secrets/*` (contents), not
+# `secrets/` (directory) — git does not descend into an ignored directory,
+# so the negation below cannot re-include anything inside an ignored dir.
+secrets/*
+!secrets/*.example.yaml
+
 # C extensions
 *.so
 

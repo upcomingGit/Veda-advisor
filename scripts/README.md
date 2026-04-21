@@ -131,4 +131,75 @@ Adding a new broker is a ~20-line function. See the docstrings at the top of `im
 ### Roadmap
 
 - **v0.2:** More broker CSV parsers. Priority targets: Groww, ICICI Direct, Interactive Brokers, Fidelity.
-- **v1.0:** MCP-based live broker integration. Zerodha already has an MCP server; when that matures and other brokers follow, Veda will read positions directly without manual CSV export.
+- **v1.0 (partial — Zerodha done):** Live broker integration. See [`kite.py`](#kitepy--zerodha-live-holdings-optional) below for the Zerodha Kite Connect path. Remaining brokers will be added opportunistically.
+
+---
+
+## `kite.py` — Zerodha live holdings (optional)
+
+Replaces the manual "export CSV, then run `import_assets.py`" flow for Zerodha users. Pulls holdings directly via the Kite Connect API so the numbers carry a fresh `as_of` stamp instead of being whatever was in yesterday's CSV. Everything else about Veda is unchanged: the LLM still reconciles the fetched positions into `assets.md` per SKILL.md Stage 1.5 update rules.
+
+**This is optional.** If you already have `assets.md` and are fine pasting or re-importing occasionally, skip it. It exists because daily refresh of a live portfolio via CSV export gets old fast.
+
+### Prerequisites
+
+1. A Zerodha Kite Connect developer app at <https://developers.kite.trade/apps>.
+   - **Redirect URL must be** `http://127.0.0.1:5000/kite/callback` (the script listens on this exact path).
+   - The Personal tier is free and covers holdings.
+2. `secrets/kite.yaml` created from `secrets/kite.example.yaml`, with `api_key` and `api_secret` filled in. **Never paste these into chat, email, or any other persistent channel.** The `secrets/` folder is gitignored.
+3. `pip install -r requirements.txt` (adds `kiteconnect`).
+
+### Subcommands
+
+| Subcommand | Purpose                                                             | Frequency           |
+|------------|---------------------------------------------------------------------|---------------------|
+| `auth`     | Browser OAuth → writes `access_token` into `secrets/kite.yaml`.     | Once per day (06:00 IST expiry — Zerodha policy). |
+| `holdings` | Prints long-term holdings as JSON on stdout. Fails if token expired. | Any number of times until next 06:00 IST. |
+
+### Daily flow
+
+```powershell
+# Once per calendar day, after 06:00 IST
+python scripts/kite.py auth
+# -> browser opens, you log into Kite, redirect is captured silently,
+#    access_token and expiry are saved to secrets/kite.yaml.
+
+# Any number of times until expiry
+python scripts/kite.py holdings > holdings.json
+```
+
+The `holdings` JSON has shape:
+
+```json
+{
+  "source": "kite",
+  "as_of": "2026-04-21T18:34:12+05:30",
+  "count": 26,
+  "holdings": [ { "tradingsymbol": "...", "quantity": 123, "average_price": 456.78, "last_price": 501.20, ... } ]
+}
+```
+
+### How Veda uses the output
+
+This is a deliberate design choice: the script only fetches. Veda (the LLM) handles reconciliation, because matching new positions against existing `assets.md` rows, preserving your theses/tags, and dropping sold positions is a judgment task — not something to hard-code.
+
+In-chat: say "refresh holdings from Kite". Veda will:
+
+1. **Broker-gate.** Check `profile.md > broker.primary`. If absent, ask once and save the answer. If the value is not `zerodha`, stop and tell you live pull is Zerodha-only in v0.1; fall back to the paste path.
+2. Run `python scripts/kite.py holdings` and parse the JSON.
+3. Diff against `assets.md` by ticker. For each holding:
+   - New ticker → add row with blank `thesis` and `tags` (filled lazily when you next ask about it).
+   - Existing ticker, changed quantity/price → update the numeric fields, **preserve thesis and tags**.
+   - Ticker missing from Kite → move to a `closed_positions:` block (sold).
+4. Update `dynamic.fx_rates.usd_inr` (via `fetch_quote.py`) and re-run `calc.py` to refresh totals and weights per SKILL.md Hard Rule #8.
+5. Read back the diff before saving.
+
+### Exit codes
+
+`0` success · `1` runtime failure (missing creds, expired token, API error — JSON with `error:` key printed to stdout) · `2` bad CLI usage.
+
+### Security notes
+
+- `auth` **never echoes the access_token to stdout** — it only prints the expiry and a confirmation. The token lives in `secrets/kite.yaml`, which is gitignored by the `secrets/` rule in `.gitignore`.
+- If a credential leaks (pasted, committed, shared), regenerate the secret at <https://developers.kite.trade/apps> before doing anything else. Regeneration invalidates the leaked value immediately.
+- Tokens expire at 06:00 IST daily. This is a Zerodha policy, not a script limitation. The script stamps the expected expiry when you auth and refuses `holdings` past it rather than silently using a dead token.

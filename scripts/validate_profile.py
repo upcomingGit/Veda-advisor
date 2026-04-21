@@ -64,6 +64,9 @@ ENUM_VALUES: dict[str, set[str]] = {
     },
     "experience.level": {"beginner", "intermediate", "advanced", "professional"},
     "experience.explanation_depth": {"minimal", "standard", "educational"},
+    # Optional: declared broker. Used by SKILL.md Stage 1.5 pattern 4 to gate
+    # the Zerodha Kite live-pull path. Absent is fine (lazy-captured).
+    "broker.primary": {"zerodha", "other", "none"},
 }
 
 BOOL_FIELDS = {

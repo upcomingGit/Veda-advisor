@@ -11,3 +11,8 @@
 # Pinned with a lower bound; newer versions are expected to be compatible.
 # yfinance is unofficial Yahoo Finance and may rate-limit on heavy use.
 yfinance>=0.2.40
+
+# scripts/kite.py - Zerodha Kite Connect (holdings). Official SDK.
+# Only imported inside the `auth` / `holdings` subcommands, so the rest of
+# Veda runs without it installed.
+kiteconnect>=4.2.0
