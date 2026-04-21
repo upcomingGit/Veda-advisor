@@ -1,5 +1,4 @@
 ---
-mode: agent
 description: Invoke Veda, the personal AI investment advisor. Runs the SKILL.md pipeline calibrated to your profile.md.
 ---
 
