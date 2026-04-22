@@ -1,5 +1,7 @@
 # Veda
 
+[![version](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-see%20LICENSE-lightgrey)](LICENSE)
+
 **The world's greatest investors, at your fingertips. Veda is an AI-powered Investment Advisor chat interface that brings back the thinking of the world's greatest investors and applies that thinking to your personalised situations and money problems.**
 
 Veda thinks like the top 11 investors: Buffett, Lynch, Druckenmiller, Marks, Dalio, Klarman, Thorp, Templeton, Munger, Fisher, and Taleb. It applies their frameworks to your money decisions — what to buy or sell, when to buy or sell, how much to hold — tailored to your profile. The full playbook lives in [SKILL.md](SKILL.md) at the repo root.
