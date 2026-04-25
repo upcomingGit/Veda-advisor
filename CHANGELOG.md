@@ -32,6 +32,15 @@ changelog on release.
 
 ## [Unreleased]
 
+### Added
+
+- **`fundamentals-fetcher` subagent** ([internal/agents/fundamentals-fetcher.md](internal/agents/fundamentals-fetcher.md)) —
+  refreshes quarterly financials and computes valuation zones for held positions.
+  Called from Stage 3 data-completeness gate.
+- **`scripts/fetch_fundamentals.py`** — data-fetching backend for the subagent.
+  Sources: yfinance (US), Screener.in HTML scrape + Chart API (India). Zone
+  computation mirrors StockClarity's archetype-aware PEG/PE/EV-EBITDA/P-B logic.
+
 ## [0.1.0] - 2026-04-22
 
 Initial public release. The repository has existed privately; this is the

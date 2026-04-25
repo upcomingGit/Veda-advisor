@@ -7,10 +7,13 @@
 # Install with:
 #   python -m pip install -r requirements.txt
 
-# scripts/fetch_quote.py - live quotes & FX via yfinance.
+# scripts/fetch_quote.py, scripts/fetch_fundamentals.py - live quotes & data via yfinance.
 # Pinned with a lower bound; newer versions are expected to be compatible.
 # yfinance is unofficial Yahoo Finance and may rate-limit on heavy use.
 yfinance>=0.2.40
+
+# scripts/fetch_fundamentals.py - Screener.in scraping for India equities.
+requests>=2.28.0
 
 # scripts/kite.py - Zerodha Kite Connect (holdings). Official SDK.
 # Only imported inside the `auth` / `holdings` subcommands, so the rest of

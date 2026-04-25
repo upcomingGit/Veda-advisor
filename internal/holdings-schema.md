@@ -287,6 +287,7 @@ Structured quarterly financials. One snapshot per quarter covering P&L, cash flo
 **Derived ratios are not stored.** Gross margin, operating margin, ROE, FCF yield, debt/equity, etc. are computed on read from the fields below — same principle as `assumptions.yaml`'s cross-quarter view. Storing them would duplicate state and risk drift on data revisions.
 
 ```yaml
+currency: USD            # reporting currency for all monetary fields below
 quarters:
   - period: 2026-Q1
     as_of: 2026-04-21
@@ -314,6 +315,7 @@ quarters:
 
 | Field | Required | Notes |
 |---|---|---|
+| `currency` | yes | Reporting currency for all monetary fields (e.g., `USD`, `INR`). Top-level field, not per-quarter. |
 | `period` | yes | Fiscal quarter label (e.g., `2026-Q1`). Unique within `quarters[]`. |
 | `as_of` | yes | ISO date of the reporting period end or data-fetch date. |
 | `source` | yes | Data source and tier (e.g., `yfinance`, `company 10-Q`). |
@@ -337,20 +339,179 @@ quarters:
 
 ## `valuation.yaml` — optional
 
-Valuation-zone snapshot per archetype's primary metric. Example for GROWTH:
+Valuation-zone snapshot per archetype's primary metric. Populated by `fundamentals-fetcher` ([internal/agents/fundamentals-fetcher.md](agents/fundamentals-fetcher.md)). The shape varies by `primary_metric`; common fields below, then per-archetype examples.
+
+**Common fields** (all archetypes):
+
+| Field | Required | Notes |
+|---|---|---|
+| `primary_metric` | yes | One of `PEG`, `PE`, `PS`, `EV_EBITDA`, `PB`. Determines the zone-classification rule. |
+| `zone` | yes | `CHEAP` \| `FAIR` \| `EXPENSIVE`. Computed by the fetch script, not by the subagent. |
+| `zone_thresholds` | yes | `cheap_below` and `expensive_above` numeric thresholds for the primary metric. |
+| `as_of` | yes | ISO date of the latest data point used to compute the zone. |
+| `source` | yes | `yfinance` or `screener.in`. |
+| `inverted` | optional | `true` only for commodity-cyclical EV/EBITDA — low at peak earnings = EXPENSIVE. |
+| `size_tier` | optional | `MEGA` \| `LARGE` \| `MID` \| `SMALL`. Required when PEG thresholds are size-tiered (GROWTH and INCOME_VALUE PEG-guard cases). |
+| `percentile_basis` | optional | For percentile-based metrics. Object with `p25`, `p75`, `sector_median`, `history_years` (typically 5). |
+
+**Metric-value fields** — include only those relevant to `primary_metric` and any companions the script returned:
+
+| Field | Used by |
+|---|---|
+| `current_pe` | GROWTH (PEG numerator), INCOME_VALUE (primary), companion elsewhere |
+| `current_pb` | Banks/NBFCs (primary), companion elsewhere |
+| `current_ps` | GROWTH-unprofitable (primary) |
+| `current_ev_ebitda` | TURNAROUND, CYCLICAL (primary) |
+| `current_dividend_yield_pct` | INCOME_VALUE (companion) |
+| `trailing_growth_pct` | GROWTH and INCOME_VALUE PEG-guard (PEG denominator). YoY net-profit growth, trailing 4Q. |
+| `peg` | GROWTH (primary), INCOME_VALUE (override-guard signal) |
+
+### Per-archetype examples
+
+**GROWTH (profitable, non-bank) — PEG, size-tiered:**
 
 ```yaml
 primary_metric: PEG
 current_pe: 34.2
-forward_growth_pct: 12.5
+trailing_growth_pct: 12.5
 peg: 2.74
-zone: FAIR            # CHEAP | FAIR | EXPENSIVE
+zone: EXPENSIVE
 zone_thresholds:
   cheap_below: 1.0
   expensive_above: 2.0
-as_of: 2026-04-21
-source: yfinance + analyst consensus
+size_tier: MEGA
+as_of: 2026-04-25
+source: yfinance
 ```
+
+PEG size-tier thresholds (mirrored from StockClarity):
+
+| Tier | cheap_below | expensive_above |
+|---|---|---|
+| MEGA | 0.8 | 1.5 |
+| LARGE | 1.0 | 2.0 |
+| MID | 1.2 | 2.5 |
+| SMALL | 1.5 | 3.0 |
+
+Guardrails: `current_pe > 150` forces `EXPENSIVE` regardless of PEG. Negative or zero `trailing_growth_pct` falls back to PE percentile. Growth >100% capped at 100%.
+
+**GROWTH (unprofitable) — P/S percentile:**
+
+```yaml
+primary_metric: PS
+current_ps: 18.4
+zone: EXPENSIVE
+zone_thresholds:
+  cheap_below: 8.5
+  expensive_above: 16.0
+percentile_basis:
+  p25: 8.5
+  p75: 16.0
+  sector_median: 11.2
+  history_years: 5
+as_of: 2026-04-25
+source: yfinance
+```
+
+**INCOME_VALUE (non-bank) — PE percentile + PEG-override guard:**
+
+```yaml
+primary_metric: PE
+current_pe: 22.1
+trailing_growth_pct: 7.8
+peg: 2.83
+zone: FAIR              # PE percentile said EXPENSIVE; PEG override guard moved it to FAIR
+zone_thresholds:
+  cheap_below: 18.0     # own p25
+  expensive_above: 26.0 # own p75
+percentile_basis:
+  p25: 18.0
+  p75: 26.0
+  sector_median: 21.0
+  history_years: 5
+size_tier: LARGE
+as_of: 2026-04-25
+source: yfinance
+```
+
+INCOME_VALUE PEG-override thresholds (mirrored from StockClarity, tighter than GROWTH):
+
+| Tier | EXPENSIVE→FAIR if PEG ≤ | CHEAP→FAIR if PEG > |
+|---|---|---|
+| MEGA | 1.2 | 3.0 |
+| LARGE | 1.5 | 3.0 |
+| MID | 1.8 | 3.5 |
+| SMALL | 2.0 | 4.0 |
+
+The override only applies when PEG can be computed; otherwise the PE percentile zone stands.
+
+**TURNAROUND — EV/EBITDA percentile:**
+
+```yaml
+primary_metric: EV_EBITDA
+current_ev_ebitda: 9.2
+zone: CHEAP
+zone_thresholds:
+  cheap_below: 9.5
+  expensive_above: 14.0
+percentile_basis:
+  p25: 9.5
+  p75: 14.0
+  sector_median: 11.8
+  history_years: 5
+as_of: 2026-04-25
+source: yfinance
+```
+
+**CYCLICAL (commodity) — EV/EBITDA percentile, INVERTED:**
+
+```yaml
+primary_metric: EV_EBITDA
+current_ev_ebitda: 4.8
+zone: EXPENSIVE         # low multiple at peak earnings = EXPENSIVE (inverted)
+zone_thresholds:
+  cheap_below: 4.5
+  expensive_above: 8.0
+percentile_basis:
+  p25: 4.6
+  p75: 7.9
+  sector_median: 6.2
+  history_years: 5
+inverted: true
+as_of: 2026-04-25
+source: yfinance
+```
+
+Inversion applies only to commodity cyclicals (steel, cement, oil, chemicals). Credit cyclicals (banks) use P/B straight — see banks override below.
+
+**Banks / NBFCs — P/B percentile (overrides archetype):**
+
+When `sector_kind: CREDIT` or sector matches banking/NBFC, `primary_metric` is `PB` regardless of `archetype`.
+
+```yaml
+primary_metric: PB
+current_pb: 1.35
+zone: CHEAP
+zone_thresholds:
+  cheap_below: 1.5
+  expensive_above: 2.5
+percentile_basis:
+  p25: 1.4
+  p75: 2.6
+  sector_median: 1.9
+  history_years: 5
+as_of: 2026-04-25
+source: screener.in
+```
+
+### Percentile zone rules (non-PEG paths)
+
+- `EXPENSIVE`: above own p75 of 5-year history.
+- `CHEAP`: below own p25 AND below sector median.
+- `EXPENSIVE`: in own p25–p75 band but > 1.5× sector median.
+- `FAIR`: everything else.
+
+The fetch script applies these rules. The subagent only records the result.
 
 ---
 

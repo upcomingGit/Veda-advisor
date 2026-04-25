@@ -1,10 +1,11 @@
 # Veda utility scripts
 
-Helper scripts for Veda. Three categories:
+Helper scripts for Veda. Four categories:
 
 1. **`calc.py` — required.** Veda's Hard Rule #8 forbids LLM arithmetic. Every EV, p_loss, PEG, Kelly, FX, or weight-sum number comes from this script. See SKILL.md Hard Rule #8.
 2. **`validate_profile.py` — required at onboarding.** Deterministic schema check for `profile.md`. Run at the end of onboarding to catch enum typos and missing fields before they reach Stage 1.
-3. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
+3. **`fetch_fundamentals.py` — data fetcher.** Pulls quarterly financials and computes valuation zones. Called by the `fundamentals-fetcher` subagent (see `internal/agents/fundamentals-fetcher.md`). Sources: yfinance (US), Screener.in (India).
+4. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
 
 ---
 
@@ -81,6 +82,59 @@ What it does **not** check: free-text fields (`notes`, `self_identified_weakness
 - At the end of onboarding, before declaring the profile saved. (Step 6 of `setup/onboarding.prompt.md`.)
 - After manual edits to `profile.md`.
 - Before filing an issue — if the validator errors, fix the profile first.
+
+---
+
+## `fetch_fundamentals.py` — fundamentals and valuation fetcher
+
+Called by the `fundamentals-fetcher` subagent to fetch quarterly financials and compute valuation zones. The subagent invokes this script via Bash, parses the JSON output, and writes `fundamentals.yaml` and `valuation.yaml` to the holdings workspace.
+
+### Data sources
+
+| Market | Source | Fundamentals | Valuation |
+|--------|--------|--------------|-----------|
+| US | yfinance | quarterly_income_stmt, balance_sheet, cash_flow | PE, PB, PS, EV/EBITDA from stock.info + 5-year PE history |
+| India | Screener.in | HTML scrape (#quarters section) | Chart API (PE history) |
+
+### Usage
+
+```powershell
+python scripts/fetch_fundamentals.py \
+    --ticker NVDA \
+    --market US \
+    --archetype GROWTH \
+    --sector "Semiconductors" \
+    --sector-kind OTHER \
+    --history-quarters 12
+```
+
+### Parameters
+
+| Parameter | Required | Values | Notes |
+|-----------|----------|--------|-------|
+| `--ticker` | yes | e.g., `NVDA`, `RELIANCE` | For India, suffix (.NS/.BO) is stripped |
+| `--market` | yes | `US` \| `IN` | Routes to yfinance or Screener.in |
+| `--archetype` | yes | `GROWTH` \| `INCOME_VALUE` \| `TURNAROUND` \| `CYCLICAL` | Determines primary valuation metric |
+| `--sector` | no | e.g., `"Banking"` | For banking/NBFC detection (forces P/B) |
+| `--sector-kind` | no | `COMMODITY` \| `CREDIT` \| `OTHER` | `COMMODITY` inverts EV/EBITDA zone; `CREDIT` forces P/B |
+| `--history-quarters` | no | default: 12 | Number of quarters to fetch |
+
+### Output
+
+JSON to stdout per the contract in `internal/agents/fundamentals-fetcher.md`. Exit code 0 on success/partial, 1 on total failure.
+
+### Zone computation (mirrors StockClarity)
+
+| Archetype | Primary metric | Zone logic |
+|-----------|----------------|------------|
+| GROWTH (profitable) | PEG | Size-tiered thresholds: MEGA 0.8/1.5, LARGE 1.0/2.0, MID 1.2/2.5, SMALL 1.5/3.0 |
+| GROWTH (unprofitable) | P/S | Percentile or default thresholds |
+| INCOME_VALUE | PE | Percentile + PEG override guard |
+| TURNAROUND | EV/EBITDA | Percentile |
+| CYCLICAL | EV/EBITDA | Percentile; inverted for COMMODITY sector-kind |
+| Banks/NBFCs | P/B | Sector override, percentile |
+
+Guardrails: PE > 150 forces EXPENSIVE; growth > 100% capped at 100% for PEG.
 
 ---
 
