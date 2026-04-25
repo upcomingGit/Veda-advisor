@@ -227,3 +227,7 @@ private/
 notes/
 .vscode/
 ROADMAP.md
+# Instrument workspaces — per-position knowledge (thesis, KB, decisions, earnings history).
+holdings/
+holdings_registry.csv
+holdings_registry.csv.bak.*

@@ -12,6 +12,19 @@ Every investment question maps to one or more of:
 
 Frameworks cluster around these. Most questions touch one problem primarily; some touch two (e.g., "should I trim my 20% NVDA position after a 180% run" = partly #2 *when to sell*, partly #3 *too concentrated?*).
 
+## Archetype input
+
+For ticker-specific questions, read the position's `archetype` from `holdings/<instance_key>/_meta.yaml`. The archetype informs conditional routing:
+
+| Archetype | Maps to | Conditional frameworks elevated |
+|---|---|---|
+| `GROWTH` | Lynch Fast Grower | Fisher (growth quality), Lynch (PEG, earnings growth) |
+| `INCOME_VALUE` | Lynch Stalwart / Slow Grower | Buffett (moat, margin of safety), Klarman (value discipline) |
+| `TURNAROUND` | Lynch Turnaround | Klarman (margin of safety on distressed), Marks (permanent loss vs volatility) |
+| `CYCLICAL` | Lynch Cyclical | Druckenmiller (cycle timing), Marks (second-level thinking on cycle position) |
+
+If no workspace exists or archetype is missing, infer from company profile (per [internal/holdings-schema.md](../internal/holdings-schema.md) § "Archetype inference") and proceed.
+
 ## Framework clusters
 
 | Problem | Primary frameworks | What they answer |

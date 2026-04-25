@@ -1,0 +1,2 @@
+instance_key,instrument_class,display_name,first_acquired,last_disposed,status,reason
+msft,equity,Microsoft,2021-03-15,,active,rsu_vest
