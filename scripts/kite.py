@@ -293,11 +293,38 @@ def _authed_kite() -> Any:
         }, indent=2))
         raise SystemExit(1)
 
-    from kiteconnect import KiteConnect
+    # Use a lightweight REST wrapper instead of importing the full kiteconnect
+    # SDK, which drags in twisted + OpenSSL (broken on Python 3.13 due to
+    # importlib frozen-module issue). The Kite Connect v3 REST API is stable
+    # and all three subcommands only need GET endpoints.
+    import requests
 
-    kite = KiteConnect(api_key=api_key)
-    kite.set_access_token(access_token)
-    return kite
+    class _KiteRest:
+        """Minimal Kite Connect v3 REST client using requests."""
+        _BASE = "https://api.kite.trade"
+        _HEADERS = {
+            "X-Kite-Version": "3",
+            "Authorization": f"token {api_key}:{access_token}",
+        }
+
+        def _get(self, path: str) -> Any:
+            resp = requests.get(self._BASE + path, headers=self._HEADERS, timeout=15)
+            resp.raise_for_status()
+            body = resp.json()
+            if body.get("status") != "success":
+                raise RuntimeError(body.get("message", "Kite API error"))
+            return body["data"]
+
+        def holdings(self) -> list:
+            return self._get("/portfolio/holdings")
+
+        def margins(self, segment: str = "equity") -> dict:
+            return self._get(f"/user/margins/{segment}")
+
+        def trades(self) -> list:
+            return self._get("/orders/trades")
+
+    return _KiteRest()
 
 
 def _emit(payload: dict[str, Any]) -> int:
