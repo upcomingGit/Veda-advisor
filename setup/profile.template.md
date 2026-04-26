@@ -126,6 +126,12 @@ experience:
 self_identified_weakness: <string>
 # e.g., "I sell winners too early and hold losers too long"
 
+broker:
+  primary: <zerodha | other | none>
+  # zerodha = live pull via scripts/kite.py; "refresh from Zerodha" works
+  # other = paste or direct edit only; other broker integrations in progress
+  # none = no broker (manual tracking)
+
 data_access:
   - yahoo_finance
   - screener_in

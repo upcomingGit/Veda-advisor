@@ -49,6 +49,14 @@ If what you want is "just tell me what to buy," Veda is the wrong tool — and t
 
 ---
 
+## How Veda remembers — company workspaces
+
+Every position you hold gets its own folder under `holdings/<ticker>/` — its **company workspace**. This is Veda's institutional memory for that name: business model, competitive position, governance, risks, your investment thesis, kill criteria, quarterly fundamentals, valuation zone, and an append-only log of every decision you've made on the position. Built once, refreshed when material events happen.
+
+**KB-first sourcing.** Once a workspace is populated, Veda treats it as the **primary knowledge source** for that instrument — not ad-hoc web search. Business model, competitors, macro sensitivities, governance: all read from the curated KB. The web is consulted only for real-time data (price, FX), events post-dating the KB, explicit knowledge gaps, or when you ask for fresh information. This stops Veda from re-researching and contradicting itself across sessions, and keeps every decision linked to a source-tier-tagged audit trail.
+
+---
+
 ## Install
 
 Pick your assistant — each has a native install path. Full instructions, privacy notes, and session-invocation guidance live in [INSTALL.md](INSTALL.md).

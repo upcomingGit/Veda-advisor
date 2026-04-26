@@ -84,6 +84,9 @@ experience:
 
 self_identified_weakness: "Buy on hype / social-media tips. Don't know how to research a stock."
 
+broker:
+  primary: zerodha
+
 data_access:
   - yahoo_finance
   - screener_in

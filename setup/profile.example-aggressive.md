@@ -92,6 +92,9 @@ experience:
 
 self_identified_weakness: "I sell winners too early. Trimmed NVDA at 2x in 2023, missed the 5x."
 
+broker:
+  primary: zerodha
+
 data_access:
   - yahoo_finance
   - screener_in
