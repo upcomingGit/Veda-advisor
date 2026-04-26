@@ -40,6 +40,23 @@ changelog on release.
 - **`scripts/fetch_fundamentals.py`** — data-fetching backend for the subagent.
   Sources: yfinance (US), Screener.in HTML scrape + Chart API (India). Zone
   computation mirrors StockClarity's archetype-aware PEG/PE/EV-EBITDA/P-B logic.
+- **User-facing documentation hub** at [docs/](docs/). Plain-English guides
+  written for finance people, not coders. Pages: capabilities, how Veda thinks
+  (the 9-stage pipeline), customization (profile / weights / guardrails),
+  glossary, FAQ, troubleshooting. Plus an [extending/](docs/extending/) section
+  with end-to-end guides for adding a framework, a broker importer, a
+  calculator, or a subagent. Linked from the README's new Documentation
+  section.
+
+### Changed
+
+- **README.md** — added a Documentation section linking the new docs hub;
+  fixed a duplicate Quick-start step; refreshed the Status block to mention
+  shipped subagents and the docs hub.
+- **ROADMAP.md** — added a "User-facing documentation parity" item to the
+  cross-cutting requirements: any new capability behind a Hard Rule, profile
+  field, routing change, script, or subagent must update the corresponding
+  doc page in the same PR.
 
 ## [0.1.0] - 2026-04-22
 

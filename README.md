@@ -1,6 +1,6 @@
 # Veda
 
-[![version](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-see%20LICENSE-lightgrey)](LICENSE)
+[![version](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 **The world's greatest investors, at your fingertips. Veda is an AI-powered Investment Advisor chat interface that brings back the thinking of the world's greatest investors and applies that thinking to your personalised situations and money problems.**
 
@@ -43,23 +43,30 @@ If what you want is "just tell me what to buy," Veda is the wrong tool — and t
 ## What Veda is not
 
 - **Not a stock tipper.** Veda does not predict prices, name winners, or promise outperformance. It makes the reasoning behind your decisions explicit and auditable.
-- **Not a data feed by default.** Veda reasons over data you or your assistant's web tools provide. For live quotes and FX rates, an optional helper `scripts/fetch_quote.py` uses `yfinance` — install with `python -m pip install -r requirements.txt` once. Everything else (onboarding, frameworks, decisions, journaling) works with zero dependencies.
 - **Not financial advice.** Every recommendation comes with reasoning you can inspect and reject. You are responsible for your own money.
 - **Not a replacement for reading the books.** Frameworks are compressed distillations. If Buffett resonates, go read *The Essays of Warren Buffett*.
+- **Not a Bloomberg replacement.** Veda is a reasoning layer over data you (or your assistant) provide. Live quotes and FX are an optional add-on via `yfinance`; full live-data integration is on the [roadmap](ROADMAP.md), not in v0.1.
+
+## Why Veda vs the alternatives
+
+| If you are using… | What Veda adds |
+|---|---|
+| **Plain ChatGPT / Gemini for stock questions** | Forces a named investor framework on every recommendation, refuses negative-EV trades, blocks LLM arithmetic, never uses stale prices. The same question on plain ChatGPT will give you a different confident answer every session. |
+| **Reading the canon yourself** | Routes the right framework to the right question (Marks for cycles, Lynch for categorising, Munger when you are about to sell a winner) instead of asking you to remember which one applies. Books stay essential — Veda is the application layer. |
+| **A paid robo-adviser or RIA** | You see and audit every rule. No commission conflicts. No 100bps fee. Trade-off: you do the journaling and the reading; Veda does the discipline. |
+| **A Bloomberg terminal** | Veda is a complement, not a substitute. Use Bloomberg for data; use Veda for reasoning over that data with named-source discipline. |
 
 ---
 
-## How Veda remembers — company workspaces
+## How Veda remembers
 
-Every position you hold gets its own folder under `holdings/<ticker>/` — its **company workspace**. This is Veda's institutional memory for that name: business model, competitive position, governance, risks, your investment thesis, kill criteria, quarterly fundamentals, valuation zone, and an append-only log of every decision you've made on the position. Built once, refreshed when material events happen.
-
-**KB-first sourcing.** Once a workspace is populated, Veda treats it as the **primary knowledge source** for that instrument — not ad-hoc web search. Business model, competitors, macro sensitivities, governance: all read from the curated KB. The web is consulted only for real-time data (price, FX), events post-dating the KB, explicit knowledge gaps, or when you ask for fresh information. This stops Veda from re-researching and contradicting itself across sessions, and keeps every decision linked to a source-tier-tagged audit trail.
+Every position you hold gets a folder under `holdings/<ticker>/` — its **company workspace**. This is Veda's institutional memory: thesis, knowledge base, kill criteria, quarterly fundamentals, valuation zone, full append-only decision log. Once populated, the workspace is the **primary** source for that name — not ad-hoc web search — so Veda does not contradict itself across sessions. Schema details: [docs/capabilities.md](docs/capabilities.md).
 
 ---
 
 ## Install
 
-Pick your assistant — each has a native install path. Full instructions, privacy notes, and session-invocation guidance live in [INSTALL.md](INSTALL.md).
+Veda runs inside whichever AI assistant you point it at. Pick yours — each has a native install path. Full instructions, privacy notes, and per-surface trade-offs live in [INSTALL.md](INSTALL.md).
 
 | Assistant | Invoke with |
 |---|---|
@@ -72,6 +79,8 @@ Pick your assistant — each has a native install path. Full instructions, priva
 | **ChatGPT** (web, Plus/Pro/Team/Business) | start a chat with your Veda GPT ([setup as Custom GPT or Project](INSTALL.md#chatgpt-web)) |
 | **Other web chat** (Claude web, Perplexity, Grok) | paste `SKILL.md` as a system instruction |
 
+Full capability differs by assistant (filesystem access, Python execution for the math layer, isolated subagents). Web chats work but with reduced capability — see the trade-off table in [docs/capabilities.md](docs/capabilities.md#where-veda-runs).
+
 > **Privacy first.** Onboarding writes a `profile.md` containing your personal financial context. It is gitignored by default. Never commit it. See [INSTALL.md](INSTALL.md#before-you-install--a-word-on-privacy).
 
 ---
@@ -82,11 +91,27 @@ Pick your assistant — each has a native install path. Full instructions, priva
 2. **(Optional) Enable live quotes.** Run `python -m pip install -r requirements.txt` if you want Veda to pull live prices and FX rates. Skip this if you're happy pasting prices yourself — every other feature still works.
 3. **Run onboarding.** Invoke `/veda` (or equivalent). The assistant interviews you in about 5 minutes (2 minutes on the novice path) and writes `profile.md`.
 4. **Ask an investment question.** Example: *"Veda: should I add to my TSMC position at today's price?"*
-3. **Ask an investment question.** Example: *"Veda: should I add to my TSMC position at today's price?"*
 
 Veda reads your profile, identifies which of the three problems you're asking about, routes to the 2–3 frameworks that apply, and returns a recommendation with an expected-value block and a pre-commit block (thesis, kill criteria, re-evaluate trigger) you can paste into your journal.
 
 See [examples/01-hold-check-winner.md](examples/01-hold-check-winner.md) for an end-to-end walkthrough.
+
+---
+
+## Documentation
+
+Plain-English guides written for finance people, not coders. Start at [docs/README.md](docs/README.md) — it is the documentation hub. The most useful pages:
+
+| Page | Read this if you want to |
+|---|---|
+| [What Veda can do today](docs/capabilities.md) | See the actual capabilities list — what is shipped, what is not, where the limits are. |
+| [How Veda thinks](docs/how-veda-thinks.md) | Walk through the 9 stages Veda runs every question, in plain English. |
+| [Customize Veda for you](docs/customization.md) | Tune your profile, framework weights, guardrails, hard constraints, markets. |
+| [Glossary](docs/glossary.md) | Look up any term Veda uses (PEG, EV, Kelly, archetype, kill criterion, base rate). |
+| [FAQ](docs/faq.md) and [Troubleshooting](docs/troubleshooting.md) | Common questions and common fixes. |
+| [Extending Veda](docs/extending/README.md) | Add your own framework, broker importer, calculator, or specialist worker. |
+
+For the full orchestrator playbook (long, dense, technical), read [SKILL.md](SKILL.md). For strategic direction across roadmap tiers, read [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -104,7 +129,7 @@ Full guide and voice rules: [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [CODE_O
 
 ## Status
 
-**v0.1 — early preview.** Walking skeleton with all eleven frameworks shipped (Lynch is the reference implementation; Buffett, Munger, Fisher, Druckenmiller, Marks, Klarman, Thorp, Dalio, Templeton, and Taleb ship alongside it), one worked example, a profile template with two worked examples (aggressive and novice), and install paths for every major assistant. More worked examples, deeper per-framework citations, and more broker importers are in flight.
+**v0.1 — early preview.** Walking skeleton with all eleven frameworks shipped (Lynch is the reference implementation; Buffett, Munger, Fisher, Druckenmiller, Marks, Klarman, Thorp, Dalio, Templeton, and Taleb ship alongside it), four shipped subagents (devil's advocate, portfolio parser, company KB builder, fundamentals fetcher), one worked example, a profile template with two worked examples (aggressive and novice), the [docs/](docs/) hub for users and contributors, and install paths for every major assistant. More worked examples, deeper per-framework citations, and more broker importers are in flight.
 
 ---
 
