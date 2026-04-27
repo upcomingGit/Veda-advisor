@@ -6,9 +6,10 @@ Nothing in this doc is authoritative for runtime behaviour until a final pass
 lifts the **[DRAFT]** banner at the top.
 
 This document supersedes the "structured holdings schema" bullet in
-[ROADMAP.md](../ROADMAP.md) Tier 1 for everything above the
-`thesis_assumptions[]` sub-item. When this doc lands, the roadmap will be
-split accordingly.
+[ROADMAP.md](../ROADMAP.md) Tier 1. The four-assumption schema (`A1`–`A4`,
+three anchors per assumption) lives in `holdings/<slug>/thesis.md` and
+`holdings/<slug>/assumptions.yaml` per [internal/holdings-schema.md](../../internal/holdings-schema.md);
+per-position population is lazy.
 
 ---
 
@@ -496,7 +497,7 @@ end-to-end.
 | Deliverable | Description |
 |---|---|
 | `holdings/msft/` | Pilot workspace with all required files per Phase 0 schema. |
-| `holdings/msft/_meta.yaml` | `instrument_class: equity`, `archetype: GROWTH`, `schema_version: 1`, `last_touched: <date>`. |
+| `holdings/msft/_meta.yaml` | `instrument_class: equity`, `archetype: GROWTH`, `market: US`, `schema_version: 1`, `last_touched: <date>`. |
 | `holdings/msft/kb.md` | Stub with placeholder text. |
 | `holdings/msft/thesis.md` | Stub with placeholder text. |
 | `holdings/msft/decisions/` | Empty directory or one example decision. |
@@ -593,11 +594,13 @@ instances.
    - SKILL.md Stage 1.5 — load `holdings/<instance>/` on ticker mention;
      drift check + registry validation on session load; narration rules.
    - [ROADMAP.md](../ROADMAP.md) Tier 1 — split the structured-holdings
-     bullet; defer `thesis_assumptions[]` until `earnings-grader` is in
-     flight; note V1 is equity-only with non-equity scope expansion as a
+     bullet; the four-assumption schema is already designed in
+     [internal/holdings-schema.md](../../internal/holdings-schema.md), with
+     per-position population lazy on first substantive question per ticker;
+     note V1 is equity-only with non-equity scope expansion as a
      follow-up item.
    - `.gitignore` — add `holdings/` and `holdings_registry.csv`.
 
 What is explicitly **not** in v1: non-equity instrument classes, migrating
-all 34 other equity rows (lazy per Q1), `thesis_assumptions[]` schema,
+all 34 other equity rows (lazy per Q1),
 Python sync, scheduled absorption, corporate-action playbooks.

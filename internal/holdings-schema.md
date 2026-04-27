@@ -14,6 +14,7 @@ Every workspace directory MUST contain a `_meta.yaml` at its root.
 schema_version: 1
 instrument_class: equity
 archetype: GROWTH          # GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL
+market: US                 # US | IN  (drives the `quarterly_checkpoint` metric whitelist)
 last_touched: 2026-04-23   # ISO date; updated on any file write in this workspace
 ```
 
@@ -21,7 +22,8 @@ last_touched: 2026-04-23   # ISO date; updated on any file write in this workspa
 |---|---|---|---|
 | `schema_version` | int | yes | Current version is `1`. Validators reject values > current. |
 | `instrument_class` | enum | yes | Must match the registry row. V1 allows `equity` only. |
-| `archetype` | enum | yes (equity) | One of `GROWTH`, `INCOME_VALUE`, `TURNAROUND`, `CYCLICAL`. Drives framework routing. |
+| `archetype` | enum | yes (equity) | One of `GROWTH`, `INCOME_VALUE`, `TURNAROUND`, `CYCLICAL`. Drives framework routing AND assumption slot allocation (see [`assumptions.yaml` § "Writing assumptions and checkpoints"](#writing-assumptions-and-checkpoints--guardrails-validator-enforced)). |
+| `market` | enum | yes (equity) | One of `US`, `IN`. Drives the `quarterly_checkpoint` metric whitelist (Indian companies have a tighter set per Screener.in's quarterly schema; US equities have access to gross-margin / OCF / CapEx / FCF that Indian companies do not). |
 | `last_touched` | ISO date | yes | Updated automatically on any write to the workspace. |
 
 ---
@@ -69,13 +71,13 @@ Do NOT scaffold for:
 #### Scaffolded files
 
 On workspace scaffold (orchestrator, lazy):
-- `_meta.yaml` — created with required fields (archetype inferred or asked).
+- `_meta.yaml` — created with required fields. `archetype` inferred or asked per § "Archetype inference" below. `market` derived from the assets.md row's currency: INR section → `IN`, USD section → `US`. For other currencies (rare in v1; the validator only accepts `US | IN`), ask the user which market the company files quarterly results in.
 - `kb.md` — created as stub: `_(to be populated)_`
 - `thesis.md` — created as stub with archetype header: `_(to be populated)_`
 - `decisions/` — created as empty directory.
 - All other files — not created; added when data arrives.
 
-The orchestrator scaffolds a **minimal** workspace so the decision pipeline can proceed immediately. Richer content (business-model summary, first-draft thesis, governance notes, fundamentals) is produced by subagents on first encounter or on subsequent turns — see [internal/subagents.md](subagents.md) § "Subagent write targets". Until a subagent populates them, `kb.md` and `thesis.md` remain stubs and the decision pipeline falls back to `assets.md` thesis column + general knowledge.
+The orchestrator scaffolds a **minimal** workspace so the decision pipeline can proceed immediately. Richer content (business-model summary, first-draft thesis, governance notes, fundamentals) is produced by subagents on first encounter or on subsequent turns — see [internal/subagents.md](subagents.md) § "Subagent write targets". Until a subagent populates them, `kb.md` and `thesis.md` remain stubs and the decision pipeline falls back to general knowledge.
 
 #### Registry row
 
@@ -745,7 +747,12 @@ Each assumption carries up to three forward-looking anchors. Without an anchor, 
 | `transcript_checkpoint` | Segment metric or management-commentary target that lives in the earnings call, not the headline P&L. | When the earnings-call transcript is available. | Call transcript — mid tier; may lag results by days or weeks. |
 | `thesis_horizon_target` | Multi-year target for the full thesis horizon. Structural. | On thesis reviews, not every quarter. | User-defined; graded on reflection, not on routine earnings. |
 
-Each anchor is optional but at least one must be present per assumption — a grade needs something to measure against. The `quarterly_checkpoint` is the most common and should be set for almost all assumptions. `transcript_checkpoint` is set where the call adds information the P&L does not (segment growth, pricing commentary, capex pace). `thesis_horizon_target` is set when the user wants a multi-year goal recorded alongside the quarterly rhythm.
+Anchor presence is governed by the rules in [§ "Writing assumptions and checkpoints — guardrails"](#writing-assumptions-and-checkpoints--guardrails-validator-enforced):
+- `quarterly_checkpoint` — at most one assumption may set this null (rule 10, coverage).
+- `transcript_checkpoint` — non-null for GROWTH / FINANCIAL_HEALTH / COMPETITIVE; null for GOING_CONCERN (rule 6).
+- `thesis_horizon_target` — at most one assumption may set this null (rule 10, coverage).
+
+The `quarterly_checkpoint` is the headline anchor and should be set for almost all assumptions. `transcript_checkpoint` captures segment metrics and management commentary the consolidated P&L cannot — it is required on every operating-business assumption. `thesis_horizon_target` records the multi-year goal alongside the quarterly rhythm.
 
 If an assumption has no `quarterly_checkpoint` and no `transcript_checkpoint`, the quarter's grade row for that key is simply absent — there is nothing to grade. The horizon target is revisited on decision reviews, not on earnings days.
 
@@ -758,34 +765,40 @@ schema_version: 1
 
 # Exactly four assumptions. Keys A1-A4 are stable for the life of the position.
 # MUST mirror the four bullets in thesis.md § "Key assumptions".
+# MUST satisfy the rules in § "Writing assumptions and checkpoints — guardrails"
+# below; the validator at scripts/validate_assumptions.py enforces them.
 assumptions:
   A1:
-    text: "Azure revenue grows >20% YoY over the thesis horizon"
-    category: GROWTH                # optional free-form label
-    quarterly_checkpoint: "Q1 FY27 Azure revenue growth >= 25% YoY"
-    transcript_checkpoint: "Q1 FY27 call: mgmt reaffirms AI-pipeline conversion; no capacity constraints flagged"
-    thesis_horizon_target: "FY28 Azure revenue >= $180B (FY26: ~$105B)"
+    text: "Azure cloud growth sustains the consolidated revenue trajectory through the AI-capex monetisation cycle"
+    category: GROWTH
+    quarterly_checkpoint: "Microsoft Q3 FY2026 Revenue growth % YoY >= 14% (Q2 FY2026 trailing: 16.7% per fundamentals.yaml; mgmt FY2026 guidance of double-digit consolidated growth)"
+    transcript_checkpoint: "Microsoft Q3 FY2026 call: Azure revenue growth >= 30% YoY (FY2025 baseline 34% per kb.md; latest disclosed Azure cloud services growth 39% in Q4 FY2025)"
+    thesis_horizon_target: "By Microsoft FY2028, full-year Revenue growth % YoY >= 12% sustained (FY2025: $282B per kb.md; growth tied to Azure ramp continuing)"
+    checkpoint_metric_source: consolidated
 
   A2:
-    text: "Operating margin holds above 35% through AI-capex cycle"
-    category: MARGIN
-    quarterly_checkpoint: "Q1 FY27 operating margin >= 35%"
-    transcript_checkpoint: "Q1 FY27 call: capex intensity peaks this year; margin trough <= 150 bps"
-    thesis_horizon_target: "FY28 operating margin >= 38%"
+    text: "AI-driven operating leverage translates revenue growth into faster bottom-line growth"
+    category: GROWTH
+    quarterly_checkpoint: "Microsoft Q3 FY2026 Net Profit growth % YoY >= 12% (FY2025 Net Income $102B per kb.md, +15% YoY; Q2 FY2026 reported one-time gain inflated YoY to 59.6% — using normalised 12% as the floor)"
+    transcript_checkpoint: "Microsoft Q3 FY2026 call: M365 Commercial cloud revenue growth >= 15% YoY (Q4 FY2025: 18% per kb.md); Copilot for M365 attach-rate progress disclosed"
+    thesis_horizon_target: "By Microsoft FY2028, cumulative FY2026-FY2028 Net Income growth >= 50% (FY2025 baseline $102B; implies ~14% sustained CAGR)"
+    checkpoint_metric_source: consolidated
 
   A3:
-    text: "Free cash flow covers buybacks + dividends + capex without net debt"
+    text: "Operating margin holds above 42% during peak AI CapEx"
     category: FINANCIAL_HEALTH
-    quarterly_checkpoint: "Q1 FY27 FCF / (buybacks + dividends + capex) >= 1.0"
-    transcript_checkpoint: null
-    thesis_horizon_target: "FY28 net cash position maintained"
+    quarterly_checkpoint: "Microsoft Q3 FY2026 OPM% >= 42% (Q2 FY2026 trailing: 47.1% per fundamentals.yaml; FY2025: ~46% per kb.md; allows for compression as capex weighs)"
+    transcript_checkpoint: "Microsoft Q3 FY2026 call: CFO Amy Hood reaffirms capex intensity peaks within FY2026 / FY2027; no incremental margin-trough warning (FY2025 capex $64.6B, ~45% YoY increase per kb.md)"
+    thesis_horizon_target: "By Microsoft FY2028, full-year OPM% >= 44% (FY2025 baseline ~46% per kb.md; allows moderate compression during peak capex absorption)"
+    checkpoint_metric_source: consolidated
 
   A4:
-    text: "No antitrust or regulatory action forces material business changes"
+    text: "No regulatory action forces structural separation of the Microsoft-OpenAI relationship or unbundling of Copilot from M365 in major jurisdictions"
     category: GOING_CONCERN
-    quarterly_checkpoint: "No material DOJ/EU enforcement action in Q1 FY27"
+    quarterly_checkpoint: "No DOJ / EU / CMA enforcement action requiring structural change to the Microsoft-OpenAI economic stake, no required unbundling of Copilot from M365 in US / EU / UK during Microsoft Q3 FY2026"
     transcript_checkpoint: null
-    thesis_horizon_target: "Through FY28: no forced divestiture or structural remedy"
+    thesis_horizon_target: "Through Microsoft FY2028: no forced divestiture of OpenAI economic stake; no required structural unbundling of M365 + Copilot in any of US, EU, UK"
+    checkpoint_metric_source: non_financial
 
 # Per-quarter grades, appended by earnings-grader. Never overwritten, never deleted.
 # Each assumption grade has up to three anchor entries (quarterly, transcript, horizon).
@@ -796,15 +809,16 @@ quarters:
     source: earnings/2026-Q1.md (absorbed)
     grades:
       A1:
-        quarterly:  { grade: BEAT, strength: STRONG,   note: "Azure +29% YoY, guide raised" }
-        transcript: { grade: MEET, strength: MODERATE, note: "Mgmt confident; minor capacity commentary" }
+        quarterly:  { grade: BEAT, strength: STRONG,   note: "Revenue growth +18% YoY, beat target by 4pp" }
+        transcript: { grade: BEAT, strength: STRONG,   note: "Azure +35%, mgmt raised FY guide" }
       A2:
-        quarterly:  { grade: MEET, strength: MODERATE, note: "42% op margin, in line" }
-        transcript: { grade: MEET, strength: MODERATE, note: "Capex intensity elevated; no margin surprise" }
+        quarterly:  { grade: MEET, strength: MODERATE, note: "Net profit growth +14%, in line with target" }
+        transcript: { grade: MEET, strength: MODERATE, note: "M365 commercial cloud +17%, on track" }
       A3:
-        quarterly:  { grade: BEAT, strength: STRONG,   note: "FCF 1.6x combined return-of-capital + capex" }
+        quarterly:  { grade: BEAT, strength: STRONG,   note: "OPM% 47.1%, well above 42% target" }
+        transcript: { grade: MEET, strength: MODERATE, note: "Capex peak guidance reaffirmed; no margin warning" }
       A4:
-        quarterly:  { grade: MEET, strength: MODERATE, note: "No material enforcement in quarter" }
+        quarterly:  { grade: MEET, strength: MODERATE, note: "No material enforcement action in quarter" }
 ```
 
 | Field | Type | Required | Notes |
@@ -812,10 +826,11 @@ quarters:
 | `schema_version` | int | yes | Current version is `1`. |
 | `assumptions` | map | yes | Exactly four keys: `A1`, `A2`, `A3`, `A4`. Must mirror the four bullets in `thesis.md § Key assumptions`. |
 | `assumptions[Ax].text` | string | yes | The assumption statement. |
-| `assumptions[Ax].category` | string | optional | Free-form label (e.g., `GROWTH`, `MARGIN`, `FINANCIAL_HEALTH`, `GOING_CONCERN`). No enforced vocabulary. |
-| `assumptions[Ax].quarterly_checkpoint` | string or null | at least one anchor per assumption | Near-term consolidated-result target for the upcoming quarter. |
-| `assumptions[Ax].transcript_checkpoint` | string or null | at least one anchor per assumption | Segment / call-commentary target available only from the earnings transcript. |
-| `assumptions[Ax].thesis_horizon_target` | string or null | optional | Multi-year target. Graded on thesis review, not on every earnings event. |
+| `assumptions[Ax].category` | enum | yes | One of `GROWTH`, `FINANCIAL_HEALTH`, `COMPETITIVE`, `GOING_CONCERN`. Slot allocation by `_meta.yaml > archetype` — see [§ "Writing assumptions and checkpoints — guardrails"](#writing-assumptions-and-checkpoints--guardrails-validator-enforced) below. |
+| `assumptions[Ax].quarterly_checkpoint` | string or null | conditional | Single-metric, whitelisted-metric target for the next reportable quarter. Coverage rule: at most one assumption may set this null (≥3 of 4 must have both this AND `thesis_horizon_target` non-null). See § "Writing assumptions and checkpoints — guardrails". |
+| `assumptions[Ax].transcript_checkpoint` | string or null | conditional | Required non-null for `GROWTH` / `FINANCIAL_HEALTH` / `COMPETITIVE` (segment metric or call commentary). Required null for `GOING_CONCERN`. |
+| `assumptions[Ax].thesis_horizon_target` | string or null | conditional | Multi-year target. Coverage rule: at most one assumption may set this null. |
+| `assumptions[Ax].checkpoint_metric_source` | enum | yes | One of `consolidated` (GROWTH / FINANCIAL_HEALTH / COMPETITIVE — reads from quarterly P&L) or `non_financial` (GOING_CONCERN — binary event). |
 | `quarters[]` | list | yes | Append-only. Each entry is one graded earnings event. |
 | `quarters[].period` | string | yes | Fiscal-quarter label, e.g., `2026-Q1`. Unique across `quarters[]`. |
 | `quarters[].graded_on` | ISO date | yes | When the grading pass ran. |
@@ -827,6 +842,8 @@ quarters:
 | `quarters[].grades[Ax].<anchor>.grade` | enum | yes (inside the anchor) | `BEAT` \| `MEET` \| `MISS`. |
 | `quarters[].grades[Ax].<anchor>.strength` | enum | yes (inside the anchor) | `STRONG` \| `MODERATE` \| `MARGINAL`. |
 | `quarters[].grades[Ax].<anchor>.note` | string | yes (inside the anchor) | One-line rationale, ≤ 20 words. |
+
+### Schema mechanics
 
 **Missing transcript is not a special state.** If the transcript is not yet available when grading runs, the `transcript` entry for affected assumptions is simply omitted for that quarter. The `quarterly` entry stands alone. When the transcript later arrives, the user (or a future re-grade pass) can append transcript grades in the same quarter block — the quarter is appended-to, not replaced.
 
@@ -842,6 +859,139 @@ These two paths are deliberately redundant. The calendar nudges in time (via `gl
 **No factor weights, no mechanical health scores, no HOLDING/AT_RISK/BROKEN state machine.** Veda does not compute a numeric composite (see "No conviction score" below). Anchor grades are qualitative inputs to framework verdicts, not a score.
 
 **Keyset stability.** Keys `A1`–`A4` are stable for the life of the position. If the user revises `thesis.md`, the corresponding `text` field in `assumptions.yaml` is updated under the same key — never renumber. An orphan key that appears in `quarters[].grades` but not in the top-level `assumptions` map is a data-quality flag for the next `sync`.
+
+### Writing assumptions and checkpoints — guardrails (validator-enforced)
+
+These rules are enforced by [`scripts/validate_assumptions.py`](../scripts/validate_assumptions.py). Every `assumptions.yaml` write must pass the validator. Designs adapted from StockClarity's `docs/CHECKPOINT_CALIBRATION_PLAN.md` and thesis-generation prompt — only the **definitional** rules transfer. Veda does NOT adopt mechanical scoring (`health_score`, `quarterly_health`, `is_critical`, `is_catastrophic`, factor weights, conviction). Anchor grades remain qualitative inputs to framework verdicts per the existing design.
+
+#### 1. Category enum (strict)
+
+Each assumption's `category` MUST be exactly one of:
+
+| Category | Tests |
+|---|---|
+| `GROWTH` | Revenue trajectory and growth catalysts (new products, market expansion, order book) |
+| `FINANCIAL_HEALTH` | Margins, leverage, cash flow quality, dividend sustainability, cost control |
+| `COMPETITIVE` | Market-share trajectory, pricing power vs peers, deal win rates, customer retention |
+| `GOING_CONCERN` | Governance integrity, regulatory risk, management transparency, fraud / delisting risk |
+
+Free-form categories (e.g., `MARGIN`) are no longer valid. Replace `MARGIN` with `FINANCIAL_HEALTH`.
+
+#### 2. Slot allocation by archetype
+
+The `archetype` in `_meta.yaml` determines the required category mix. The validator enforces exact counts.
+
+| Archetype | GROWTH | FINANCIAL_HEALTH | COMPETITIVE | GOING_CONCERN |
+|---|---|---|---|---|
+| `GROWTH` | 2 | 1 | 0 | 1 |
+| `INCOME_VALUE` | 1 | 2 | 0 | 1 |
+| `TURNAROUND` | 1 | 1 | 1 | 1 |
+| `CYCLICAL` | 1 | 1 | 1 | 1 |
+
+#### 3. Mandatory metric whitelist for `quarterly_checkpoint`
+
+Driven by `market` in `_meta.yaml` (`US` or `IN`). The whitelist mirrors what is parseable from quarterly financial statements per market.
+
+| Metric | Indian (`market: IN`) | US (`market: US`) |
+|---|---|---|
+| Revenue (₹ Cr / $) | ✓ | ✓ |
+| Revenue growth % YoY | ✓ | ✓ |
+| Operating Profit (₹ Cr / $) | ✓ | ✓ |
+| Operating Profit growth % YoY | ✓ | ✓ |
+| OPM% (Operating Profit Margin) | ✓ | ✓ |
+| Net Profit (₹ Cr / $) | ✓ | ✓ |
+| Net Profit growth % YoY | ✓ | ✓ |
+| EPS (₹ / $) | ✓ | ✓ |
+| Gross Profit | ✗ | ✓ |
+| Gross Margin % | ✗ | ✓ |
+| Operating Cash Flow | ✗ | ✓ |
+| CapEx | ✗ | ✓ |
+| Free Cash Flow | ✗ | ✓ |
+
+**Banned in `quarterly_checkpoint` for both markets:** ARPAC, ARPU, segment revenue, subscriber count, deal TCV, EBITDA, EBITDA margin, efficiency ratio, order book, market share %, utilization, NIM, GNPA, CASA, debtor days, debt-to-equity, interest coverage, inventory turnover, promoter shareholding %, ESG score, employee count, store count, capacity utilization, borrowings, any unlisted KPI.
+
+**Replacement guidance.** Segment revenue → put in `transcript_checkpoint` and use total Revenue or Revenue growth in `quarterly_checkpoint`. EBITDA margin → OPM%. Subscriber / ARPU / Order book → `transcript_checkpoint`. NIM / GNPA / CASA → OPM% + Net Profit growth. For Indian companies: Gross Margin → OPM%, FCF → Net Profit, CapEx → Operating Profit.
+
+The `transcript_checkpoint` field is **NOT subject to this whitelist** — segment metrics, ARPU, NIM, etc. are appropriate there because they live in the call, not the headline P&L.
+
+#### 4. Single-metric rule
+
+Each `quarterly_checkpoint` MUST target exactly ONE measurable metric. Compound expressions (`AND`, `OR`, two metrics joined) are rejected.
+
+- ✓ `Revenue growth % YoY >= 14% (Q2 FY2026 trailing: ...)`
+- ✗ `Revenue growth >= 14% AND OPM% >= 18.5%`
+- ✗ `Revenue >= ₹4,200 Cr OR Net Profit >= ₹500 Cr`
+
+Exception: GOING_CONCERN binary sentinels may list multiple binary events ("no fines > $X, no DOJ actions, no CEO/CFO departures").
+
+If two metrics genuinely need tracking on one assumption, split into two assumptions OR put the secondary in `transcript_checkpoint`.
+
+#### 5. Checkpoint uniqueness
+
+Each non-GOING_CONCERN assumption's `quarterly_checkpoint` MUST use a different primary metric:
+
+| Assumption | Primary metric for `quarterly_checkpoint` |
+|---|---|
+| GROWTH (slot 1) | Revenue growth % YoY |
+| GROWTH (slot 2, when present) | Operating Profit growth % YoY OR Net Profit growth % YoY |
+| FINANCIAL_HEALTH (slot 1) | OPM% (margin level, not growth) |
+| FINANCIAL_HEALTH (slot 2, when present) | A US-only cash-flow metric distinct from slot 1 (Operating Cash Flow OR Free Cash Flow) |
+| COMPETITIVE | Revenue (absolute) OR EPS |
+| GOING_CONCERN | binary sentinel (no numeric metric, no primary-metric collision) |
+
+Two assumptions sharing the same primary metric → rejected.
+
+#### 6. Mandatory `transcript_checkpoint`
+
+`transcript_checkpoint` MUST be non-null for `GROWTH`, `FINANCIAL_HEALTH`, `COMPETITIVE`. MUST be `null` for `GOING_CONCERN`.
+
+The transcript anchor is where segment metrics, management commentary, and business KPIs live — the things the call discloses but the consolidated P&L does not.
+
+#### 7. `checkpoint_metric_source` field
+
+Each assumption MUST set `checkpoint_metric_source`:
+
+- `consolidated` for GROWTH / FINANCIAL_HEALTH / COMPETITIVE — checkpoint reads from the quarterly P&L.
+- `non_financial` for GOING_CONCERN — checkpoint is a binary event, not a financial metric.
+
+#### 8. Calibration
+
+| Rule | Detail |
+|---|---|
+| **Anti-sandbagging** | When management gives a guidance range, target a value AT or ABOVE the midpoint, not the lower bound. |
+| **Floor** | Never set a target BELOW the most recent actual unless an explicit reason is cited (seasonal decline, one-time prior-quarter benefit, management-guided deceleration). |
+| **Per-archetype Revenue tilt** | GROWTH: trailing growth + 1–3pp. INCOME_VALUE: trailing flat. TURNAROUND: trailing flat (the thesis is margin recovery, not revenue acceleration). CYCLICAL: same-quarter-prior-year for seasonal context. |
+| **Per-archetype Margin tilt** | GROWTH: trailing 2Q average (flat — no penalty for growth-driven compression). INCOME_VALUE: trailing 2Q + 0.5pp. TURNAROUND: trailing 2Q + 1pp. CYCLICAL: same-quarter-prior-year. |
+| **GOING_CONCERN** | Binary; not subject to growth math. |
+
+#### 9. Inline grounding
+
+Every `quarterly_checkpoint` and `thesis_horizon_target` on a non-GOING_CONCERN assumption MUST cite its evidence source inline, in parentheses or brackets. Source types:
+
+- Management guidance: `(mgmt guided 12-14%, Q3 FY2026 call)`
+- Historical / trailing: `(4Q avg: 54.2% per fundamentals.yaml)`
+- Sector benchmark: `(NASSCOM FY26 industry forecast: 8%)`
+- Analyst consensus: `(consensus $2.15)`
+- Filing: `(BSE announcement 2026-04-22)`
+- Workspace file: `(per kb.md § Revenue Drivers)`
+
+GOING_CONCERN binary checkpoints are exempt.
+
+#### 10. Coverage
+
+At least **3 of 4** assumptions MUST have BOTH non-null `quarterly_checkpoint` AND non-null `thesis_horizon_target`. At most one assumption may have either field as null.
+
+#### 11. Period naming (convention, not validator-enforced)
+
+`quarterly_checkpoint` and `transcript_checkpoint` strings should name the next reportable period explicitly (e.g., `Microsoft Q3 FY2026` or `HBL Q4 FY2026`), not a vague "next quarter." This makes the grading pass deterministic.
+
+#### Validator
+
+```powershell
+python scripts/validate_assumptions.py holdings/<slug>/assumptions.yaml
+```
+
+Exit code `0` valid, `1` errors printed, `2` file missing or unreadable. The validator reads the workspace's `_meta.yaml` for `archetype` and `market` context.
 
 ### Derived cross-quarter view
 
@@ -1021,6 +1171,7 @@ For each non-quarantined registry row, check `holdings/<instance_key>/` **only i
 | `schema_version` present and ≤ 1 | `holdings/<key>/_meta.yaml: schema_version <x> > current (1).` |
 | `instrument_class` matches registry | `holdings/<key>/_meta.yaml: instrument_class mismatch. Registry says <x>, meta says <y>.` |
 | `archetype` present and in enum | `holdings/<key>/_meta.yaml: archetype '<value>' invalid. Allowed: GROWTH, INCOME_VALUE, TURNAROUND, CYCLICAL.` |
+| `market` present and in enum | `holdings/<key>/_meta.yaml: market '<value>' invalid. Allowed: US, IN.` |
 | `last_touched` parses as ISO date | `holdings/<key>/_meta.yaml: last_touched '<value>' not ISO date.` |
 
 ### Step 5: Drift detection

@@ -12,7 +12,7 @@ Full procedure bodies for the four `assets.md` update patterns referenced in [SK
 
 1. Overwrite the holdings tables in `assets.md` wholesale.
 2. Stamp a new top-level `As of:` date.
-3. **Thesis preservation:** Preserve any non-empty `thesis` values from the old file by ticker match; do not silently drop them. If a ticker is in the new paste but not the old, its thesis is blank. If a ticker is in the old but not the new, it was sold — drop the row.
+3. **Tag preservation:** Preserve any non-default `tags` values (e.g., `core`, `tactical`, `speculation`) from the old file by ticker match; do not silently drop them. If a ticker is in the new paste but not the old, its tag is the default placeholder. If a ticker is in the old but not the new, it was sold — drop the row. Per-position thesis content lives in `holdings/<slug>/thesis.md` and is unaffected by `assets.md` refreshes.
 4. Re-run `scripts/calc.py` for every affected `dynamic.totals`, `dynamic.concentration_snapshot`, `dynamic.capital_split_current`, and `dynamic.forced_concentration_snapshot` field and write the new numbers back in the same turn.
 
 **Narration:** *"Updated `assets.md` (full refresh). Totals recomputed via calc.py. As of: 2026-04-21."*
@@ -63,7 +63,7 @@ Veda re-reads the file on next session. No Veda action needed beyond the normal 
 ### Pull procedure (after gate passes)
 
 1. Run `python scripts/kite.py holdings` in the terminal and parse the JSON on stdout.
-2. Apply the same reconciliation rules as pattern 1 (full refresh): preserve non-empty `thesis` values by ticker match, add new tickers with blank thesis, drop tickers absent from the pull (sold).
+2. Apply the same reconciliation rules as pattern 1 (full refresh): preserve non-default `tags` values by ticker match, add new tickers with the default tag placeholder, drop tickers absent from the pull (sold). Per-position thesis content lives in `holdings/<slug>/thesis.md` and is unaffected.
 3. Refresh `dynamic.fx_rates.usd_inr` via `scripts/fetch_quote.py` in the same turn.
 4. Re-run `scripts/calc.py` for every affected total / snapshot per Hard Rule #8.
 5. Stamp the new top-level `As of:` from the `as_of` field in the Kite JSON.

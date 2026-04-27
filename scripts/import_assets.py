@@ -19,7 +19,9 @@ Output:
         these (fx_rates, concentration_snapshot, capital_split_current,
         forced_concentration_snapshot, totals) on the first session after import,
         using scripts/calc.py per Hard Rule #8. See internal/assets-schema.md.
-      - A `## Holdings (equities)` table populated from the CSV.
+      - A `## Holdings (equities)` table populated from the CSV. Per-position
+        thesis content is NOT written into this table — it lives in
+        holdings/<slug>/thesis.md and is captured lazily per SKILL.md Stage 1.5.
       - Empty `## Cash & equivalents` and `## Liabilities (loans)` placeholders.
 
     Does NOT fetch live prices. Current prices come from the CSV (which is usually end-of-day).
@@ -204,15 +206,15 @@ def render_markdown(positions: list[Position], as_of: str) -> str:
         "",
         "## Holdings (equities)",
         "",
-        "| ticker | name | shares | avg_cost | current_price | current_value | sector | thesis | tags |",
-        "|---|---|---:|---:|---:|---:|---|---|---|",
+        "| ticker | name | shares | avg_cost | current_price | current_value | sector | tags |",
+        "|---|---|---:|---:|---:|---:|---|---|",
     ]
 
     rows: list[str] = []
     for p in sorted(positions, key=lambda x: x.current_value, reverse=True):
         rows.append(
             f"| {p.ticker} | {p.name} | {p.shares:g} | {p.avg_cost:,.2f} "
-            f"| {p.current_price:,.2f} | {p.current_value:,.2f} | {p.sector or '-'} | _(add thesis)_ | _(core/tactical/speculation)_ |"
+            f"| {p.current_price:,.2f} | {p.current_value:,.2f} | {p.sector or '-'} | _(core/tactical/speculation)_ |"
         )
 
     footer = [
@@ -348,8 +350,9 @@ def main() -> int:
     print(
         "\nNext steps:\n"
         "  1. Add your cash balance and any sector caps at the bottom of the file.\n"
-        "  2. Leave 'thesis' and 'tags' blank. Veda will ask for those lazily\n"
-        "     when you question a specific holding, and write the answers back here.\n"
+        "  2. Per-position thesis content is captured lazily in\n"
+        "     holdings/<slug>/thesis.md the first time you ask Veda about that\n"
+        "     ticker (SKILL.md Stage 1.5). Do not pre-fill it here.\n"
         "  3. Confirm assets.md is gitignored: `git check-ignore -v assets.md`"
     )
     return 0

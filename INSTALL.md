@@ -358,7 +358,7 @@ python scripts/import_assets.py zerodha holdings.csv
 python scripts/import_assets.py generic my_export.csv
 ```
 
-The script writes `assets.md` (a starter file with the `dynamic:` block as stubs plus the holdings table). Theses and tags are filled in *lazily* — when you ask Veda about a specific holding, it asks you for the one-line thesis and saves it back. Veda fills the `dynamic:` block (FX, totals, concentration snapshot) on the first session after import. You never batch-fill the whole file.
+The script writes `assets.md` (a starter file with the `dynamic:` block as stubs plus the holdings table). Tags are filled in *lazily* — when you ask Veda about a specific holding, it asks you for the tag and saves it back to `assets.md`. Per-position thesis content lives in `holdings/<slug>/thesis.md` (a separate workspace file, scaffolded the first time you ask about that ticker), not in the holdings table. Veda fills the `dynamic:` block (FX, totals, concentration snapshot) on the first session after import. You never batch-fill the whole file.
 
 - `assets.md` is gitignored by default. Never commit it.
 - Supported brokers today: Zerodha, plus a generic CSV importer.

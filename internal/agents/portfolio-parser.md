@@ -56,7 +56,6 @@ portfolio_parser:
           avg_cost: <number | "TBD_fetch">
           current_price: <number | "TBD_fetch">
           sector: <string | null>
-          thesis: <string | null>
           tags: <string | null>
         # ... more rows
     # ... more currency groups
@@ -77,7 +76,6 @@ portfolio_parser:
 | `holdings[].rows[].current_price` | yes | Number or `"TBD_fetch"`. |
 | `holdings[].rows[].name` | no | Company name if present. `null` if not. |
 | `holdings[].rows[].sector` | no | Sector if present. `null` if not. Orchestrator defaults to `"-"`. |
-| `holdings[].rows[].thesis` | no | Thesis if present (rare in broker exports). `null` if not. |
 | `holdings[].rows[].tags` | no | Tags like "core", "tactical", "speculation" if present. `null` if not. |
 
 **Invariant:** Every row must have at least one of `shares` or `weight_pct`. If the paste has neither for a row, add to `clarifications_needed`.
@@ -86,7 +84,8 @@ portfolio_parser:
 
 - `current_value`: The orchestrator computes this via `calc.py` (Hard Rule #8: no LLM arithmetic).
 - Converted shares from percentages: If input has `weight_pct`, output `weight_pct`. The orchestrator converts to shares after obtaining total portfolio value.
-- Defaults: Do not fill in `"-"` for missing sector or `"_(add thesis)_"` for missing thesis. Return `null`; the orchestrator applies defaults when writing `assets.md`.
+- `thesis`: Per-position thesis content lives in `holdings/<slug>/thesis.md`, not in the portfolio paste. If the user's paste contains thesis text, ignore it; the orchestrator captures thesis content lazily when the user asks about a specific ticker (SKILL.md Stage 1.5).
+- Defaults: Do not fill in `"-"` for missing sector. Return `null`; the orchestrator applies defaults when writing `assets.md`.
 
 ## Rules you follow
 

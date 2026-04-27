@@ -45,7 +45,7 @@ If what you want is "just tell me what to buy," Veda is the wrong tool — and t
 - **Not a stock tipper.** Veda does not predict prices, name winners, or promise outperformance. It makes the reasoning behind your decisions explicit and auditable.
 - **Not financial advice.** Every recommendation comes with reasoning you can inspect and reject. You are responsible for your own money.
 - **Not a replacement for reading the books.** Frameworks are compressed distillations. If Buffett resonates, go read *The Essays of Warren Buffett*.
-- **Not a Bloomberg replacement.** Veda is a reasoning layer over data you (or your assistant) provide. Live quotes and FX are an optional add-on via `yfinance`; full live-data integration is on the [roadmap](ROADMAP.md), not in v0.1.
+- **Not a Bloomberg replacement.** Veda is a reasoning layer over data you (or your assistant) provide. Live quotes and FX are an optional add-on via `yfinance`; full live-data integration is not in v0.1.
 
 ## Why Veda vs the alternatives
 
@@ -60,7 +60,7 @@ If what you want is "just tell me what to buy," Veda is the wrong tool — and t
 
 ## How Veda remembers
 
-Every position you hold gets a folder under `holdings/<ticker>/` — its **company workspace**. This is Veda's institutional memory: thesis, knowledge base, kill criteria, quarterly fundamentals, valuation zone, full append-only decision log. Once populated, the workspace is the **primary** source for that name — not ad-hoc web search — so Veda does not contradict itself across sessions. Schema details: [docs/capabilities.md](docs/capabilities.md).
+Every position you hold gets a folder under `holdings/<ticker>/` — its **company workspace**. This is Veda's institutional memory: thesis, knowledge base, kill criteria, quarterly fundamentals, valuation zone, full append-only decision log. Once populated, the workspace is the **primary** source for that name — not ad-hoc web search — so Veda does not contradict itself across sessions. Design notes: [docs/design/company-workspaces.md](docs/design/company-workspaces.md).
 
 ---
 
@@ -79,7 +79,7 @@ Veda runs inside whichever AI assistant you point it at. Pick yours — each has
 | **ChatGPT** (web, Plus/Pro/Team/Business) | start a chat with your Veda GPT ([setup as Custom GPT or Project](INSTALL.md#chatgpt-web)) |
 | **Other web chat** (Claude web, Perplexity, Grok) | paste `SKILL.md` as a system instruction |
 
-Full capability differs by assistant (filesystem access, Python execution for the math layer, isolated subagents). Web chats work but with reduced capability — see the trade-off table in [docs/capabilities.md](docs/capabilities.md#where-veda-runs).
+Full capability differs by assistant (filesystem access, Python execution for the math layer, isolated subagents). Web chats work but with reduced capability — see the per-surface notes in [INSTALL.md](INSTALL.md).
 
 > **Privacy first.** Onboarding writes a `profile.md` containing your personal financial context. It is gitignored by default. Never commit it. See [INSTALL.md](INSTALL.md#before-you-install--a-word-on-privacy).
 
@@ -100,18 +100,17 @@ See [examples/01-hold-check-winner.md](examples/01-hold-check-winner.md) for an 
 
 ## Documentation
 
-Plain-English guides written for finance people, not coders. Start at [docs/README.md](docs/README.md) — it is the documentation hub. The most useful pages:
+Plain-English guides written for finance people, not coders.
 
 | Page | Read this if you want to |
 |---|---|
-| [What Veda can do today](docs/capabilities.md) | See the actual capabilities list — what is shipped, what is not, where the limits are. |
 | [How Veda thinks](docs/how-veda-thinks.md) | Walk through the 9 stages Veda runs every question, in plain English. |
 | [Customize Veda for you](docs/customization.md) | Tune your profile, framework weights, guardrails, hard constraints, markets. |
-| [Glossary](docs/glossary.md) | Look up any term Veda uses (PEG, EV, Kelly, archetype, kill criterion, base rate). |
-| [FAQ](docs/faq.md) and [Troubleshooting](docs/troubleshooting.md) | Common questions and common fixes. |
-| [Extending Veda](docs/extending/README.md) | Add your own framework, broker importer, calculator, or specialist worker. |
+| [Company workspaces (design)](docs/design/company-workspaces.md) | How Veda's per-position institutional memory is structured. |
+| [Add an investor framework](docs/extending/add-a-framework.md) | Add a 12th investor's decision rules. No coding required. |
+| [Add a specialist worker](docs/extending/add-a-subagent.md) | Advanced. Build a subagent for one focused job. |
 
-For the full orchestrator playbook (long, dense, technical), read [SKILL.md](SKILL.md). For strategic direction across roadmap tiers, read [ROADMAP.md](ROADMAP.md).
+For the full orchestrator playbook (long, dense, technical), read [SKILL.md](SKILL.md).
 
 ---
 

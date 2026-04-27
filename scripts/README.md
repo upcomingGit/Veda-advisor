@@ -1,11 +1,13 @@
 # Veda utility scripts
 
-Helper scripts for Veda. Four categories:
+Helper scripts for Veda. Six categories:
 
 1. **`calc.py` — required.** Veda's Hard Rule #8 forbids LLM arithmetic. Every EV, p_loss, PEG, Kelly, FX, or weight-sum number comes from this script. See SKILL.md Hard Rule #8.
 2. **`validate_profile.py` — required at onboarding.** Deterministic schema check for `profile.md`. Run at the end of onboarding to catch enum typos and missing fields before they reach Stage 1.
-3. **`fetch_fundamentals.py` — data fetcher.** Pulls quarterly financials and computes valuation zones. Called by the `fundamentals-fetcher` subagent (see `internal/agents/fundamentals-fetcher.md`). Sources: yfinance (US), Screener.in (India).
-4. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
+3. **`validate_assumptions.py` — required when writing `holdings/<slug>/assumptions.yaml`.** Enforces the rules in [internal/holdings-schema.md § "Writing assumptions and checkpoints — guardrails"](../internal/holdings-schema.md#writing-assumptions-and-checkpoints--guardrails-validator-enforced) (strict 4-category enum, slot allocation by archetype, metric whitelist by market, single-metric rule, checkpoint uniqueness, mandatory transcript anchors, inline grounding, coverage).
+4. **`validate_all.py` — batch wrapper.** Runs `validate_profile.py` on `profile.md` and `validate_assumptions.py` on every `holdings/<slug>/assumptions.yaml`. One command for a full sanity sweep before any commit / release.
+5. **`fetch_fundamentals.py` — data fetcher.** Pulls quarterly financials and computes valuation zones. Called by the `fundamentals-fetcher` subagent (see `internal/agents/fundamentals-fetcher.md`). Sources: yfinance (US), Screener.in (India).
+6. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
 
 ---
 
@@ -82,6 +84,69 @@ What it does **not** check: free-text fields (`notes`, `self_identified_weakness
 - At the end of onboarding, before declaring the profile saved. (Step 6 of `setup/onboarding.prompt.md`.)
 - After manual edits to `profile.md`.
 - Before filing an issue — if the validator errors, fix the profile first.
+
+---
+
+## `validate_assumptions.py` — assumptions schema validator
+
+Validates `holdings/<slug>/assumptions.yaml` against the rules in [internal/holdings-schema.md § "Writing assumptions and checkpoints — guardrails"](../internal/holdings-schema.md#writing-assumptions-and-checkpoints--guardrails-validator-enforced). Reads the workspace's `_meta.yaml` for `archetype` and `market` context.
+
+Pure stdlib. No PyYAML — line-by-line block extraction plus regex against the known schema, matching the portability discipline of `validate_profile.py`.
+
+### Usage
+
+```powershell
+python scripts/validate_assumptions.py holdings/<slug>/assumptions.yaml
+```
+
+Exit codes: `0` valid, `1` validation errors printed to stderr, `2` file missing or unreadable.
+
+### What it checks
+
+- `schema_version` is `1`.
+- Sibling `_meta.yaml` exists and supplies `archetype` (one of `GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL`) and `market` (one of `US | IN`). `instrument_class` must be `equity` if present.
+- Exactly four assumption keys: `A1`, `A2`, `A3`, `A4`.
+- Each assumption has all six fields: `text`, `category`, `quarterly_checkpoint`, `transcript_checkpoint`, `thesis_horizon_target`, `checkpoint_metric_source`.
+- `category` is one of `GROWTH | FINANCIAL_HEALTH | COMPETITIVE | GOING_CONCERN`.
+- Slot allocation: category counts match the archetype's required mix exactly (see schema).
+- `checkpoint_metric_source` is `consolidated` for non-GOING_CONCERN, `non_financial` for GOING_CONCERN.
+- `transcript_checkpoint` is non-null for GROWTH / FINANCIAL_HEALTH / COMPETITIVE; null for GOING_CONCERN.
+- `quarterly_checkpoint` target statement (text before the first parenthesis) contains no banned metrics. Indian (`market: IN`) workspaces have a tighter whitelist that additionally bans Gross Margin / Gross Profit / OCF / CapEx / FCF.
+- `quarterly_checkpoint` target statement uses exactly one whitelisted primary metric (single-metric rule).
+- Each non-GOING_CONCERN `quarterly_checkpoint` uses a distinct primary metric across the four assumptions (uniqueness rule).
+- Non-GOING_CONCERN `quarterly_checkpoint` and `thesis_horizon_target` contain at least one citation-shaped parenthesised group (inline grounding rule). Pure unit annotations like `(₹ Cr)` do not count.
+- Coverage: at least 3 of 4 assumptions have BOTH non-null `quarterly_checkpoint` AND non-null `thesis_horizon_target`.
+
+What it does **not** check: assumption text quality, citation accuracy (whether the cited source actually says what the citation claims), specific calibration values (the per-archetype tilt rules in the schema are guidance for the writer, not regex-checkable).
+
+### When to run it
+
+- After any write to `holdings/<slug>/assumptions.yaml` — inline by the orchestrator, by the `earnings-grader` subagent (when shipped), or by hand.
+- Before filing an issue about assumption-related behaviour — if the validator errors, fix the file first.
+
+---
+
+## `validate_all.py` — batch validator wrapper
+
+Runs the profile validator on `profile.md` and the assumptions validator on every `holdings/<slug>/assumptions.yaml`. Single command for a full sanity sweep across the whole workspace.
+
+Pure stdlib. Imports the per-validator modules directly (no subprocess overhead). Output is one line per file (`OK:` or `FAIL:` + indented error list) plus a one-line summary. Skips files that are not present rather than erroring.
+
+### Usage
+
+```powershell
+python scripts/validate_all.py
+```
+
+No arguments. Walks from the repo root.
+
+Exit codes: `0` everything passed (or skipped), `1` one or more validators failed (per-file errors printed to stderr), `2` a validator script itself errored on import.
+
+### When to run it
+
+- Before any commit you care about.
+- After editing `profile.md` or any `holdings/<slug>/assumptions.yaml` by hand.
+- As a release / CI gate when the Tier 1.5 service ships.
 
 ---
 
@@ -179,7 +244,7 @@ Adding a new broker is a ~20-line function. See the docstrings at the top of `im
 ### What the script does NOT do
 
 - **Does not fetch live prices.** Current prices come from the CSV, which is usually end-of-day.
-- **Does not ask for theses.** The `thesis` and `tags` columns are left blank and Veda fills them *lazily* — when you ask about a specific holding, Veda asks for the one-line thesis and saves it back. You never batch-fill the file.
+- **Does not ask for tags or thesis.** The `tags` column is left as a placeholder and Veda fills it *lazily* — when you ask about a specific holding, Veda asks for the tag and saves it back. Per-position thesis content lives in `holdings/<slug>/thesis.md` (a separate workspace file scaffolded the first time you ask about that ticker), not in the holdings table. You never batch-fill the file.
 - **Does not commit for you.** `assets.md` is gitignored. After generating, verify with `git check-ignore -v assets.md`.
 
 ### Roadmap
@@ -235,15 +300,15 @@ The `holdings` JSON has shape:
 
 ### How Veda uses the output
 
-This is a deliberate design choice: the script only fetches. Veda (the LLM) handles reconciliation, because matching new positions against existing `assets.md` rows, preserving your theses/tags, and dropping sold positions is a judgment task — not something to hard-code.
+This is a deliberate design choice: the script only fetches. Veda (the LLM) handles reconciliation, because matching new positions against existing `assets.md` rows, preserving your tags, and dropping sold positions is a judgment task — not something to hard-code.
 
 In-chat: say "refresh holdings from Kite". Veda will:
 
 1. **Broker-gate.** Check `profile.md > broker.primary`. If absent, ask once and save the answer. If the value is not `zerodha`, stop and tell you live pull is Zerodha-only in v0.1; fall back to the paste path.
 2. Run `python scripts/kite.py holdings` and parse the JSON.
 3. Diff against `assets.md` by ticker. For each holding:
-   - New ticker → add row with blank `thesis` and `tags` (filled lazily when you next ask about it).
-   - Existing ticker, changed quantity/price → update the numeric fields, **preserve thesis and tags**.
+   - New ticker → add row with the default `tags` placeholder (filled lazily when you next ask about it). Per-position thesis content lives in `holdings/<slug>/thesis.md`, not in this table.
+   - Existing ticker, changed quantity/price → update the numeric fields, **preserve tags**.
    - Ticker missing from Kite → move to a `closed_positions:` block (sold).
 4. Update `dynamic.fx_rates.usd_inr` (via `fetch_quote.py`) and re-run `calc.py` to refresh totals and weights per SKILL.md Hard Rule #8.
 5. Read back the diff before saving.

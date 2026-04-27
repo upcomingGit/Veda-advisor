@@ -29,7 +29,7 @@ dynamic:
 
 ## Holdings (equities)
 ### India (INR)   # or US (USD), Europe (EUR), etc. — one section per currency
-| ticker | name | shares | avg_cost | current_price | current_value | sector | thesis | tags |
+| ticker | name | shares | avg_cost | current_price | current_value | sector | tags |
 ...
 
 ## Cash & equivalents
@@ -113,10 +113,10 @@ with a fresh FX rate but stale derived totals.
 ```markdown
 ### <Region> (<CCY>)
 
-| ticker | name | shares | avg_cost | current_price | current_value | sector | thesis | tags |
-|---|---|---:|---:|---:|---:|---|---|---|
-| NVDA | NVIDIA | 50 | 420.00 | 890.00 | 44,500.00 | Semiconductors | _(add thesis)_ | core |
-| ... | | | | | | | | |
+| ticker | name | shares | avg_cost | current_price | current_value | sector | tags |
+|---|---|---:|---:|---:|---:|---|---|
+| NVDA | NVIDIA | 50 | 420.00 | 890.00 | 44,500.00 | Semiconductors | core |
+| ... | | | | | | | |
 
 **Total holdings value (<Region>):** <total in native CCY>
 ```
@@ -126,7 +126,7 @@ with a fresh FX rate but stale derived totals.
 1. **Sort rows by `current_value` descending** within each currency subsection. Matches the importer.
 2. **Numeric columns use thousand separators and 2 decimal places** (`44,500.00`), *except* `shares` which uses a bare number with no trailing zeros (`50`, `12.5`, not `50.00`). Matches the importer's `{:,.2f}` and `{:g}` formats.
 3. **Mandatory columns: `ticker`, `shares`, `avg_cost`, `current_price`, `current_value`.** If the user's paste is missing `avg_cost` or `current_price`, write the row anyway with the missing value as `TBD_fetch` — do not guess, do not drop the row. Flag the gaps once at the end of the response: *"I left avg_cost as TBD_fetch for AAPL, MSFT — paste or ask me to fetch before the next portfolio question."*
-4. **Optional columns default to `-` (sector) or `_(add thesis)_` / `_(core/tactical/speculation)_` placeholders.** Do not invent a thesis or a tag the user did not state.
+4. **Optional columns default to `-` (sector) or `_(core/tactical/speculation)_` placeholder (tags).** Do not invent a tag the user did not state. Per-position thesis content lives in `holdings/<slug>/thesis.md`, not in this table; see [internal/holdings-schema.md](holdings-schema.md) § "`thesis.md` — investment thesis" for the file shape and SKILL.md Stage 1.5 for the lazy-capture flow (workspace scaffold + `company-kb-builder`).
 5. **Stamp `**As of:** YYYY-MM-DD`** with today's date at the top of the file.
 6. **Never mix currencies in the same table.** One `### <Region> (<CCY>)` subsection per currency, each with its own total. The FX-converted combined total lives in `dynamic.totals.grand_total_<base_ccy>`, not in the holdings section.
 7. **Validate after writing.** After the file is written, re-read it back and sanity-check: all rows have ticker and shares; `current_value` ≈ `shares × current_price` within rounding. If a row fails, fix it before continuing to the main answer.
