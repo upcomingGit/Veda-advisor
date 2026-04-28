@@ -122,7 +122,7 @@ Full guide and voice rules: [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [CODE_O
 
 ## Status
 
-**v0.1 — early preview.** Walking skeleton with all eleven frameworks shipped (Lynch is the reference implementation; Buffett, Munger, Fisher, Druckenmiller, Marks, Klarman, Thorp, Dalio, Templeton, and Taleb ship alongside it), four shipped subagents (devil's advocate, portfolio parser, company KB builder, fundamentals fetcher), one worked example, a profile template with two worked examples (aggressive and novice), the [docs/](docs/) hub for users and contributors, and install paths for every major assistant. More worked examples, deeper per-framework citations, and more broker importers are in flight.
+**v0.1 — early preview.** Walking skeleton with all eleven frameworks shipped (Lynch is the reference implementation; Buffett, Munger, Fisher, Druckenmiller, Marks, Klarman, Thorp, Dalio, Templeton, and Taleb ship alongside it), five shipped subagents (devil's advocate, portfolio parser, company KB builder, fundamentals fetcher, base-rate researcher), one worked example, a profile template with two worked examples (aggressive and novice), the [docs/](docs/) hub for users and contributors, and install paths for every major assistant. More worked examples, deeper per-framework citations, and more broker importers are in flight.
 
 ---
 

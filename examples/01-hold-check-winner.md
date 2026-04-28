@@ -64,7 +64,7 @@ What I need: current price, trailing EPS, forward EPS estimate, revenue growth t
 
 Base rate for "stock up 180% that continues up another 100%+": **roughly 25–40%** in documented secular-trend runs (early Microsoft, early Amazon, early NVDA-style). Base rate for "stock up 180% that subsequently drops >30% in next 18 months": **roughly 30–50%** (widely-documented momentum-reversal frequency; wide range reflects uncertainty about whether the stock is in a secular trend or a cyclical peak). Base rate favors holding winners in clear secular trends; favors trimming winners in commodity/cyclical industries. Compute AI demand is currently classified secular, not cyclical — but that classification is contested.
 
-**`base_rate_confidence: LOW`** — these are general-knowledge ranges, not researched for this specific situation. This is exactly the territory the planned `base-rate-researcher` subagent will replace with sourced numbers. Carrying the flag forward into Stages 7 and 8; ranges are deliberately wide per SKILL.md Stage 4 discipline (no point estimates for Tier 4–5).
+**`base_rate_confidence: LOW`** — these are general-knowledge ranges, not researched for this specific situation. The `base-rate-researcher` subagent (Tier 1–3 only) returned `not_found` for this niche reference class, so the orchestrator is making the Tier 4 hedged-range call inline per SKILL.md Stage 4. Carrying the flag forward into Stages 7 and 8; ranges are deliberately wide per the Stage 4 discipline rule (no point estimates for Tier 4–5).
 
 ## Stage 5 — Route frameworks
 

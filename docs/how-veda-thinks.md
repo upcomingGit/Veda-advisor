@@ -80,7 +80,7 @@ Before any framework, Veda states how often this *kind* of trade works:
 - *"Turnarounds succeed roughly 20–30%."* (Marks, *TMI* ch. 14)
 - *"IPOs underperform their first year roughly 60%."* (Ritter, U Florida)
 
-When base rate and your specific story disagree, base rate usually wins. No reliable rate → `base_rate_confidence: NONE`, downgrades the final recommendation.
+When base rate and your specific story disagree, base rate usually wins. No reliable rate → `base_rate_confidence: NONE`, downgrades the final recommendation. On supported assistants, the lookup runs as an isolated worker (`base-rate-researcher`) that reads a curated cache first and falls back to web research with a hard 3-operation cap. It returns sourced numbers only — if no source can be found, the orchestrator widens the range and flags it as general-knowledge (Tier 4) rather than fabricating a precise figure.
 
 ### Stage 5 — Route to frameworks
 

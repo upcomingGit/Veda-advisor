@@ -24,9 +24,11 @@ material events, whole-file reads vs one-ticker reads, session-lifetime
 vs years-lifetime. Stuffing per-instrument knowledge into a table cell has
 been increasingly strained.
 
-Separately, three Tier 1 subagents in [internal/subagents.md](subagents.md)
-(`company-kb-builder`, `news-researcher`, `earnings-grader`) have write
-outputs described as "cached per ticker" without specifying where. Today
+Separately, eight Tier 1 subagents in [internal/subagents.md](subagents.md)
+(`company-kb-builder`, `fundamentals-fetcher`, `news-researcher`,
+`disclosure-fetcher`, `earnings-grader`, `calendar-tracker`,
+`ownership-tracker`, `indicators-researcher`) have write outputs
+described as "cached per ticker" without specifying where. Today
 the destination is undefined.
 
 The **instrument workspace** pattern addresses both: a persistent per-instrument
