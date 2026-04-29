@@ -67,6 +67,7 @@ Veda lists what it needs (price, latest earnings, current position size, FX) and
 
 - **Live prices and FX** via `scripts/fetch_quote.py` (yfinance — US, India `.NS`/`.BO`, major FX pairs).
 - **Quarterly financials and valuation zone** via the `fundamentals-fetcher` subagent — yfinance for US, Screener.in for India. Refreshed when the stored quarter is stale.
+- **Recent news** via the `news-researcher` subagent — three-stage source escalation: curated RSS sources first (10 India + 8 US), per-ticker Google News RSS second (when curated yields < 5), `WebSearch` for the long tail. Hard 5-operation cap. Reads your `kb.md` and `assumptions.yaml` to grade each event for materiality and thesis-impact direction (`STRENGTHENS`/`WEAKENS`/`NEUTRAL` against a named A1–A4 assumption). Refuses user-pasted articles to close the injection surface. Caches into `holdings/<slug>/news/<quarter>.md`; reused for 7 days before re-running.
 - **No fetcher available?** Veda asks you for the number and stamps the `as_of` you give it.
 
 **KB-first.** If a workspace exists, Veda reads `kb.md` first — business model, competitors, governance. The web is consulted only for live data, news after the KB date, or explicit gaps. Stops self-contradiction across sessions.

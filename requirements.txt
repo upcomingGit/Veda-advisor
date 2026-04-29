@@ -15,6 +15,12 @@ yfinance>=0.2.40
 # scripts/fetch_fundamentals.py - Screener.in scraping for India equities.
 requests>=2.28.0
 
+# scripts/fetch_news.py - RSS / Atom / Google News parsing for the
+# news-researcher subagent. feedparser handles schema variation across feeds;
+# beautifulsoup4 strips HTML out of <description> blocks.
+feedparser>=6.0.10
+beautifulsoup4>=4.12.0
+
 # scripts/kite.py - Zerodha Kite Connect (holdings). Official SDK.
 # Only imported inside the `auth` / `holdings` subcommands, so the rest of
 # Veda runs without it installed.

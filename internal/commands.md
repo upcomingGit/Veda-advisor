@@ -88,3 +88,59 @@ Retires a workspace and updates the registry. Used when a position is sold or ex
 > *"Retired nvda. Moved holdings/nvda/ to holdings/_retired/nvda/. Registry updated: status=retired, last_disposed=2026-04-24, reason=thesis_broken."*
 
 **Note:** Retirement is distinct from deletion. The workspace is preserved in `_retired/` for historical reference. The decision log remains intact. To permanently delete, the user must manually remove the `_retired/<slug>/` directory.
+
+---
+
+## `refresh portfolio news` — batch news update across all held positions
+
+Invokes the `news-researcher` subagent ([`internal/agents/news-researcher.md`](agents/news-researcher.md)) once per held position, in sequence, to refresh `holdings/<slug>/news/<quarter>.md` for the current calendar quarter. Used when the user wants a quarterly catch-up across the entire portfolio without asking a per-position question.
+
+**Why this is a command, not background work.** Per [ROADMAP.md](../ROADMAP.md) Tier 1.5, Veda is local-first with no scheduler and no daemon. Background polling is deferred to Tier 3 (hosted). Until then, batch news refresh is an explicit user-invoked command.
+
+**Two-turn pattern.** Plan-then-confirm, mirroring `sync`. On the first turn, Veda prints the plan; no subagent invocations happen until the user confirms.
+
+**Turn 1 — plan output example:**
+
+```
+Refresh portfolio news plan:
+
+Quarter: 2026-Q2 (calendar)
+Held positions: 8 (per holdings_registry.csv where status=active)
+
+Will refresh:
+  - msft (US)        — existing news/2026-Q2.md is 12 days old; will refresh
+  - nvda (US)        — existing news/2026-Q2.md is 3 days old; SKIP (< 7 days)
+  - tsmc (US)        — no news/2026-Q2.md yet; will create
+  - aapl (US)        — no news/2026-Q2.md yet; will create
+  - reliance (India) — existing news/2026-Q2.md is 8 days old; will refresh
+  - hdfcbank (India) — no news/2026-Q2.md yet; will create
+  - infy (India)     — existing news/2026-Q2.md is 2 days old; SKIP (< 7 days)
+  - tcs (India)      — existing news/2026-Q2.md is 31 days old; will refresh
+
+Will be invoked: 6 subagent calls (5-op web cap each = up to 30 web operations).
+Will be skipped: 2 (refreshed within last 7 days).
+
+————————————————————————————
+To apply, say "apply" or "yes".
+To cancel, say "cancel" or "no".
+To refresh a subset, say "apply only <ticker1>, <ticker2>".
+To force-refresh skipped tickers too, say "apply all (force)".
+```
+
+**Skip threshold.** A position is skipped if its `news/<quarter>.md` file's modification time is < 7 days old. The threshold balances freshness against cost — a portfolio of 20 holdings refreshed daily would burn a lot of web operations for marginal news updates. Tighten or relax with the user's preference.
+
+**Turn 2 — apply on confirmation.** User says `apply`, `yes`, or `confirm` → Veda invokes `news-researcher` once per planned ticker, **in sequence** (not in parallel — keeps the web-operation budget visible to the user, and avoids rate-limit storms on shared RSS feeds). After each invocation, narrate per the subagent's narration rule. After all invocations, emit a final summary line:
+
+> *"Refresh complete. 6 tickers refreshed: 14 material events total (5 STRUCTURAL, 9 TACTICAL), 21 routine filtered. 0 cap breaches. Total web ops: 24/30."*
+
+If any individual subagent invocation returns `status: insufficient_input` or fails completely, log the failure in the summary and continue with the rest — one ticker's failure does not block the batch.
+
+**Forced refresh.** `apply all (force)` overrides the 7-day skip rule and refreshes every active position. Use sparingly — mostly useful right after a major macro event (Fed decision, war, regulatory shock) when the user wants every position re-graded against the new context.
+
+**Subset refresh.** `apply only msft, tsmc` invokes only the named tickers. Useful when the user wants to refresh a specific cohort (e.g., "my US semis only") without the full portfolio cost.
+
+**What this command does NOT do:**
+- Does not invoke other per-ticker subagents (`fundamentals-fetcher`, `disclosure-fetcher`, `earnings-grader`). For batch refresh of those, separate commands will exist when those subagents ship; until then, fundamentals refresh is per-question on Stage 3.
+- Does not absorb into `kb.md`. If any refreshed `news/<quarter>.md` exceeds the 1,500-word cap, the absorption is performed on the next `sync apply` per the existing word-cap-breach mechanism. The plan output flags any cap breaches discovered after refresh.
+- Does not write any positions outside the active cohort (status=retired, status=watching). Only `status=active` positions are refreshed.
+
