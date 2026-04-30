@@ -32,31 +32,109 @@ changelog on release.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-30
+
 ### Added
 
-- **`fundamentals-fetcher` subagent** ([internal/agents/fundamentals-fetcher.md](internal/agents/fundamentals-fetcher.md)) —
-  refreshes quarterly financials and computes valuation zones for held positions.
-  Called from Stage 3 data-completeness gate.
-- **`scripts/fetch_fundamentals.py`** — data-fetching backend for the subagent.
-  Sources: yfinance (US), Screener.in HTML scrape + Chart API (India). Zone
-  computation mirrors StockClarity's archetype-aware PEG/PE/EV-EBITDA/P-B logic.
-- **User-facing documentation hub** at [docs/](docs/). Plain-English guides
-  written for finance people, not coders. Pages: capabilities, how Veda thinks
-  (the 9-stage pipeline), customization (profile / weights / guardrails),
-  glossary, FAQ, troubleshooting. Plus an [extending/](docs/extending/) section
-  with end-to-end guides for adding a framework, a broker importer, a
-  calculator, or a subagent. Linked from the README's new Documentation
-  section.
+- **Company workspaces** — per-ticker directories at `holdings/<slug>/`
+  containing `kb.md` (qualitative research), `thesis.md` (current investment
+  thesis), `assumptions.yaml` (structured grading anchor),
+  `governance.md`, `risks.md`, `fundamentals.yaml`, `valuation.yaml`, and a
+  `news/` quarterly archive. Design rationale in
+  [docs/design/company-workspaces.md](docs/design/company-workspaces.md).
+- **`company-kb-builder` subagent**
+  ([internal/agents/company-kb-builder.md](internal/agents/company-kb-builder.md)) —
+  one-shot per ticker. Produces business model with revenue mix, named
+  competitors, addressable market, partitioned macro sensitivity map,
+  historical-shock verification, governance assessment, position-risk
+  register, and a first-draft thesis with archetype classification
+  (GROWTH / INCOME_VALUE / TURNAROUND / CYCLICAL). Cache-skips if `kb.md` is
+  fresh (< 365 days) and `thesis.md` is not a stub. Invoked from Stage 1.5
+  on stub `kb.md`.
+- **`fundamentals-fetcher` subagent**
+  ([internal/agents/fundamentals-fetcher.md](internal/agents/fundamentals-fetcher.md))
+  + **[scripts/fetch_fundamentals.py](scripts/fetch_fundamentals.py)** —
+  refreshes 12 quarters of P&L / cash-flow / balance-sheet data and
+  computes a current valuation-zone snapshot. Sources: yfinance (US),
+  Screener.in HTML + Chart API (India). Zone logic mirrors StockClarity's
+  archetype-aware PEG / PE / EV-EBITDA / P-B model. Called from Stage 3's
+  data-completeness gate.
+- **`news-researcher` subagent**
+  ([internal/agents/news-researcher.md](internal/agents/news-researcher.md))
+  + **[scripts/fetch_news.py](scripts/fetch_news.py)** +
+  **[scripts/news_spam_filter.py](scripts/news_spam_filter.py)** —
+  fetches, dedups, and qualitatively grades current news per held
+  position into `holdings/<slug>/news/<quarter>.md`. Six-layer filter
+  pipeline: URL dedup, StockClarity-derived spam filter (87 blocked
+  domains, 402 title patterns), name-presence filter, semantic dedup
+  (Jaccard with 3-day date window), per-publisher cap. Grades events as
+  STRENGTHENS / WEAKENS / NEUTRAL against the position's `kb.md` +
+  `assumptions.yaml`. Hard 5-operation cap on web-touching calls. Refuses
+  user-pasted articles (closes injection surface).
+- **`base-rate-researcher` subagent**
+  ([internal/agents/base-rate-researcher.md](internal/agents/base-rate-researcher.md)) —
+  Stage 4 outside-view step. Looks up reference-class base rates
+  (turnaround success, IPO underperformance, M&A close rates,
+  post-runup forward returns). Reads
+  [internal/base-rates.md](internal/base-rates.md) first; falls back to
+  web research with a hard 3-operation cap. Returns Tier 1–3 sources
+  only; Tier 4 hedged-range and Tier 5 NONE fallbacks remain with the
+  orchestrator.
+- **`portfolio-parser` subagent**
+  ([internal/agents/portfolio-parser.md](internal/agents/portfolio-parser.md)) —
+  parses untrusted user-pasted broker exports into structured holdings
+  YAML. Security boundary: the orchestrator never sees raw paste text,
+  only sanitized output. Strips instruction-like content. Invoked from
+  Stage 1.5 on portfolio paste.
+- **Structured assumptions** + **[scripts/validate_assumptions.py](scripts/validate_assumptions.py)** —
+  per-position `assumptions.yaml` schema (claim, evidence, expected_metric,
+  watch-trigger) with strict validator. Becomes the grading anchor that
+  `news-researcher` uses to decide thesis-impact direction.
+- **[scripts/validate_all.py](scripts/validate_all.py)** — top-level
+  validator that runs `validate_profile`, `validate_assumptions`, and
+  schema checks for `assets.md` and `holdings/` in one shot.
+- **[internal/holdings-schema.md](internal/holdings-schema.md)**,
+  **[internal/assets-update-procedures.md](internal/assets-update-procedures.md)**,
+  **[internal/commands.md](internal/commands.md)** — operational schemas
+  and command reference extracted from SKILL.md.
+- **User-facing documentation hub** at [docs/](docs/). Plain-English
+  guides written for finance people, not coders. Pages:
+  [how-veda-thinks.md](docs/how-veda-thinks.md) (the 9-stage pipeline),
+  [customization.md](docs/customization.md) (profile / weights /
+  guardrails), [design/company-workspaces.md](docs/design/company-workspaces.md),
+  and an [extending/](docs/extending/) section with end-to-end guides
+  for adding a framework or a subagent. Linked from the README.
+- **[holdings_registry.template.csv](holdings_registry.template.csv)** —
+  template for the cross-position registry consumed by company-workspace
+  bootstrapping.
 
 ### Changed
 
-- **README.md** — added a Documentation section linking the new docs hub;
-  fixed a duplicate Quick-start step; refreshed the Status block to mention
-  shipped subagents and the docs hub.
-- **ROADMAP.md** — added a "User-facing documentation parity" item to the
-  cross-cutting requirements: any new capability behind a Hard Rule, profile
-  field, routing change, script, or subagent must update the corresponding
-  doc page in the same PR.
+- **Stage 1.5 onboarding flow** — broker-integration prompts and profile
+  template refreshed to capture broker primary/fallback choice up front
+  and surface it to downstream stages.
+- **Orchestrator KB-creation path** — bug fix: orchestrator now correctly
+  invokes `fundamentals-fetcher` and the valuation step when
+  `company-kb-builder` creates a new workspace (previously skipped on
+  fresh KB creation).
+- **Zerodha Kite integration** — fixed a holdings-fetch error path that
+  surfaced an opaque API exception instead of a clean re-auth prompt.
+- **README.md** — added the "Tracks your companies for you" capability
+  (news pipeline), Documentation section linking the new docs hub,
+  shipped-subagents list in Status, and a duplicate Quick-start step
+  fix.
+- **ROADMAP.md** — added a "User-facing documentation parity"
+  cross-cutting requirement: any new capability behind a Hard Rule,
+  profile field, routing change, script, or subagent must update the
+  corresponding doc page in the same PR.
+
+### Fixed
+
+- **KB stub replacement** — `company-kb-builder` was leaving `{{stub}}`
+  placeholders in `kb.md` when source research hit certain edge cases;
+  now overwrites stubs in all paths.
+- **Zerodha Kite holdings call** — surfaced a clean error rather than a
+  raw API trace when the access token had expired mid-session.
 
 ## [0.1.0] - 2026-04-22
 
@@ -107,3 +185,4 @@ first version stamped for public consumption.
 
 [Unreleased]: https://github.com/upcomingGit/Veda-advisor/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.1.0
+[0.2.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.2.0

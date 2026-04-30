@@ -1,6 +1,6 @@
 # Veda
 
-[![version](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+[![version](https://img.shields.io/badge/version-0.2.0-blue)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 > **Veda is your personalised AI-native Investment Advisor. It's like having Warren Buffett, Charlie Munger, Peter Lynch, and others sitting on your shoulders, advising you using their wisdom on every investment question you have.**
 

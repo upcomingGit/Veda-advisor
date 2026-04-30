@@ -1,6 +1,6 @@
 ---
 name: veda
-version: 0.1.0
+version: 0.2.0
 description: "Personal AI investment advisor. Brings the thinking of 11 of the world's greatest investors (Buffett, Lynch, Druckenmiller, Marks, Dalio, Klarman, Thorp, Templeton, Munger, Fisher, Taleb) to your money decisions, tailored to your profile. Use when the user asks any investment decision question — buy, sell, size, hold, wait, rebalance, risk assessment, macro impact. Triggers: 'veda', 'investment advice', 'should I buy', 'should I sell', 'position sizing', 'portfolio check', 'what would Buffett do', 'is this risky', 'when to buy'."
 ---
 

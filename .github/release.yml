@@ -1,0 +1,58 @@
+# GitHub auto-generated release notes configuration.
+#
+# When you click "Generate release notes" on a draft release (or when the
+# `gh release create --generate-notes` flag runs), GitHub groups merged
+# pull requests since the previous tag using the rules below. Categories
+# are matched in order; a PR lands in the first category whose label
+# filter matches.
+#
+# Labels referenced here should exist on the repo. Suggested set:
+#   added, changed, fixed, security, docs, internal, dependencies
+#
+# PRs labelled `internal` or `skip-changelog` are excluded from notes.
+# Authors in the exclude list (dependabot, etc.) are also excluded.
+#
+# Reference: https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes
+
+changelog:
+  exclude:
+    labels:
+      - internal
+      - skip-changelog
+    authors:
+      - dependabot
+      - github-actions
+
+  categories:
+    - title: Added
+      labels:
+        - added
+        - feature
+        - enhancement
+
+    - title: Changed
+      labels:
+        - changed
+        - refactor
+
+    - title: Fixed
+      labels:
+        - fixed
+        - bug
+
+    - title: Security
+      labels:
+        - security
+
+    - title: Documentation
+      labels:
+        - docs
+        - documentation
+
+    - title: Dependencies
+      labels:
+        - dependencies
+
+    - title: Other Changes
+      labels:
+        - "*"
