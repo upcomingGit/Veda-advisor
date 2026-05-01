@@ -140,7 +140,7 @@ If any individual subagent invocation returns `status: insufficient_input` or fa
 **Subset refresh.** `apply only msft, tsmc` invokes only the named tickers. Useful when the user wants to refresh a specific cohort (e.g., "my US semis only") without the full portfolio cost.
 
 **What this command does NOT do:**
-- Does not invoke other per-ticker subagents (`fundamentals-fetcher`, `disclosure-fetcher`, `earnings-grader`). For batch refresh of those, separate commands will exist when those subagents ship; until then, fundamentals refresh is per-question on Stage 3.
+- Does not invoke other per-ticker subagents (`fundamentals-fetcher`, `disclosure-fetcher`, `earnings-grader`). For batch refresh of those, separate commands will exist when needed; until then, `fundamentals-fetcher` and `disclosure-fetcher` are invoked per-question on Stage 3 (with their own freshness gates — latest-stored-quarter for fundamentals, 24-hour mtime for disclosures), and `earnings-grader` is event-driven (when the user pastes a transcript or earnings actuals are released).
 - Does not absorb into `kb.md`. If any refreshed `news/<quarter>.md` exceeds the 1,500-word cap, the absorption is performed on the next `sync apply` per the existing word-cap-breach mechanism. The plan output flags any cap breaches discovered after refresh.
 - Does not write any positions outside the active cohort (status=retired, status=watching). Only `status=active` positions are refreshed.
 

@@ -16,6 +16,10 @@ instrument_class: equity
 archetype: GROWTH          # GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL
 market: US                 # US | IN  (drives the `quarterly_checkpoint` metric whitelist)
 last_touched: 2026-04-23   # ISO date; updated on any file write in this workspace
+exchange_codes:            # optional — populated lazily by disclosure-fetcher
+  cik: "0000789019"        # SEC CIK, 10-digit zero-padded; US tickers only
+  bse_code: "500325"       # BSE scrip code, numeric; India tickers only
+  nse_symbol: "RELIANCE"   # NSE trading symbol, alphanumeric; India tickers only
 ```
 
 | Field | Type | Required | Notes |
@@ -25,6 +29,11 @@ last_touched: 2026-04-23   # ISO date; updated on any file write in this workspa
 | `archetype` | enum | yes (equity) | One of `GROWTH`, `INCOME_VALUE`, `TURNAROUND`, `CYCLICAL`. Drives framework routing AND assumption slot allocation (see [`assumptions.yaml` § "Writing assumptions and checkpoints"](#writing-assumptions-and-checkpoints--guardrails-validator-enforced)). |
 | `market` | enum | yes (equity) | One of `US`, `IN`. Drives the `quarterly_checkpoint` metric whitelist (Indian companies have a tighter set per Screener.in's quarterly schema; US equities have access to gross-margin / OCF / CapEx / FCF that Indian companies do not). |
 | `last_touched` | ISO date | yes | Updated automatically on any write to the workspace. |
+| `exchange_codes.cik` | string | optional (US) | SEC Central Index Key, 10-digit zero-padded. Auto-resolved by `disclosure-fetcher` from `sec.gov/files/company_tickers.json` on first invocation when absent; orchestrator persists the resolved value here. |
+| `exchange_codes.bse_code` | string | optional (India) | BSE scrip code (numeric, e.g., `"500325"` for Reliance). NOT auto-resolved — orchestrator asks the user once on first `disclosure-fetcher` invocation for an Indian ticker and persists. At least one of `bse_code` or `nse_symbol` is required for `disclosure-fetcher` on Indian tickers. |
+| `exchange_codes.nse_symbol` | string | optional (India) | NSE trading symbol (alphanumeric, e.g., `"RELIANCE"`). NOT auto-resolved — same lazy-populate-once pattern as `bse_code`. |
+
+The `exchange_codes` block is the only optional `_meta.yaml` block in v1. It exists because regulator-disclosure APIs key on exchange-native identifiers (CIK for SEC, scrip code for BSE, trading symbol for NSE) rather than on the user-facing ticker, and resolving them on every `disclosure-fetcher` call would be wasteful (CIK) or impossible (BSE/NSE have no reliable public search API). When the block is absent, `disclosure-fetcher` either (a) auto-resolves CIK for US tickers and asks the orchestrator to persist the result, or (b) returns `status: insufficient_input` for Indian tickers, prompting the orchestrator to ask the user once.
 
 ---
 

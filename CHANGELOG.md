@@ -32,6 +32,97 @@ changelog on release.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-01
+
+### Added
+
+- **`disclosure-fetcher` subagent**
+  ([internal/agents/disclosure-fetcher.md](internal/agents/disclosure-fetcher.md))
+  + **[scripts/fetch_disclosures.py](scripts/fetch_disclosures.py)** —
+  fetches unscheduled material announcements from primary regulator
+  APIs into `holdings/<slug>/disclosures.md`. Sources: SEC EDGAR
+  submissions JSON filtered to Form 8-K (US — 10-K and 10-Q overlap
+  with `fundamentals-fetcher` and `earnings-grader` and are
+  deliberately out of scope), BSE Corporate Announcements API + NSE
+  Corporate Announcements API (India — fetched in parallel and
+  deduped by `(date, normalized_headline_prefix[:60])` proximity
+  match preferring BSE on ties). 12-pattern SEBI routine-disclosure
+  regex filter ported verbatim from StockClarity's
+  `_IGNORED_DISCLOSURE_PATTERNS` (each pattern with documented 100%
+  LLM-rejection evidence in StockClarity production logs) drops
+  Trading Window Closure / Investor Complaints / ESOP grants etc.
+  at the helper layer; not applied to SEC 8-K (already curated by
+  SEC's design). CIK auto-resolution from
+  `sec.gov/files/company_tickers.json` (cached in-process per
+  invocation). Conservative future-event regex extraction (board
+  meeting, AGM, EGM, record date, ex-dividend, rights issue) operates
+  on headline only — deliberately ignores the summary to avoid
+  false-positive future events on dated past-tense outcomes — and
+  emits `proposed_calendar_entries` (calendar.yaml-shaped) for the
+  orchestrator to append to `holdings/<slug>/calendar.yaml`
+  `upcoming:` block. Hard 5-operation cap on web-touching tool
+  calls; hard 20-row cap per invocation; cache-hit skip 24 hours
+  (tighter than `news-researcher`'s 7-day cache because regulator
+  filings drop unpredictably on any business day). Refuses
+  user-pasted disclosures (closes the injection surface;
+  primary-source fetches only). Filesystem-read-only — emits
+  `proposed_disclosures_md` for the orchestrator to write. Tool
+  grant: `Read, Bash, WebFetch` (WebFetch is a content-enrichment
+  fallback for SEC 8-K Items 2.02 / 5.02 only, capped at 2 calls
+  per invocation).
+- **`_meta.yaml.exchange_codes` block** — optional per-workspace
+  mapping of ticker → exchange-native identifiers (`cik` for SEC,
+  `bse_code` for BSE, `nse_symbol` for NSE). Lazily populated by
+  `disclosure-fetcher`: CIK is auto-resolved on first US-ticker
+  invocation; BSE/NSE codes are user-supplied once on first
+  India-ticker invocation (no reliable public BSE/NSE search API).
+  Schema documented in
+  [internal/holdings-schema.md](internal/holdings-schema.md). Backwards
+  compatible: existing workspaces without the block continue to work;
+  the orchestrator persists resolved values on first disclosure-fetcher
+  invocation.
+
+### Changed
+
+- **README.md** — added a new "Pulls primary regulator filings,
+  not just news about them" capability row in the "How Veda can help
+  you today" table, with three sample questions covering SEC 8-K
+  (US) and BSE/NSE corporate announcements (India).
+- **ROADMAP.md** — added two roadmap items:
+  - **Tier 5: Disclosure PDF body extraction (v2 of `fetch_disclosures`).**
+    The shipped v1 captures regulator-supplied attachment URLs but
+    does not download or parse the PDF body — the substance of an
+    Indian board-meeting outcome is in the PDF, not in the JSON.
+    A `--fetch-pdfs` flag on the helper (default off, opt-in per
+    invocation) with `pypdf` text extraction is the natural v2;
+    sequenced after a week or two of real BSE/NSE flow informs
+    which categories warrant the parsing cost.
+  - **Tier 14: Local workspace dashboard.** A locally-running web UI
+    invoked with `veda dashboard` that reads every artifact the chat-
+    side subagents have written into the user's workspace and renders
+    them in one place — sparklines for assumption-grade history,
+    valuation-zone tiles, calendar timeline, decisions audit trail.
+    Read-only; chat surfaces remain the only path to mutate state.
+  Both items have open questions captured inline (Q-disc-1 for PDF
+  body extraction; Q-dash-1 for repo layout).
+- **SKILL.md** — added Stage 3 delegation block for `disclosure-fetcher`
+  with full handle-the-response branch coverage (`ok`, `cache_hit`,
+  `no_disclosures`, `partial`, `insufficient_input`), including
+  orchestrator-side persistence of `resolved_codes.cik` to
+  `_meta.yaml` and append-to-`upcoming:` semantics for
+  `proposed_calendar_entries`.
+- **internal/subagents.md** — status flipped to **Shipped** (7 of
+  11 subagents now shipped); inventory bullet, write-target matrix,
+  and narration example all updated to match the actual contract.
+- **scripts/README.md** — added documentation for `fetch_news.py`
+  + `news_spam_filter.py` (the news-researcher helper, previously
+  undocumented despite shipping in 0.2.0) and `fetch_disclosures.py`.
+- **internal/commands.md** — updated the `refresh portfolio news`
+  command's "What this command does NOT do" section to reflect that
+  `disclosure-fetcher` and `fundamentals-fetcher` are now shipped
+  (not future), with their own per-question Stage 3 freshness gates
+  rather than batch refresh today.
+
 ## [0.2.0] - 2026-04-30
 
 ### Added
@@ -186,3 +277,4 @@ first version stamped for public consumption.
 [Unreleased]: https://github.com/upcomingGit/Veda-advisor/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.1.0
 [0.2.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.2.0
+[0.3.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.3.0

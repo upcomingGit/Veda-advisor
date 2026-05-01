@@ -1,13 +1,15 @@
 # Veda utility scripts
 
-Helper scripts for Veda. Six categories:
+Helper scripts for Veda. Eight categories:
 
 1. **`calc.py` — required.** Veda's Hard Rule #8 forbids LLM arithmetic. Every EV, p_loss, PEG, Kelly, FX, or weight-sum number comes from this script. See SKILL.md Hard Rule #8.
 2. **`validate_profile.py` — required at onboarding.** Deterministic schema check for `profile.md`. Run at the end of onboarding to catch enum typos and missing fields before they reach Stage 1.
 3. **`validate_assumptions.py` — required when writing `holdings/<slug>/assumptions.yaml`.** Enforces the rules in [internal/holdings-schema.md § "Writing assumptions and checkpoints — guardrails"](../internal/holdings-schema.md#writing-assumptions-and-checkpoints--guardrails-validator-enforced) (strict 4-category enum, slot allocation by archetype, metric whitelist by market, single-metric rule, checkpoint uniqueness, mandatory transcript anchors, inline grounding, coverage).
 4. **`validate_all.py` — batch wrapper.** Runs `validate_profile.py` on `profile.md` and `validate_assumptions.py` on every `holdings/<slug>/assumptions.yaml`. One command for a full sanity sweep before any commit / release.
 5. **`fetch_fundamentals.py` — data fetcher.** Pulls quarterly financials and computes valuation zones. Called by the `fundamentals-fetcher` subagent (see `internal/agents/fundamentals-fetcher.md`). Sources: yfinance (US), Screener.in (India).
-6. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
+6. **`fetch_news.py` + `news_spam_filter.py` — data fetcher.** Pulls third-party press coverage from curated RSS feeds and Google News, applies a six-layer filter pipeline (URL dedup, 87-domain spam filter, 402-pattern title filter, name-presence filter, semantic dedup, per-publisher cap). Called by the `news-researcher` subagent (see `internal/agents/news-researcher.md`).
+7. **`fetch_disclosures.py` — data fetcher.** Pulls primary-source regulator filings: SEC EDGAR 8-K (US), BSE + NSE Corporate Announcements (India). Applies a 12-pattern routine-disclosure filter (StockClarity-ported, India-only) and lightweight future-event regex extraction. Called by the `disclosure-fetcher` subagent (see `internal/agents/disclosure-fetcher.md`).
+8. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
 
 ---
 
@@ -200,6 +202,137 @@ JSON to stdout per the contract in `internal/agents/fundamentals-fetcher.md`. Ex
 | Banks/NBFCs | P/B | Sector override, percentile |
 
 Guardrails: PE > 150 forces EXPENSIVE; growth > 100% capped at 100% for PEG.
+
+---
+
+## `fetch_news.py` + `news_spam_filter.py` — third-party press fetcher
+
+Called by the `news-researcher` subagent to fetch and filter third-party press coverage for a single held position. The subagent invokes this script via Bash, parses the JSON envelope, and grades the kept items qualitatively against the position's `kb.md` + `assumptions.yaml`.
+
+### Data sources
+
+| Stage | Source | Used when |
+|---|---|---|
+| 1 | Curated broad-publication RSS (10 India + 8 US sources defined in the subagent contract) | Always; first port of call |
+| 2 | Per-ticker Google News RSS (per-market locale templates) | When stage 1 yields < 5 ticker-specific candidates |
+| 3 | `WebSearch` (handled by the subagent, not this script) | When stages 1–2 still yield < 5 candidates |
+
+### Six-layer filter pipeline
+
+Applied by the helper to all RSS-derived items in order:
+
+1. **URL normalization + hash dedup** — strips `utm_*`, `fbclid`, `gclid`, lowercases domain; SHA-256 dedup.
+2. **Publisher-domain spam filter** — 87 blocked domains in `news_spam_filter.py` (StockClarity-ported with per-entry rejection-rate evidence).
+3. **Title-pattern spam filter** — 402 blocked patterns including Cramer commentary, "Is X a buy?" listicles, earnings-preview filler, MAG 7 listicles, analyst-stance churn, breakout/rally commentary.
+4. **Name-presence filter** — (when `--require-name` passed) drops items whose title and description both lack the ticker or company name.
+5. **Semantic dedup (Jaccard with 3-day date window)** — cross-publisher same-event clustering. Default threshold 0.4. Within each cluster, the highest-tier most-recent item is kept; others are surfaced via `cluster_size` / `cluster_dropped_publishers` fields.
+6. **Per-publisher cap** — default 3 items per publisher domain; mitigates Yahoo-Finance-style flooding.
+
+### Usage
+
+```powershell
+# Single curated RSS feed
+python scripts/fetch_news.py `
+    --feed-url "https://www.business-standard.com/rss/markets-106.rss" `
+    --feed-name "Business Standard Markets" `
+    --since 2026-04-22 `
+    --require-name "NTPC,NTPC Limited"
+
+# Per-ticker Google News query (per-market locale handled internally)
+python scripts/fetch_news.py `
+    --google-news-query '"NVIDIA" NVDA when:7d' `
+    --google-news-market US `
+    --since 2026-04-22 `
+    --require-name "NVDA,NVIDIA"
+
+# Multiple curated feeds in one batched invocation (1 op for the subagent's 5-op cap)
+python scripts/fetch_news.py `
+    --feed-url "https://feeds.bloomberg.com/markets/news.rss" `
+    --feed-url "https://www.cnbc.com/id/100003114/device/rss/rss.html" `
+    --since 2026-04-22
+```
+
+### Output
+
+JSON to stdout per the contract in `internal/agents/news-researcher.md`. Exit code 0 on success/partial, 1 on total failure.
+
+### Editing the curated source list
+
+The canonical curated source list (10 India + 8 US RSS feeds) lives in `internal/agents/news-researcher.md` § "Curated source list". When the list needs additions or removals, update it there, then run `python scripts/sync_agents.py`. The orchestrator passes the URLs into this script via `--feed-url`; the script does not own the list.
+
+---
+
+## `fetch_disclosures.py` — primary-source regulator filings fetcher
+
+Called by the `disclosure-fetcher` subagent to fetch unscheduled material announcements from primary regulator APIs. The subagent invokes this script via Bash, parses the JSON envelope, and emits `proposed_disclosures_md` (rendered file content) plus optional `proposed_calendar_entries` (future scheduled events extracted from disclosure bodies) for the orchestrator to write.
+
+### Data sources
+
+| Market | Source | Form/scope | Authentication |
+|--------|--------|------------|----------------|
+| US | SEC EDGAR submissions JSON | 8-K only (10-K / 10-Q overlap with `fundamentals-fetcher` and `earnings-grader`) | Identifying User-Agent (per SEC fair-use policy: format `"Name email@domain.com"`); CIK auto-resolved from `sec.gov/files/company_tickers.json` (cached in-process) |
+| India | BSE Corporate Announcements API | All categories; 12-pattern SEBI routine-compliance filter applied | Browser-spoofed `User-Agent` + `Origin`/`Referer` headers (StockClarity-ported) |
+| India | NSE Corporate Announcements API | All categories; same 12-pattern filter applied | Session cookie priming (visit `nseindia.com/` first); `Accept-Encoding: gzip, deflate` (NOT brotli — brotli breaks NSE) |
+
+### Routine-disclosure filter (India-only)
+
+12 regex patterns ported verbatim from StockClarity's `disclosure_fetcher.py` `_IGNORED_DISCLOSURE_PATTERNS`. Each has documented 100% LLM-rejection evidence in StockClarity production logs:
+
+- Trading Window Closure, Loss / Duplicate Share Certificate, Investor Complaints, Compliance Certificate, Regulation 74(5), Certificate under SEBI (Depositories and Participants).
+- Analysts/Institutional Investor Meet/Con. Call Updates, Shareholders meeting (schedule notices, not outcomes), Copy of Newspaper Publication, ESOP/ESOS/ESPS grants.
+
+The filter is applied to BOTH `headline` and `category` fields, case-insensitive. **Not applied to SEC 8-K** — US 8-K is already a curated material-event form by SEC's design.
+
+### Cross-source dedup (India)
+
+When both BSE and NSE return announcements for the same ticker, the helper deduplicates by `(date, normalized_headline_prefix[:60])` proximity match, preferring BSE on ties (BSE's category metadata is more reliable; NSE conflates `desc` and `headline`).
+
+### Future-event extraction
+
+Lightweight regex set (6 event types: `board_meeting`, `agm`, `egm`, `record_date`, `ex_dividend`, `rights_issue`). Date filter requires the extracted date to be today or later. Conservative on purpose — a false positive corrupts `calendar.yaml`. The subagent forwards extracted events to the orchestrator via `proposed_calendar_entries`; the helper itself does not write to calendar files.
+
+### Usage
+
+```powershell
+# US 8-K — CIK auto-resolved from sec.gov/files/company_tickers.json
+python scripts/fetch_disclosures.py --market US --ticker MSFT --since 2026-01-30
+
+# US 8-K — CIK provided (skips the lookup)
+python scripts/fetch_disclosures.py --market US --ticker MSFT --cik 0000789019 --since 2026-01-30
+
+# India — fetch BSE + NSE in one invocation; helper dedups across sources
+python scripts/fetch_disclosures.py `
+    --market India --ticker RELIANCE `
+    --bse-code 500325 --nse-symbol RELIANCE `
+    --since 2026-01-30
+
+# India — single source (when only one code is available)
+python scripts/fetch_disclosures.py `
+    --market India --ticker NTPC --nse-symbol NTPC `
+    --since 2026-01-30
+```
+
+### Parameters
+
+| Parameter | Required | Values | Notes |
+|-----------|----------|--------|-------|
+| `--market` | yes | `US` \| `India` | Routes to SEC EDGAR or BSE+NSE |
+| `--ticker` | yes | e.g., `MSFT`, `RELIANCE` | Used in stable `id` and logs |
+| `--cik` | no (US) | 10-digit zero-padded | Auto-resolved when omitted |
+| `--bse-code` | no (India) | numeric scrip code, e.g., `500325` | At least one of BSE / NSE required |
+| `--nse-symbol` | no (India) | alphanumeric, e.g., `RELIANCE` | At least one of BSE / NSE required |
+| `--since` | yes | `YYYY-MM-DD` | Lower bound on filing date (inclusive) |
+| `--today` | no | `YYYY-MM-DD` | Override system date for testing |
+
+### Output
+
+JSON to stdout per the contract in `internal/agents/disclosure-fetcher.md`. Top-level fields: `ticker`, `market`, `since`, `today`, `results` (per-source counts), `items_after_dedup`, `items_dropped_in_cross_source_dedup`, `items` (normalized list, sorted by date descending), `resolved_cik` (when auto-resolved), `errors`.
+
+Exit codes: `0` success or partial success (check `errors` array), `1` total failure (no items + at least one endpoint errored), `2` bad usage.
+
+### Editing the routine-pattern set
+
+The 12 patterns live in `_ROUTINE_PATTERNS_INDIA` near the top of `fetch_disclosures.py`. Each pattern carries an inline comment with StockClarity's per-pattern rejection-rate evidence. Add a new pattern only when there is comparable evidence (production-log proof that an objectively-non-substantive category produces zero useful signal). Do NOT add discretionary materiality patterns — those belong in framework-routing rules, not in the fetcher.
 
 ---
 
