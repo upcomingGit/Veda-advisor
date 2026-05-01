@@ -665,7 +665,7 @@ _(capex projects, integrations, key-person dependency)_
 
 Corporate calendar. Dates that matter **for this specific position** — earnings, AGM, dividends, splits, regulatory filings. Macro events (FOMC, CPI, budget) do NOT belong here; see [`global_calendar.yaml`](#global_calendaryaml--root-level-optional).
 
-**Ownership.** Written by `calendar-tracker` (future subagent, see [subagents.md](subagents.md)) or manually. Also written by `earnings-grader` when a quarter is graded with transcript anchors still pending — it appends a single `Transcript grading pending — <period>` follow-up event and clears it on the transcript regrade. See [`assumptions.yaml` § Transcript-gap signalling](#assumptionsyaml--optional). Updated as announcements are made. Stale entries (past dates) can be pruned quarterly, or moved to the `past:` section for audit reference.
+**Ownership.** Written by `calendar-tracker` (see [subagents.md](subagents.md)) or manually. Also written by `earnings-grader` when a quarter is graded with transcript anchors still pending — it appends a single `Transcript grading pending — <period>` follow-up event and clears it on the transcript regrade. See [`assumptions.yaml` § Transcript-gap signalling](#assumptionsyaml--optional). Updated as announcements are made. Stale entries (past dates) can be pruned quarterly, or moved to the `past:` section for audit reference.
 
 ```yaml
 as_of: 2026-04-21
@@ -1068,7 +1068,7 @@ Portfolio-wide macro calendar. One file at the workspace root (sibling of `holdi
 
 **Rationale.** Duplicating "FOMC May 6" across 20 per-instance `calendar.yaml` files is wrong. Macro events have their own cadence, their own sources, and are consumed by `macro`-type questions rather than single-position questions.
 
-**Ownership.** Written by `calendar-tracker` (future subagent — scope extended from per-instance `calendar.yaml` to include this root-level file; see [subagents.md](subagents.md)) or manually. Until the subagent ships, the file is user-maintained or absent.
+**Ownership.** Written by `calendar-tracker` (scope covers per-instance `calendar.yaml` and this root-level file; see [subagents.md](subagents.md)) or manually.
 
 **Load trigger.** The orchestrator loads `global_calendar.yaml` in Stage 1.5 when the question type is `macro`, `risk`, or `portfolio`, or when any upcoming event in the file falls within 14 days. For `buy` / `sell` / `hold_check` on a single name, load only if the instrument is directly sensitive to an imminent macro event (e.g., a bank position days before an FOMC decision).
 

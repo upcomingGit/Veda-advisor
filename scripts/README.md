@@ -1,6 +1,6 @@
 # Veda utility scripts
 
-Helper scripts for Veda. Eight categories:
+Helper scripts for Veda. Nine categories:
 
 1. **`calc.py` — required.** Veda's Hard Rule #8 forbids LLM arithmetic. Every EV, p_loss, PEG, Kelly, FX, or weight-sum number comes from this script. See SKILL.md Hard Rule #8.
 2. **`validate_profile.py` — required at onboarding.** Deterministic schema check for `profile.md`. Run at the end of onboarding to catch enum typos and missing fields before they reach Stage 1.
@@ -9,7 +9,8 @@ Helper scripts for Veda. Eight categories:
 5. **`fetch_fundamentals.py` — data fetcher.** Pulls quarterly financials and computes valuation zones. Called by the `fundamentals-fetcher` subagent (see `internal/agents/fundamentals-fetcher.md`). Sources: yfinance (US), Screener.in (India).
 6. **`fetch_news.py` + `news_spam_filter.py` — data fetcher.** Pulls third-party press coverage from curated RSS feeds and Google News, applies a six-layer filter pipeline (URL dedup, 87-domain spam filter, 402-pattern title filter, name-presence filter, semantic dedup, per-publisher cap). Called by the `news-researcher` subagent (see `internal/agents/news-researcher.md`).
 7. **`fetch_disclosures.py` — data fetcher.** Pulls primary-source regulator filings: SEC EDGAR 8-K (US), BSE + NSE Corporate Announcements (India). Applies a 12-pattern routine-disclosure filter (StockClarity-ported, India-only) and lightweight future-event regex extraction. Called by the `disclosure-fetcher` subagent (see `internal/agents/disclosure-fetcher.md`).
-8. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
+8. **`fetch_calendar.py` — data fetcher.** Pulls scheduled corporate events (earnings, ex-dividend, splits via yfinance/Screener) and macro events (FOMC schedule via federalreserve.gov). Two modes: `--mode position` (per-ticker) and `--mode global` (portfolio-wide macro). Called by the `calendar-tracker` subagent (see `internal/agents/calendar-tracker.md`). v2 macro sources (BLS, RBI, MoSPI) deferred and surfaced via `deferred_v2` envelope.
+9. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
 
 ---
 
@@ -333,6 +334,76 @@ Exit codes: `0` success or partial success (check `errors` array), `1` total fai
 ### Editing the routine-pattern set
 
 The 12 patterns live in `_ROUTINE_PATTERNS_INDIA` near the top of `fetch_disclosures.py`. Each pattern carries an inline comment with StockClarity's per-pattern rejection-rate evidence. Add a new pattern only when there is comparable evidence (production-log proof that an objectively-non-substantive category produces zero useful signal). Do NOT add discretionary materiality patterns — those belong in framework-routing rules, not in the fetcher.
+
+---
+
+## `fetch_calendar.py` — scheduled-event fetcher
+
+Called by the `calendar-tracker` subagent to fetch forward-looking scheduled events for one of two scopes. Two modes selected by `--mode`:
+
+### Mode `position` — per-ticker corporate calendar
+
+Fetches earnings dates, ex-dividend, and splits for one held position.
+
+| Source | Used for | Notes |
+|---|---|---|
+| yfinance `Ticker.calendar` (dict) | US: next earnings + ex-dividend + dividend payment date. India via `.NS` suffix: ex-dividend (earnings dates often empty) | Estimates (Earnings High/Low/Average, Revenue ranges) are dropped per Hard Rule #8 |
+| Screener.in HTML scrape | India: opportunistic next quarterly results date | Screener publishes forward-looking dates only when available; often empty for tickers without an announced next-quarter date |
+
+Indian AGMs are out of scope here — they come via `disclosure-fetcher`'s BSE/NSE channel. US AGMs are not auto-fetched by the helper; the calendar-tracker subagent has an opt-in `WebFetch` fallback (capped at 1 call per invocation) on the company's IR page.
+
+### Mode `global` — portfolio-wide macro calendar
+
+Fetches macro events that affect many positions or the portfolio as a whole. v1 auto-fetches one source; three are deferred to v2 and surfaced honestly in the JSON envelope's `deferred_v2` array so the orchestrator can show them rather than silently dropping them.
+
+| Source | URL | Status |
+|---|---|---|
+| FOMC schedule | `https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm` | **v1 auto-fetch.** Walks H4 `<year> FOMC Meetings` headers and parses month-day-range tokens. Uses day 1 of each range as the canonical event date (1-day pre-meeting heads-up). |
+| US CPI release schedule | `https://www.bls.gov/schedule/news_release/cpi.htm` | **v2 (Q-cal-1).** BLS blocks bot User-Agents (HTTP 403) even with full browser-spoofed headers and session cookies. Confirmed during v1 build. v1 fallback: user supplies via `pasted_dates`. |
+| RBI MPC schedule | `https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx` | **v2 (Q-cal-1).** Page loads; MPC dates buried in dated press releases requiring brittle targeted parsing. |
+| MoSPI India CPI / IIP | `https://www.mospi.gov.in/release-calendar` | **v2 (Q-cal-1).** Page format varies; same brittleness profile as RBI. |
+
+Deferrals are tracked as `Q-cal-1` in [ROADMAP.md](../ROADMAP.md) Tier 5; proposed v2 path is a FRED JSON adapter (FRED has a stable upstream API for US macro releases including BLS data).
+
+### Usage
+
+```powershell
+# Per-position (US)
+python scripts/fetch_calendar.py `
+    --mode position --ticker MSFT --market US --lookforward-days 180
+
+# Per-position (India — supply at least one of bse-code/nse-symbol for Screener fallback)
+python scripts/fetch_calendar.py `
+    --mode position --ticker NTPC --market India `
+    --bse-code 532555 --nse-symbol NTPC --lookforward-days 180
+
+# Global macro (US + India)
+python scripts/fetch_calendar.py `
+    --mode global --regions US,IN --lookforward-days 180
+```
+
+### Parameters
+
+| Parameter | Required | Values | Notes |
+|-----------|----------|--------|-------|
+| `--mode` | yes | `position` \| `global` | Routes to per-ticker or macro fetchers |
+| `--lookforward-days` | no | int, default 180 | Cutoff for forward-looking events |
+| `--ticker` | yes (position) | e.g., `MSFT`, `NTPC` | Position mode only |
+| `--market` | yes (position) | `US` \| `India` | Position mode only |
+| `--bse-code` | no (India position) | numeric scrip code | Helps Screener resolve the right company page |
+| `--nse-symbol` | no (India position) | alphanumeric | Helps Screener resolve the right company page |
+| `--regions` | no (global) | comma-separated, default `US,IN` | v1 supports only US and IN |
+| `--today` | no | `YYYY-MM-DD` | Override system date for testing |
+
+### Output
+
+JSON envelope to stdout per the contract in `internal/agents/calendar-tracker.md`. Top-level fields: `mode`, `today`, `lookforward_days`, `results` (per-source raw counts and `endpoint_errors`), `deferred_v2` (always populated for `mode: global`; lists v2 sources with their failure reasons), `events_total`, `events` (normalized list, sorted ascending by date), `errors`.
+
+Exit codes: `0` success or partial success (events returned, or no events but no errors); `1` total failure (no events AND every result had errors); `2` bad usage.
+
+### Editing the source list
+
+The FOMC URL and parser pattern live in `fetch_calendar.py` `fetch_fomc_schedule()`. The v2 deferred-source list lives in `V2_DEFERRED_SOURCES` near the top of the file with each source's URL and failure-reason string — these are surfaced in the JSON envelope so the orchestrator can show them honestly. When a v2 source becomes viable (e.g., BLS via FRED JSON), add a real fetcher function and remove the entry from `V2_DEFERRED_SOURCES`. The contract field shape does not change.
 
 ---
 

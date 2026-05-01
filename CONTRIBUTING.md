@@ -28,13 +28,9 @@ Framework edits without a citation or a worked example will be closed. This is n
 
 ### 3. New frameworks
 
-Eight of the eleven investor frameworks (Fisher, Druckenmiller, Marks, Klarman, Dalio, Thorp, Templeton, Taleb) are unwritten. Pick one you know well:
+All eleven v1 frameworks (Lynch, Buffett, Munger, Fisher, Druckenmiller, Marks, Klarman, Thorp, Dalio, Templeton, Taleb) ship as first-pass distillations. Lynch is the reference implementation; the other ten are working drafts and the highest-value contribution today is *deepening* one of them by page-numbered citation and worked examples (see section 2 above), not adding a twelfth.
 
-1. Open a claim issue using the [Claim a framework](.github/ISSUE_TEMPLATE/new-framework-claim.yml) template so two people don't duplicate work.
-2. Copy [frameworks/_template.md](frameworks/_template.md) to `frameworks/<investor>.md` and fill it in. The template mirrors the section structure of [frameworks/lynch.md](frameworks/lynch.md), which is the reference implementation — read it end-to-end before writing.
-3. Open the PR. At least one primary source (a book the investor wrote, or a collection of their letters/essays) is required. Secondary biographies are supplements, not substitutes.
-
-The current 11 investors are the set for v1. Before proposing a 12th, open an issue explaining:
+If you do believe a twelfth investor is warranted, open an issue first and explain:
 
 - Why this investor's thinking is not already covered by the existing 11.
 - Which question types it answers better than the current frameworks.

@@ -32,6 +32,89 @@ changelog on release.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-01
+
+### Added
+
+- **`calendar-tracker` subagent**
+  ([internal/agents/calendar-tracker.md](internal/agents/calendar-tracker.md))
+  + **[scripts/fetch_calendar.py](scripts/fetch_calendar.py)** — maintains
+  scheduled corporate and macro event calendars in two modes via a
+  `mode: position | global` input flag. **Per-position**
+  (`mode: position`): fetches earnings dates / ex-dividend / splits via
+  yfinance (`Ticker.calendar` for US tickers; sometimes empty for India
+  via `.NS` suffix) and Screener.in HTML scrape (India position,
+  opportunistic — Screener publishes forward-looking dates only when
+  available). Indian AGMs come via `disclosure-fetcher`'s BSE/NSE channel
+  (board-meeting filings) and are out of scope here; US AGMs handled by
+  an opt-in `WebFetch` fallback (capped at 1 call per invocation) on the
+  company's IR page. **Global** (`mode: global`): v1 auto-fetches FOMC
+  meeting dates from federalreserve.gov (parsing H4 `<year> FOMC Meetings`
+  headers and date-range tokens like `June 16-17`; uses day 1 of the
+  range as the canonical event date for a 1-day pre-meeting heads-up).
+  Three macro sources deferred to v2 and surfaced honestly via the
+  helper's `deferred_v2` envelope: BLS US CPI (HTTP 403 on bot
+  User-Agents even with browser headers), RBI MPC schedule (buried in
+  dated press-release listings; brittle parsing), MoSPI India CPI / IIP
+  (page format varies). v1 fallback for all three: users supply dates
+  via the subagent's `pasted_dates` channel (strict-parsed with
+  injection refusal). Tool grant: `Read, Bash, WebFetch`. Hard
+  5-operation cap on web-touching tool calls. Cache-hit skip 30 days
+  (calendar data changes slowly; 7-day floor on
+  `decision_context: recency_explicit`). **Strict dedup with
+  co-writers**: matches by `(event-type, date ±2 days)` proximity and
+  preserves any existing row whose source starts with
+  `disclosure-fetcher (auto):`, `earnings-grader (auto)`, or has no
+  auto-tag (user-owned) — calendar-tracker is the *complement* to
+  disclosure-fetcher, never overwrites tier-1 regulator-filing-sourced
+  rows. **Past-event auto-sweep** on every invocation: rows whose date
+  is < today move from `upcoming:` to `past:` (capped at 12 entries;
+  oldest pruned). Filesystem-read-only — emits
+  `proposed_calendar_yaml` (mode: position) or
+  `proposed_global_calendar_yaml` (mode: global) for the orchestrator
+  to write. 12 regression-test anchors. v2 deferrals tracked as
+  `Q-cal-1` in [ROADMAP.md](ROADMAP.md) Tier 5.
+
+### Changed
+
+- **SKILL.md** — added Stage 3 delegation block for `calendar-tracker`
+  with handle-the-response branches for `ok` / `partial` /
+  `cache_hit` / `no_changes` / `insufficient_input`. Added
+  upcoming-events row to Stage 3 source-hierarchy table. Added
+  `calendar-tracker` to the Subagents-section inventory.
+- **internal/subagents.md** — status flipped to **Shipped** (8 of 11
+  subagents now shipped); inventory bullet, write-target matrix, and
+  status table all updated to match the actual contract.
+- **ROADMAP.md** — added `Q-cal-1` to Tier 5 documenting the v2 macro
+  sources (BLS / RBI / MoSPI) deferral with their exact failure
+  reasons captured during the v1 build, and proposed v2 path (FRED
+  JSON adapter as the first step, since FRED is a stable upstream
+  for US macro releases including BLS data).
+- **scripts/README.md** — added documentation for `fetch_calendar.py`
+  with usage, parameters, source list, and v2 deferrals.
+- **README.md** — added a "Tracks the dates that will move your
+  stocks" row to the capability table covering `calendar-tracker`,
+  and updated Status to "eight shipped subagents" (also lists
+  `disclosure-fetcher`, which the v0.3.0 Status block had missed).
+- **docs/how-veda-thinks.md** — Stage 3 (Data check) now lists
+  `disclosure-fetcher` and `calendar-tracker` as fetchers alongside
+  `fundamentals-fetcher` and `news-researcher`. Both were missing
+  from this user-facing walkthrough; `disclosure-fetcher`'s entry
+  is back-filled here from v0.3.0.
+- **README.md** — Status block: replaced the stale "v0.1 — early
+  preview" generation label with "v0.3.0 — early preview" so the
+  body matches the version badge at the top of the file. Caveat
+  that non-Lynch framework files are first-pass distillations is
+  preserved.
+- **SKILL.md** — Versioning section: same "v0.1" → "v0.3.0"
+  alignment, including the example narration string the orchestrator
+  is expected to emit when a framework rule isn't yet documented.
+- **CONTRIBUTING.md** — "New frameworks" section: removed the stale
+  "Eight of the eleven investor frameworks ... are unwritten" claim
+  (all eleven now ship as first-pass distillations). Section is now
+  guidance for proposing a twelfth investor; deepen-an-existing-one
+  is steered into section 2 (Framework edits).
+
 ## [0.3.0] - 2026-05-01
 
 ### Added
@@ -274,7 +357,8 @@ first version stamped for public consumption.
   exclusively to `secrets/kite.yaml`; access tokens are never echoed to stdout
   or chat.
 
-[Unreleased]: https://github.com/upcomingGit/Veda-advisor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/upcomingGit/Veda-advisor/compare/v0.3.0...HEAD
 [0.1.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.1.0
 [0.2.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.2.0
 [0.3.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.3.0
+[0.4.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.4.0
