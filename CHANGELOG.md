@@ -32,6 +32,12 @@ changelog on release.
 
 ## [Unreleased]
 
+### Changed
+
+- **README.md** — tightened three capability-table rows (news tracking,
+  regulator filings, and calendar tracking) so the homepage stays readable
+  while preserving the core capability claims and sample questions.
+
 ## [0.4.0] - 2026-05-01
 
 ### Added
