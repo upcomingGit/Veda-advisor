@@ -551,58 +551,110 @@ npa_pct: 1.2                     # banks, NBFCs
 
 ## `insiders.yaml` — optional
 
-Insider and promoter transactions. For India: SAST disclosures, promoter
-pledging. For US: Form 4 filings.
+Insider and promoter transactions. For India: NSE PIT (Prohibition of Insider
+Trading) disclosures, sourced via the `ownership-tracker` subagent. For US:
+SEC EDGAR Form 4 filings, also sourced via `ownership-tracker`. v1 caps the
+file at the 50 most-recent transactions by date descending; older rows are
+pruned automatically when the cap is breached.
 
 ```yaml
 transactions:
-  - date: 2026-03-15
+  # US example (Form 4)
+  - id: 0000789019-26-000045-satya-nadella-S   # <accession>-<insider-slug>-<P|S>
+    date: 2026-03-15
     person: Satya Nadella
     role: CEO
-    type: sell              # buy | sell | gift | pledge | release
+    type: sell                # buy | sell
     shares: 10000
     price: 415.20
-    value_mm: 4.15
+    value_mm: 4.152           # USD millions (US only)
     source: SEC Form 4
-    note: Pre-planned 10b5-1
+    note: aggregated from 7 lots   # present only when lot_count > 1
 
-pledging:                   # India-specific; track promoter pledging %
+  # India example (NSE PIT)
+  - id: 2026-03-12-NSE-promoter-name-B-50000   # <date>-NSE-<person-slug>-<B|S>-<shares>
+    date: 2026-03-12
+    person: Promoter Name
+    role: Promoter
+    type: buy
+    shares: 50000
+    price: 215.40
+    value_cr: 1.077           # INR crores (India only)
+    currency: INR
+    source: NSE PIT
+
+pledging:                     # India fresh builds OMIT this block in v1
+                              # (NSE corporate-pledge endpoint parked for v2;
+                              # subagent returns pledging_status: not_fetched_v1).
+                              # US: present only when the user supplies
+                              # pasted_pledging from a DEF 14A / 10-K footnote.
   promoter_pledged_pct: 0.0
   as_of: 2026-03-31
-  source: BSE shareholding pattern
+  source: ORCL 2026 DEF 14A footnote 7
 ```
+
+Field notes (canonical contract: [`internal/agents/ownership-tracker.md`](agents/ownership-tracker.md)):
+
+- `id` — stable cross-run dedup key. The orchestrator's verify-write step
+  greps for at least one returned `id` after writing. Required on every row.
+- `value_mm` (US) vs `value_cr` + `currency` (India) — emitted in the unit
+  natural to the source feed. Do not normalize across markets in this file;
+  Stage 6 framework code converts to a common unit at read time.
+- `lot_count` is implicit in the `note` string when a US Form 4 row aggregates
+  multiple same-day same-direction lots from one accession.
 
 ---
 
 ## `shareholding.yaml` — optional
 
-Quarterly shareholding pattern. For India: BSE/NSE filings. For US: 13F
-aggregations, proxy statements.
+Quarterly shareholding pattern. For India: NSE corp-shp master endpoint with
+BSE shareholding-pattern fallback, sourced via the `ownership-tracker`
+subagent. For US: yfinance `Ticker.major_holders` (insider/institutional/retail
+splits), also via `ownership-tracker`. v1 caps `history:` at the 8 most-recent
+quarters; older entries are pruned automatically.
 
 ```yaml
 as_of: 2026-03-31
-source: BSE shareholding pattern
+period: 2026-Q1
+source: nse_corp_shp        # one of: nse_corp_shp | bse_shp_fallback | yfinance_major_holders
 
-# India format
-promoter_pct: 72.3
-fii_pct: 12.4
-dii_pct: 8.1
-public_pct: 7.2
+# India format — v1 emits promoter_pct + public_pct only.
+# fii_pct and dii_pct are emitted as null because the FII/DII split lives
+# inside the per-filing XBRL document and XBRL parsing is parked for v2.
+# Treat null as "missing", NOT as zero.
+promoter_pct: 51.10
+public_pct: 48.90
+fii_pct: null
+dii_pct: null
+pledge_pct: null            # parked for v2 (separate NSE corporate-pledge endpoint)
 
-# US format (use instead of above for US equities)
+# US format (use instead of the India block for US equities)
 # insider_pct: 0.1
 # institutional_pct: 74.2
 # retail_pct: 25.7
 
-# Historical trend (last 4 quarters)
+# Historical trend — up to 8 most-recent quarters (cap enforced by helper)
 history:
-  - period: 2026-Q1
-    promoter_pct: 72.3
-    fii_pct: 12.4
   - period: 2025-Q4
-    promoter_pct: 72.3
-    fii_pct: 11.8
+    promoter_pct: 51.10
+    public_pct: 48.90
+    fii_pct: null
+    dii_pct: null
+  - period: 2025-Q3
+    promoter_pct: 51.10
+    public_pct: 48.90
+    fii_pct: null
+    dii_pct: null
 ```
+
+Field notes (canonical contract: [`internal/agents/ownership-tracker.md`](agents/ownership-tracker.md)):
+
+- `as_of` is the regulator-reported snapshot date; `period` is the matching
+  fiscal-quarter label (`YYYY-Qn`). The orchestrator's verify-write step
+  greps for the emitted `as_of:` value.
+- For India, `fii_pct: null` / `dii_pct: null` is a v1 honesty signal, not
+  a missing field. Do not infer zero. Stage 6 framework code that needs the
+  FII/DII split should declare `LOW-CONFIDENCE` per the data-gate rule.
 
 ---
 

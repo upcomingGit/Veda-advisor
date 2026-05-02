@@ -1,6 +1,6 @@
 # Veda utility scripts
 
-Helper scripts for Veda. Nine categories:
+Helper scripts for Veda. Ten categories:
 
 1. **`calc.py` — required.** Veda's Hard Rule #8 forbids LLM arithmetic. Every EV, p_loss, PEG, Kelly, FX, or weight-sum number comes from this script. See SKILL.md Hard Rule #8.
 2. **`validate_profile.py` — required at onboarding.** Deterministic schema check for `profile.md`. Run at the end of onboarding to catch enum typos and missing fields before they reach Stage 1.
@@ -10,7 +10,8 @@ Helper scripts for Veda. Nine categories:
 6. **`fetch_news.py` + `news_spam_filter.py` — data fetcher.** Pulls third-party press coverage from curated RSS feeds and Google News, applies a six-layer filter pipeline (URL dedup, 87-domain spam filter, 402-pattern title filter, name-presence filter, semantic dedup, per-publisher cap). Called by the `news-researcher` subagent (see `internal/agents/news-researcher.md`).
 7. **`fetch_disclosures.py` — data fetcher.** Pulls primary-source regulator filings: SEC EDGAR 8-K (US), BSE + NSE Corporate Announcements (India). Applies a 12-pattern routine-disclosure filter (StockClarity-ported, India-only) and lightweight future-event regex extraction. Called by the `disclosure-fetcher` subagent (see `internal/agents/disclosure-fetcher.md`).
 8. **`fetch_calendar.py` — data fetcher.** Pulls scheduled corporate events (earnings, ex-dividend, splits via yfinance/Screener) and macro events (FOMC schedule via federalreserve.gov). Two modes: `--mode position` (per-ticker) and `--mode global` (portfolio-wide macro). Called by the `calendar-tracker` subagent (see `internal/agents/calendar-tracker.md`). v2 macro sources (BLS, RBI, MoSPI) deferred and surfaced via `deferred_v2` envelope.
-9. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
+9. **`fetch_ownership.py` — data fetcher.** Pulls insider/promoter transactions and quarterly shareholding-pattern snapshots: SEC EDGAR Form 4 (US — issuer-CIK lookup, per-filing index.json scrape, namespace-stripped XML parse, lot aggregation), NSE PIT API + NSE corp-shp master endpoint with BSE shareholding-pattern fallback (India — homepage→cookie bootstrap, StockClarity-ported 5-filter pipeline). Stable transaction IDs for cross-run dedup. Called by the `ownership-tracker` subagent (see `internal/agents/ownership-tracker.md`). v1 limitations: India FII/DII split lives in per-filing XBRL and is not parsed; India promoter pledging is on the corporate-pledge endpoint and is not auto-fetched.
+10. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
 
 ---
 
@@ -404,6 +405,91 @@ Exit codes: `0` success or partial success (events returned, or no events but no
 ### Editing the source list
 
 The FOMC URL and parser pattern live in `fetch_calendar.py` `fetch_fomc_schedule()`. The v2 deferred-source list lives in `V2_DEFERRED_SOURCES` near the top of the file with each source's URL and failure-reason string — these are surfaced in the JSON envelope so the orchestrator can show them honestly. When a v2 source becomes viable (e.g., BLS via FRED JSON), add a real fetcher function and remove the entry from `V2_DEFERRED_SOURCES`. The contract field shape does not change.
+
+---
+
+## `fetch_ownership.py` — insider trades and shareholding fetcher
+
+Called by the `ownership-tracker` subagent to fetch insider/promoter transactions and quarterly shareholding-pattern snapshots into the typed YAML files `holdings/<slug>/insiders.yaml` and `holdings/<slug>/shareholding.yaml`. Two channels selectable via `--channels`.
+
+### Channels
+
+| Channel | Source (US) | Source (India) | Output |
+|---|---|---|---|
+| `insiders` | SEC EDGAR submissions JSON → per-filing `index.json` → raw Form 4 XML; namespace stripped, lots aggregated by accession + insider + direction | NSE PIT API single all-companies-in-window call; StockClarity-ported 5-filter pipeline (`secType=="Equity Shares"` → `tdpTransactionType in (Buy, Sell)` → `acqMode in (Market Purchase, Market Sale)` → `secVal > 0` → value threshold ₹1 Cr buy / ₹5 Cr sell) | `transactions[]` array with stable IDs (`<accession>-<insider-slug>-<P|S>` for US; `<YYYY-MM-DD>-NSE-<acqName-slug>-<B|S>-<secAcq>` for India), filtered to material lots (≥ $500K buy / $2M sell for US; ₹1 Cr / ₹5 Cr for India) |
+| `shareholding` | yfinance `Ticker.major_holders` (insider%, institutional%, residual retail%) | NSE corp-shp master endpoint (promoter and public split, up to 8 quarters of history); BSE shareholding-pattern fallback when NSE returns no rows or fails | `shareholding{}` object: `as_of`, `period` (e.g., `2026-Q1`), `source`, percentage fields per market, optional `history[]` (up to 7 prior quarters for India; US is snapshot-only via yfinance) |
+
+NSE bootstrap follows the StockClarity pattern: fetch `nseindia.com` homepage to seed cookies, then call the API endpoint with `Accept-Encoding: gzip, deflate` (NOT brotli — the gzip path is reliable; brotli auto-decompression breaks on some endpoint variants). Form 4 URL construction takes the **filer (insider) CIK from the first 10 digits of the accession number**, not the issuer CIK — Form 4 is filed by the individual reporting owner.
+
+### Usage
+
+```powershell
+# US — auto-resolves CIK from SEC's company_tickers.json
+python scripts/fetch_ownership.py `
+    --market US --ticker NVDA `
+    --channels insiders,shareholding `
+    --insiders-since 2026-01-01
+
+# US with explicit CIK (skips auto-resolve)
+python scripts/fetch_ownership.py `
+    --market US --ticker MSFT --cik 0000789019 `
+    --channels insiders --insiders-since 2026-02-01
+
+# India — nse-symbol is REQUIRED; bse-code is the shareholding fallback
+python scripts/fetch_ownership.py `
+    --market India --ticker NTPC `
+    --bse-code 532555 --nse-symbol NTPC `
+    --channels insiders,shareholding `
+    --insiders-since 2026-01-01
+
+# Existing-yaml dedup (skip transactions whose ID is already cached)
+python scripts/fetch_ownership.py `
+    --market US --ticker NVDA `
+    --channels insiders --insiders-since 2026-01-01 `
+    --existing-insiders holdings/nvda/insiders.yaml
+```
+
+### Parameters
+
+| Parameter | Required | Values | Notes |
+|-----------|----------|--------|-------|
+| `--market` | yes | `US` \| `India` | Routes to SEC vs NSE/BSE source set |
+| `--ticker` | yes | e.g., `NVDA`, `NTPC` | Used in stable-ID generation and source URLs |
+| `--cik` | no (US) | 10-digit zero-padded | Auto-resolved from `sec.gov/files/company_tickers.json` when absent |
+| `--bse-code` | no (India) | numeric scrip code | Optional shareholding fallback when NSE corp-shp fails |
+| `--nse-symbol` | yes (India) | alphanumeric | NSE PIT and NSE corp-shp both key on this; helper rejects with `insufficient_input` when missing |
+| `--channels` | yes | comma-separated subset of `insiders,shareholding` | Selectively fetch one or both channels |
+| `--insiders-since` | yes (when `insiders` requested) | `YYYY-MM-DD` | Lookback floor for transaction filtering |
+| `--existing-insiders` | no | path to a prior `insiders.yaml` | Helper reads existing transaction IDs and drops re-fetched duplicates |
+
+### Output
+
+JSON envelope to stdout per the contract in `internal/agents/ownership-tracker.md`. Top-level fields: `errors`, `ticker`, `market`, `channels_requested`, `transactions[]`, `shareholding{}`, `search_log[]`, `counts{transactions_fetched, transactions_kept, transactions_added}`, optional `resolved_codes{cik}` when CIK was auto-resolved.
+
+Exit codes: `0` success or partial success (any data returned); `1` total failure (no data AND every result had errors); `2` bad usage.
+
+### v1 limitations (documented honestly)
+
+| Limitation | Why | Surfaced as |
+|---|---|---|
+| India FII/DII split not parsed | The NSE corp-shp master endpoint surfaces only promoter and public aggregates. The FII/DII breakdown lives inside per-filing XBRL documents (linked via the `xbrl` field on each row). XBRL parsing is heavy and parked for v2. | `fii_pct: null`, `dii_pct: null` emitted explicitly so the orchestrator can distinguish "missing" from "forgotten" |
+| India promoter pledging not auto-fetched | Pledge percentages live on a separate NSE corporate-pledge endpoint, not the corp-shp master. Pledging-channel implementation is parked for v2. | Subagent contract returns `pledging_status: not_fetched_v1` so the orchestrator treats absence as "unknown", not "0%" |
+| US promoter pledging not auto-fetched | US pledge data is disclosed only in DEF 14A and 10-K footnotes, with no machine-readable feed. | The narrow `pasted_pledging` channel (`{ promoter_pledged_pct, as_of, source }`) lets users record manually; helper validates the shape and rejects malformed input |
+
+### Editing thresholds
+
+Value floors live as module-level constants near the top of `fetch_ownership.py`:
+
+```python
+MIN_BUY_VALUE_USD = 500_000           # US Form 4 buy floor
+MIN_SELL_VALUE_USD = 2_000_000        # US Form 4 sell floor
+MIN_BUY_VALUE_INR = 10_000_000        # NSE PIT buy floor (₹1 Cr)
+MIN_SELL_VALUE_INR = 50_000_000       # NSE PIT sell floor (₹5 Cr)
+MAX_TRANSACTIONS_PER_TICKER = 50      # File cap for insiders.yaml
+MAX_SHAREHOLDING_HISTORY_QUARTERS = 8 # Cap for shareholding.yaml > history
+```
+
+These mirror StockClarity's production thresholds for insider-trade signal extraction and are deliberately conservative — promoter buying below these floors tends to be programmatic ESOP exercise or grant-related, not directional conviction. Tightening or loosening them is a config decision; do not lower the file cap below 50 without re-checking the orchestrator's load patterns.
 
 ---
 

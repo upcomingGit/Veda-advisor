@@ -32,11 +32,87 @@ changelog on release.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-02
+
+### Added
+
+- **`ownership-tracker` subagent**
+  ([internal/agents/ownership-tracker.md](internal/agents/ownership-tracker.md))
+  + **[scripts/fetch_ownership.py](scripts/fetch_ownership.py)** — pulls
+  insider/promoter transactions and quarterly shareholding-pattern
+  snapshots into `holdings/<slug>/insiders.yaml` and
+  `holdings/<slug>/shareholding.yaml`. Sources: SEC EDGAR submissions
+  JSON for Form 4 (US — issuer-CIK lookup, then per-filing
+  `index.json` scrape to locate the raw ownership XML, then
+  namespace-stripped XML parse with lot aggregation across same-day
+  same-direction transactions); NSE PIT API + NSE corp-shp master
+  endpoint with BSE shareholding-pattern fallback (India — homepage→cookie
+  bootstrap with `Accept-Encoding: gzip, deflate` rather than brotli).
+  Tool grant: `Read, Bash, WebFetch`. Helper applies the
+  StockClarity-ported 5-filter pipeline for India insiders
+  (`secType=="Equity Shares"` → `tdpTransactionType in (Buy, Sell)` →
+  `acqMode in (Market Purchase, Market Sale)` → `secVal > 0` → value
+  threshold ₹1 Cr buy / ₹5 Cr sell) and the value+price floor for US
+  Form 4 ($500K buy / $2M sell, with lots aggregated by accession +
+  insider + direction). Stable transaction IDs for cross-run dedup: US
+  `<accession>-<insider-slug>-<P|S>`, India
+  `<YYYY-MM-DD>-NSE-<acqName-slug>-<B|S>-<secAcq>`. **Split-TTL
+  cache gating** — 7 days for `insiders.yaml` (event-driven, mirrors
+  `news-researcher`), 30 days for `shareholding.yaml` (quarterly
+  snapshot, mirrors `calendar-tracker`); both bypassed on
+  `decision_context: high_stakes` (Stage 9a buy/sell hold-checks). Hard
+  5-operation cap on web-touching tool calls; hard cap of 50
+  transactions per `insiders.yaml` and 8 quarters per
+  `shareholding.yaml > history`. Refuses user-pasted insider
+  transactions or shareholding text in v1 (closes the injection
+  surface; primary-source fetches only); the narrow `pasted_pledging`
+  channel is **US-only** and accepts a single validated number
+  (`{ promoter_pledged_pct, as_of, source }`) — India has the
+  structured NSE feed and pasted text would not authoritatively
+  override it. Filesystem-read-only — emits `proposed_insiders_yaml`
+  and `proposed_shareholding_yaml` for the orchestrator to write
+  (same pattern as `disclosure-fetcher` and `calendar-tracker`).
+  Smoke-tested against NVDA US Form 4 (13+ aggregated transactions
+  over 90 days), NTPC India shareholding (8-quarter history), INFY NSE
+  PIT (129 raw → 2 kept after 5-filter), NTPC NSE PIT empty
+  (correctly surfaced as honest miss for a govt-owned promoter).
+  Twelve regression-test anchors live in the canonical contract
+  covering US fresh build, India fresh build, India insufficient input
+  (no `nse_symbol`), cache-hit, split-TTL behaviour, high-stakes
+  bypass, valid pasted-pledging (US), India-rejected pasted-pledging,
+  malformed pasted-pledging, US Form 4 lot aggregation, India 5-filter
+  ESOP drop, 50-row cap, and 8-quarter history cap. Brings the
+  `internal/subagents.md` shipped-count to **9 of 11**; two remain
+  (`earnings-grader`, `indicators-researcher`).
+- **v1 documented limitations for `ownership-tracker`** — surfaced
+  honestly in the contract, helper docs, and ROADMAP rather than
+  silently producing approximations:
+  - **India FII/DII split** lives inside the per-filing XBRL document
+    (linked from each NSE corp-shp row's `xbrl` field); XBRL parsing
+    is parked for v2. Helper emits `fii_pct: null`, `dii_pct: null`
+    explicitly so the orchestrator can distinguish "missing" from
+    "forgotten."
+  - **India promoter pledging** lives on a separate NSE
+    corporate-pledge endpoint, not the corp-shp master; pledging-channel
+    implementation is parked for v2. Subagent contract returns
+    `pledging_status: not_fetched_v1` so the orchestrator treats
+    absence as "unknown", not "0%".
+
 ### Changed
 
 - **README.md** — tightened three capability-table rows (news tracking,
   regulator filings, and calendar tracking) so the homepage stays readable
   while preserving the core capability claims and sample questions.
+- **README.md, SKILL.md, ROADMAP.md, internal/subagents.md,
+  docs/how-veda-thinks.md, scripts/README.md** — updated subagent
+  inventory and Stage 3 delegation rules for the new `ownership-tracker`
+  subagent: README adds the *"Watches who's buying and selling on the
+  inside"* capability row plus a status flip from "eight" to "nine"
+  shipped subagents; SKILL.md adds the Stage 3 delegation block, the
+  source-hierarchy row, and the Subagents-inventory entry; ROADMAP flips
+  build-order step 7 to shipped and updates the live count; subagents.md
+  flips row 10 to **Shipped** and rewrites the prose entry plus the
+  write-target matrix.
 
 ## [0.4.0] - 2026-05-01
 
@@ -368,3 +444,4 @@ first version stamped for public consumption.
 [0.2.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.2.0
 [0.3.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.3.0
 [0.4.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.4.0
+[0.5.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.5.0
