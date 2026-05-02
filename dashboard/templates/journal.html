@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Journal - Veda{% endblock %}
+{% block content %}
+<section class="page-header journal-header">
+  <h1>Decision journal</h1>
+  <div class="date-strip">
+    <span><strong>Current date</strong> {{ today }}</span>
+    <span><strong>Last updated</strong> {{ journal_updated or '-' }}</span>
+    <span><strong>Source</strong> <code>journal.md</code></span>
+  </div>
+</section>
+
+{% if journal_entries %}
+<section class="summary-grid journal-summary">
+  <div class="summary-card">
+    <div class="summary-label">Entries</div>
+    <div class="summary-value">{{ journal_entries | length }}</div>
+    <div class="summary-note">decision records parsed from journal.md</div>
+  </div>
+  <div class="summary-card with-accent">
+    <div class="summary-label">Latest action</div>
+    <div class="summary-value">{{ journal_entries[0].action_label }}</div>
+    <div class="summary-note">{{ journal_entries[0].date or 'date not captured' }} &middot; {{ journal_entries[0].subject }}</div>
+  </div>
+  <div class="summary-card with-gold">
+    <div class="summary-label">Next review</div>
+    <div class="summary-note strong-note">{{ journal_entries[0].review_trigger or 'review trigger not captured' }}</div>
+  </div>
+</section>
+
+<section class="journal-card-grid">
+  {% for entry in journal_entries %}
+  <article class="journal-card">
+    <header>
+      <div class="journal-card-topline">
+        <span class="badge action-{{ entry.action_label | lower }}">{{ entry.action_label }}</span>
+        <span class="meta">{{ entry.date or '-' }}</span>
+      </div>
+      <h2>{{ entry.subject }}</h2>
+      {% if entry.question %}<p class="journal-question">{{ entry.question }}</p>{% endif %}
+    </header>
+
+    <dl class="summary-list">
+      {% if entry.action %}<div><dt>Action</dt><dd>{{ entry.action }}</dd></div>{% endif %}
+      {% if entry.ev %}<div><dt>EV</dt><dd>{{ entry.ev }}</dd></div>{% endif %}
+      {% if entry.review_trigger %}<div><dt>Review</dt><dd>{{ entry.review_trigger }}</dd></div>{% endif %}
+    </dl>
+
+    <details class="md-detail journal-detail">
+      <summary>Full note{% if entry.workspace %}<span class="meta">{{ entry.workspace }}</span>{% endif %}</summary>
+      <div class="prose">{{ entry.content | md | safe }}</div>
+    </details>
+  </article>
+  {% endfor %}
+</section>
+{% elif journal_md %}
+<section class="prose journal">
+  {{ journal_md | md | safe }}
+</section>
+{% else %}
+<p class="empty">No <code>journal.md</code> in the workspace.</p>
+{% endif %}
+{% endblock %}

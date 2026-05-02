@@ -1,6 +1,6 @@
 # Veda
 
-[![version](https://img.shields.io/badge/version-0.5.0-blue)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+[![version](https://img.shields.io/badge/version-0.6.0-blue)](CHANGELOG.md) [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 > **Veda is your personalised AI-native Investment Advisor. Because it fetches knowledge from the world's greatest investors, it's like having Warren Buffett, Charlie Munger, Peter Lynch, and 8 others giving you advice for your portfolio and your investing questions.**
 
@@ -18,6 +18,7 @@ Veda lives inside the AI assistant you already use (ChatGPT, Gemini, Claude, Git
 | **Pulls your live holdings from your broker** | No more typing in 40 stock names and average prices every time you want advice. Veda sees what you actually own, what you paid, and what it's worth today — so the advice is grounded in your real portfolio, not a hypothetical one. Zerodha works today; ICICI Direct, Groww, IBKR, Robinhood, Vested, and Schwab are coming. | *"Pull my Zerodha holdings and tell me which positions are looking expensive."* <br><br> *"Show me my top 5 holdings by weight and flag any that have grown too large."* <br><br> *"What's my current cash position and how should I deploy it?"* |
 | **Builds a personal profile of you in 5 minutes** | A piece of advice that's right for a 30-year-old earning a salary is wrong for a 60-year-old living off dividends. Veda interviews you once — your age, income needs, time horizon, what keeps you up at night, what you've gotten wrong in the past — and uses that on every single answer. The advice changes with you, not with the market's mood. | *"Given my profile, am I taking too much risk in semiconductors?"* <br><br> *"Is this portfolio aligned with my goal of early retirement at 50?"* <br><br> *"What's the maximum drawdown I can stomach without panicking, based on my profile?"* |
 | **Creates a living workspace for every company you own** | Most investors lose track of why they bought a stock six months later. Veda keeps a folder for each holding — your original thesis, the latest news, the new earnings, an updated valuation — and tells you whether your reason for owning it is still true. It's the institutional memory you would have if you ran a fund. | *"Refresh the TSMC workspace and tell me if my thesis still holds after this quarter's earnings."* <br><br> *"Why did I buy Asian Paints originally and is that reason still valid?"* <br><br> *"Show me everything that has changed in the Reliance file in the last 90 days."* |
+| **Shows those workspaces in a local dashboard** | Chat is the right surface for making a decision; a visual dashboard is better for reviewing the whole portfolio at a glance. Veda opens a read-only browser view on your computer with holdings, company workspaces, calendars, news, assumptions, decisions, and the journal — no upload, no account, no hosted service. | Run: `python -m dashboard` <br><br> Then open `http://127.0.0.1:8765/` in your browser. <br><br> Full setup: [INSTALL.md](INSTALL.md#optional--local-workspace-dashboard). |
 | **Adjusts to your level — novice or expert** | If you're new, you get plain English: what a P/E ratio means, why a stock looks cheap, what to actually do. If you're experienced, you get the deeper layer: cash conversion, owner earnings, why the DCF assumptions are aggressive. One tool, two voices, you choose. | *"Explain in simple terms why this stock looks cheap."* <br><br> *"Walk me through whether Infosys is a buy at current prices, like I'm new to investing."* <br><br> *"Stress-test the DCF for NVDA at a 15% discount rate."* |
 | **Tracks your companies for you** | Veda scans business news, filters duplicates and low-value noise, then grades each useful item against your thesis: strengthens, weakens, or neutral. You see what matters, not every headline. | *"What changed for Asian Paints in the last 30 days?"* <br><br> *"Which holdings had thesis-weakening news this quarter?"* <br><br> *"Show me the material news for HDFC Bank."* |
 | **Pulls primary regulator filings, not just news about them** | Veda goes straight to SEC EDGAR (US) and BSE/NSE announcements (India), filters routine compliance noise, and surfaces filings that may affect the thesis: results, leadership changes, material agreements, board actions, and dated future events. | *"Show me the latest 8-K filings for Microsoft."* <br><br> *"What corporate announcements has Reliance made in the last 30 days?"* <br><br> *"Has NTPC filed anything material since I last checked?"* |
@@ -84,6 +85,33 @@ For a full walked-through example of one decision, see [examples/01-hold-check-w
 
 ---
 
+## See your portfolio at a glance — local dashboard
+
+Chat is the right surface for *making* a decision. A dense visual surface is the right one for *reviewing* the entire position graph at a glance. Veda ships a small, locally-running web dashboard that reads every artifact in your workspace and renders them in one place — read-only, offline by default, no account, no upload.
+
+**Overview page**
+
+![Veda local dashboard overview showing portfolio summary, upcoming events, and capital allocation](docs/assets/dashboard-overview.png)
+
+**Company workspace page**
+
+![Veda local dashboard showing a company workspace with position, valuation, calendar, and news cards](docs/assets/dashboard-company-workspace.png)
+
+Run it with one command:
+
+```bash
+python -m dashboard
+```
+
+Your browser opens to `http://127.0.0.1:8765/`. You see:
+
+- A portfolio overview: India and US holdings tables, totals and concentration, capital deployed vs target, upcoming earnings/AGM/ex-dividend dates across every position, and your journal.
+- A page per held company: the latest valuation zone (CHEAP / FAIR / EXPENSIVE) with the archetype's primary metric, twelve quarters of fundamentals with derived OPM% and FCF, the four-anchor assumption grade history (BEAT / MEET / MISS chips), the news and disclosures feed, the upcoming calendar, the decisions audit trail, insider trades, shareholding pattern, governance notes, the risk register, and the rendered knowledge base and investment thesis.
+
+The dashboard never writes to your workspace — every state change still happens through chat. The only network call is an explicit "refresh price" button per row, which is gated to tickers already in your `assets.md` (so it cannot be turned into an open relay). To change settings: the **theme** picker in the top-right of every page switches light/dark/system at runtime; everything else (port, workspace, event window) is set via CLI flags at start time and shown on the dashboard's `/settings` page. Full reference: [docs/customization.md](docs/customization.md). Setup details, including the Python dependencies, are in [INSTALL.md](INSTALL.md).
+
+---
+
 ## Why Veda vs the alternatives
 
 | If you are using… | What Veda adds |
@@ -103,6 +131,7 @@ Plain-English guides written for finance people, not coders.
 |---|---|
 | [How Veda thinks](docs/how-veda-thinks.md) | Walk through the 9 stages Veda runs every question, in plain English. |
 | [Customize Veda for you](docs/customization.md) | Tune your profile, framework weights, guardrails, hard constraints, markets. |
+| [Local dashboard setup](INSTALL.md#optional--local-workspace-dashboard) | Start the read-only browser dashboard, change its port/theme/event window, and understand what it can and cannot write. |
 | [Company workspaces (design)](docs/design/company-workspaces.md) | How Veda's per-position institutional memory is structured. |
 | [Add an investor framework](docs/extending/add-a-framework.md) | Add a 12th investor's decision rules. No coding required. |
 | [Add a specialist worker](docs/extending/add-a-subagent.md) | Advanced. Build a subagent for one focused job. |

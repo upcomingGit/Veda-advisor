@@ -13,6 +13,8 @@ Helper scripts for Veda. Ten categories:
 9. **`fetch_ownership.py` — data fetcher.** Pulls insider/promoter transactions and quarterly shareholding-pattern snapshots: SEC EDGAR Form 4 (US — issuer-CIK lookup, per-filing index.json scrape, namespace-stripped XML parse, lot aggregation), NSE PIT API + NSE corp-shp master endpoint with BSE shareholding-pattern fallback (India — homepage→cookie bootstrap, StockClarity-ported 5-filter pipeline). Stable transaction IDs for cross-run dedup. Called by the `ownership-tracker` subagent (see `internal/agents/ownership-tracker.md`). v1 limitations: India FII/DII split lives in per-filing XBRL and is not parsed; India promoter pledging is on the corporate-pledge endpoint and is not auto-fetched.
 10. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
 
+> **See also:** the local web dashboard lives outside `scripts/` in [`dashboard/`](../dashboard/) at the repo root. It is a read-only review surface for the workspace, not a script the chat-side pipeline calls. Start it with `python -m dashboard`. User docs: [INSTALL.md](../INSTALL.md#optional--local-workspace-dashboard) and [docs/customization.md](../docs/customization.md#local-workspace-dashboard). The dashboard reuses [`fetch_quote.py`](fetch_quote.py) for its (gated, optional) live-price refresh button — no other coupling.
+
 ---
 
 ## `calc.py` — arithmetic helpers (required)

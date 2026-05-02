@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_card, archetype_badge %}
+{% block title %}Portfolio overview - Veda{% endblock %}
+{% block content %}
+
+{% set d = assets.dynamic %}
+{% set totals = d.totals or {} %}
+{% set conc = d.concentration_snapshot or {} %}
+{% set split = d.capital_split_current or {} %}
+{% set forced = d.forced_concentration_snapshot or [] %}
+{% set fx = d.fx_rates or {} %}
+
+<section class="page-header">
+  <h1>Portfolio overview</h1>
+  <div class="date-strip">
+    <span><strong>Current date</strong> {{ today }}</span>
+    <span><strong>Portfolio prices</strong> {% if assets.as_of %}as of {{ assets.as_of }}{% else %}<code>assets.md</code> missing{% endif %}</span>
+    {% for pair, info in fx.items() %}
+    <span class="fx-pill"><strong>{{ pair | replace('_', '/') | upper }}</strong> {{ info.rate }}{% if info.as_of %} as of {{ info.as_of | dt }}{% endif %}</span>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="overview-dashboard">
+  <div class="overview-main-stack">
+    <section class="portfolio-summary-card">
+      <div class="summary-label">Listed equity holdings</div>
+      <div class="portfolio-summary-topline">
+        <div>
+          <p class="portfolio-total">{{ overview_summary.holdings_total_inr | inr }}</p>
+          <p class="summary-note">{{ overview_summary.total_positions }} holdings across India and US; cash is shown separately below.</p>
+        </div>
+        <span class="style-pill">{{ conc.style or 'style unknown' }}</span>
+      </div>
+
+      <div class="country-breakdown">
+        {% for country in overview_summary.countries %}
+        <article class="country-row">
+          <div>
+            <strong>{{ country.label }}</strong>
+            <span>{{ country.count }} {{ 'holding' if country.count == 1 else 'holdings' }}</span>
+          </div>
+          <div>
+            <strong>{{ country.value_inr | inr }}</strong>
+            <span>{{ country.weight_pct | pct }} of portfolio</span>
+          </div>
+          <div>
+            {% if country.return_pct is not none %}
+            <strong class="{{ 'gain' if country.return_pct >= 0 else 'loss' }}">{{ country.return_pct | pct }}</strong>
+            <span>return, basis {{ country.return_coverage }}/{{ country.count }}</span>
+            {% else %}
+            <strong class="muted">-</strong>
+            <span>return needs cost basis</span>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% if overview_summary.largest %}
+    {% set largest = overview_summary.largest %}
+    <section class="largest-holding-card">
+      <div class="summary-label">Largest holding across entire portfolio</div>
+      <div class="largest-holding-grid">
+        <div>
+          <p class="largest-ticker">{{ largest.ticker }}</p>
+          <p class="summary-note">{{ largest.name }}</p>
+        </div>
+        <div>
+          <p class="largest-value">{{ largest.value_inr | inr }}</p>
+          <p class="summary-note">
+            {% if largest.currency == 'USD' %}{{ largest.value_native | usd }} &middot; {% endif %}{{ largest.weight_pct | pct }} of total portfolio including cash
+          </p>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="calendar-card">
+    <div class="calendar-head">
+      <div>
+        <div class="summary-label">Upcoming events</div>
+        <h2>{{ calendar_month.month_label }}</h2>
+      </div>
+      <span class="calendar-window">next {{ event_window_days }} days</span>
+    </div>
+    <div class="mini-calendar" aria-label="Upcoming event calendar">
+      {% for weekday in calendar_month.weekdays %}<div class="weekday">{{ weekday }}</div>{% endfor %}
+      {% for week in calendar_month.weeks %}
+        {% for cell in week %}
+        <div class="calendar-day {{ 'blank' if not cell.date else '' }} {{ 'today' if cell.is_today else '' }} {{ 'has-event' if cell.events else '' }}"{% if cell.events %} title="{{ cell.events | length }} event(s)"{% endif %}>
+          <span>{{ cell.day }}</span>
+          {% if cell.events %}<i>{{ cell.events | length }}</i>{% endif %}
+        </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+    {% if upcoming %}
+    <ol class="event-list">
+      {% for ev in upcoming[:5] %}
+      <li>
+        <time>{{ ev._date | dt }}</time>
+        <a href="{{ url_for('position', slug=ev._slug) }}">{{ ev._slug }}</a>
+        <span>{{ ev.event or ev.type or '-' }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="empty">No dated events in the next {{ event_window_days }} days.</p>
+    {% endif %}
+  </aside>
+</div>
+
+<section>
+  <h2><span class="icon">&#x1F4B0;</span> Capital allocation</h2>
+  <div class="grid grid-cards">
+    <div class="card with-accent">
+      <h3>Capital split (current)</h3>
+      {% if split %}
+      <table class="kv">
+        <tr><th>core_long_term</th><td><strong>{{ split.core_long_term }}%</strong></td></tr>
+        <tr><th>tactical</th><td><strong>{{ split.tactical }}%</strong></td></tr>
+        <tr><th>short_term_trades</th><td><strong>{{ split.short_term_trades }}%</strong></td></tr>
+        <tr><th>speculation</th><td><strong>{{ split.speculation }}%</strong></td></tr>
+      </table>
+      <p class="meta">Target lives in <code>profile.md &gt; capital.target_split</code>.</p>
+      {% else %}
+      {{ empty_card('dynamic.capital_split_current') }}
+      {% endif %}
+    </div>
+
+  </div>
+</section>
+
+{% if forced %}
+<section>
+  <h2><span class="icon">&#x26A0;&#xFE0F;</span> Forced-concentration snapshot</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>ticker</th>
+        <th>weight</th>
+        <th class="num">cur_val (INR)</th>
+        <th>as_of</th>
+        <th>note</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in forced %}
+      <tr>
+        <td><strong>{{ f.ticker }}</strong></td>
+        <td><span class="badge action-trim">{{ f.weight_pct | pct }}</span></td>
+        <td class="num">{{ f.cur_val_inr | inr }}</td>
+        <td class="muted">{{ f.as_of | dt }}</td>
+        <td class="muted">{{ f.note or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% for ccy, items in enriched_by_ccy.items() %}
+<section class="holdings-section">
+  <h2>
+    <span class="icon">{% if ccy == 'INR' %}&#x1F1EE;&#x1F1F3;{% elif ccy == 'USD' %}&#x1F1FA;&#x1F1F8;{% else %}&#x1F4CA;{% endif %}</span>
+    Holdings &mdash; {{ ccy }}
+    <span class="meta">{{ items | length }} {{ 'row' if items|length == 1 else 'rows' }}</span>
+  </h2>
+  <table class="data sortable holdings-table">
+    <thead>
+      <tr>
+        <th>ticker</th>
+        <th>name</th>
+        <th class="num">shares</th>
+        <th class="num">avg_cost</th>
+        <th class="num">current_price</th>
+        <th class="num">current_value</th>
+        <th>tags</th>
+        <th>workspace</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      {% set r = it.row %}
+      <tr>
+        <td><strong>{{ r.ticker }}</strong></td>
+        <td>{{ r.name }}</td>
+        <td class="num">{{ r.shares | shares }}</td>
+        <td class="num">{{ r.raw_avg_cost or '-' }}</td>
+        <td class="num">{{ r.raw_current_price or '-' }}</td>
+        <td class="num">
+          {% if ccy == 'INR' %}{{ r.current_value | inr }}
+          {% elif ccy == 'USD' %}{{ r.current_value | usd }}
+          {% else %}{{ r.current_value | num(2) }}{% endif %}
+        </td>
+        <td class="muted">{{ r.tags }}</td>
+        <td>
+          {% if it.slug %}
+            <a href="{{ url_for('position', slug=it.slug) }}">view &rarr;</a>
+          {% else %}
+            <span class="muted">no workspace</span>
+          {% endif %}
+          <button class="link refresh-quote" data-ticker="{{ r.ticker }}">refresh</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+
+{% if workspace_only_slugs %}
+<section>
+  <h2><span class="icon">&#x1F50D;</span> Workspaces with no assets.md row</h2>
+  <p class="meta">These <code>holdings/</code> workspaces exist on disk but no current row in any <code>assets.md</code> Holdings table maps to them.</p>
+  <ul class="cards-inline">
+    {% for slug in workspace_only_slugs %}
+    <li><a href="{{ url_for('position', slug=slug) }}">{{ slug }}</a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if assets.cash_rows %}
+<section>
+  <h2><span class="icon">&#x1F4B5;</span> Cash &amp; equivalents</h2>
+  <article class="cash-combined-card">
+    <div>
+      <div class="summary-label">Total captured cash</div>
+      <div class="summary-value">{{ totals.cash_total_inr | inr }}</div>
+      <div class="summary-note">{% if assets.cash_total_md %}{{ assets.cash_total_md }}{% else %}from <code>dynamic.totals.cash_total_inr</code>{% endif %}</div>
+    </div>
+    <div class="cash-split-grid">
+      {% for bucket in overview_summary.cash.by_currency %}
+      <div class="cash-split-cell">
+        <span>{{ bucket.label }}</span>
+        {% if bucket.accounts %}
+          <strong>{% if bucket.currency == 'INR' %}{{ bucket.balance | inr }}{% elif bucket.currency == 'USD' %}{{ bucket.balance | usd }}{% else %}{{ bucket.currency }} {{ bucket.balance | num(2) }}{% endif %}</strong>
+          <small>{{ bucket.accounts | length }} {{ 'account' if bucket.accounts|length == 1 else 'accounts' }} captured</small>
+        {% else %}
+          <strong>not captured</strong>
+          <small>add a cash row when available</small>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <details class="mini-detail cash-detail">
+      <summary>account detail and source notes</summary>
+      <ul>
+        {% for c in assets.cash_rows %}
+        <li><strong>{{ c.account or 'Account' }}</strong> &middot; {{ c.institution or 'institution not captured' }} &middot; {{ c.currency }} {{ c.balance }}{% if c.as_of %} &middot; as of {{ c.as_of }}{% endif %}{% if c.notes %}<br><span>{{ c.notes }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </details>
+  </article>
+</section>
+{% endif %}
+
+{% endblock %}

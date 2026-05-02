@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="{{ initial_theme }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Veda Dashboard{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='veda.css') }}">
+  {# Apply persisted theme before paint to avoid flash of wrong theme. #}
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('veda.theme');
+        if (saved) {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) { /* localStorage unavailable -- keep server-rendered initial theme */ }
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a href="{{ url_for('overview') }}">Veda</a>
+      <span class="version">v{{ veda_version }}</span>
+    </div>
+    <nav class="nav">
+      <a href="{{ url_for('overview') }}" data-nav="overview">Overview</a>
+      <a href="{{ url_for('journal') }}" data-nav="journal">Journal</a>
+      <a href="{{ url_for('settings') }}" data-nav="settings">Settings</a>
+    </nav>
+    <div class="topbar-date">Today {{ today }}</div>
+    <div class="theme-picker" role="group" aria-label="Theme">
+      <button type="button" data-theme-set="light" title="Light theme">☼</button>
+      <button type="button" data-theme-set="dark" title="Dark theme">☾</button>
+      <button type="button" data-theme-set="system" title="System theme">◑</button>
+    </div>
+  </header>
+
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <span class="lock">Read-only. No data is written back to the workspace.</span>
+    <span class="muted">Today: {{ today }}</span>
+  </footer>
+
+  <script src="{{ url_for('static', filename='veda.js') }}"></script>
+</body>
+</html>

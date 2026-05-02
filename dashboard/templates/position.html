@@ -1,0 +1,694 @@
+{% extends "base.html" %}
+{% from "_macros.html" import zone_pill, grade_chip, archetype_badge, category_badge, source_meta, empty_card %}
+{% block title %}{{ registry_row.display_name if registry_row else slug }} - Veda{% endblock %}
+{% block content %}
+
+{% set has_position    = assets_row is not none %}
+{% set has_valuation   = valuation %}
+{% set has_fund        = fund_rows | length > 0 %}
+{% set has_assumptions = assumptions and assumptions.rows %}
+{% set has_calendar    = calendar.upcoming or calendar.past %}
+{% set has_news        = news | length > 0 %}
+{% set has_disclosures = disclosures_md %}
+{% set has_earnings    = earnings | length > 0 %}
+{% set has_insiders    = insiders and (insiders.transactions or insiders.pledging) %}
+{% set has_share       = shareholding %}
+{% set has_indicators  = indicators %}
+{% set has_perf        = performance %}
+{% set has_decisions   = decisions | length > 0 %}
+{% set has_kb          = kb_md %}
+{% set has_thesis      = thesis_md %}
+{% set has_governance  = governance_md %}
+{% set has_risks       = risks_md %}
+{% set company_name = registry_row.display_name if registry_row else slug %}
+
+<section class="company-hero-card">
+  <div class="company-breadcrumb"><a href="{{ url_for('overview') }}">Portfolio</a><span>/</span><strong>{{ company_name }}</strong></div>
+  <div class="company-hero-main">
+    <div class="company-avatar">{{ company_name[:1] | upper }}</div>
+    <div class="company-title-block">
+      <h1>{{ company_name }}</h1>
+      <p>
+        <code>{{ slug }}</code>
+        {% if meta.get('market') %}<span>{{ meta.market }}</span>{% endif %}
+        {% if meta.get('instrument_class') %}<span>{{ meta.instrument_class }}</span>{% endif %}
+        {% if registry_row %}<span>{{ registry_row.status }}</span>{% endif %}
+      </p>
+      <div class="badges">
+        {{ archetype_badge(meta.get('archetype')) }}
+        {% if meta.get('last_touched') %}<span class="meta">last touched {{ meta.last_touched | dt }}</span>{% endif %}
+        {% if registry_row and registry_row.first_acquired %}<span class="meta">first acquired {{ registry_row.first_acquired }}</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="company-metric-strip">
+    <div>
+      <span>Current price</span>
+      <strong>{% if assets_row %}{{ assets_row.raw_current_price or '-' }} {{ assets_currency }}{% else %}-{% endif %}</strong>
+    </div>
+    <div>
+      <span>Holding value</span>
+      <strong>{% if assets_row and assets_currency == 'INR' %}{{ assets_row.current_value | inr }}{% elif assets_row and assets_currency == 'USD' %}{{ assets_row.current_value | usd }}{% elif assets_row %}{{ assets_row.current_value | num(2) }} {{ assets_currency }}{% else %}-{% endif %}</strong>
+    </div>
+    <div>
+      <span>Shares</span>
+      <strong>{% if assets_row %}{{ assets_row.shares | shares }}{% else %}-{% endif %}</strong>
+    </div>
+    <div>
+      <span>Valuation</span>
+      <strong>{% if valuation and valuation.zone %}{{ valuation.zone }}{% else %}not captured{% endif %}</strong>
+    </div>
+  </div>
+</section>
+
+{# ============ Sub-nav ============ #}
+<div class="position-workspace-layout">
+<nav class="subnav position-sidebar" aria-label="Section navigation">
+  <div class="sidebar-title">Workspace</div>
+  <div class="subnav-list">
+    {% if has_position %}<a href="#sec-position" class="has-data">&#x1F4CD; Position</a>{% endif %}
+    <a href="#sec-valuation" class="{{ 'has-data' if has_valuation else 'empty-section' }}">&#x2696;&#xFE0F; Valuation</a>
+    <a href="#sec-calendar" class="{{ 'has-data' if has_calendar else 'empty-section' }}">&#x1F4C5; Calendar</a>
+    <a href="#sec-news" class="{{ 'has-data' if has_news else 'empty-section' }}">&#x1F4F0; News</a>
+    <a href="#sec-disclosures" class="{{ 'has-data' if has_disclosures else 'empty-section' }}">&#x1F4DC; Disclosures</a>
+    <a href="#sec-fundamentals" class="{{ 'has-data' if has_fund else 'empty-section' }}">&#x1F4CA; Fundamentals</a>
+    <a href="#sec-assumptions" class="{{ 'has-data' if has_assumptions else 'empty-section' }}">&#x1F3AF; Assumptions</a>
+    <a href="#sec-earnings" class="{{ 'has-data' if has_earnings else 'empty-section' }}">&#x1F4C8; Earnings</a>
+    <a href="#sec-insiders" class="{{ 'has-data' if has_insiders else 'empty-section' }}">&#x1F465; Insiders</a>
+    <a href="#sec-shareholding" class="{{ 'has-data' if has_share else 'empty-section' }}">&#x1F3DB;&#xFE0F; Shareholding</a>
+    <a href="#sec-indicators" class="{{ 'has-data' if has_indicators else 'empty-section' }}">&#x1F9ED; Indicators</a>
+    <a href="#sec-performance" class="{{ 'has-data' if has_perf else 'empty-section' }}">&#x1F3C6; Performance</a>
+    <a href="#sec-decisions" class="{{ 'has-data' if has_decisions else 'empty-section' }}">&#x2696;&#xFE0F; Decisions</a>
+    <a href="#sec-thesis" class="{{ 'has-data' if has_thesis else 'empty-section' }}">&#x1F4A1; Thesis</a>
+    <a href="#sec-kb" class="{{ 'has-data' if has_kb else 'empty-section' }}">&#x1F4DA; KB</a>
+    <a href="#sec-governance" class="{{ 'has-data' if has_governance else 'empty-section' }}">&#x1F6E1;&#xFE0F; Governance</a>
+    <a href="#sec-risks" class="{{ 'has-data' if has_risks else 'empty-section' }}">&#x26A0;&#xFE0F; Risks</a>
+  </div>
+  <div class="subnav-actions">
+    <button type="button" id="expand-all" title="Open all collapsed sections">expand all</button>
+    <button type="button" id="collapse-all" title="Collapse all sections">collapse</button>
+    <button type="button" id="hide-empty" title="Toggle visibility of empty sections" aria-pressed="false">hide empty</button>
+  </div>
+</nav>
+
+<div class="position-content">
+
+{# ============ Snapshot row: Position + Valuation side-by-side ============ #}
+<section class="grid snapshot-grid">
+  {% if has_position %}
+  <div class="card position-summary section-anchor" id="sec-position">
+    <h3><span class="icon">&#x1F4CD;</span> Position</h3>
+    <table class="kv">
+      <tr><th>shares</th><td><strong>{{ assets_row.shares | shares }}</strong></td></tr>
+      <tr><th>avg_cost</th><td>{{ assets_row.raw_avg_cost or '-' }}</td></tr>
+      <tr><th>current_price</th><td>{{ assets_row.raw_current_price or '-' }} {{ assets_currency }}</td></tr>
+      <tr>
+        <th>current_value</th>
+        <td>
+          <strong>
+          {% if assets_currency == 'INR' %}{{ assets_row.current_value | inr }}
+          {% elif assets_currency == 'USD' %}{{ assets_row.current_value | usd }}
+          {% else %}{{ assets_row.current_value | num(2) }} {{ assets_currency }}{% endif %}
+          </strong>
+        </td>
+      </tr>
+      <tr><th>tags</th><td class="muted">{{ assets_row.tags }}</td></tr>
+    </table>
+    <p>
+      <button class="btn refresh-quote" data-ticker="{{ assets_row.ticker }}">Refresh live price</button>
+      <span class="meta">Calls <code>scripts/fetch_quote.py</code>; nothing is written back.</span>
+    </p>
+    <div class="quote-result" data-ticker="{{ assets_row.ticker }}"></div>
+  </div>
+  {% endif %}
+
+  <div class="section-anchor" id="sec-valuation">
+    <div class="card valuation-card{% if not has_position %} elevated{% endif %}">
+      <h3><span class="icon">&#x2696;&#xFE0F;</span> Valuation</h3>
+      {% if has_valuation %}
+      <div class="valuation-headline">
+        {{ zone_pill(valuation.zone) }}
+        <span class="big">
+          {% if valuation.primary_metric == 'PEG' %}PEG {{ valuation.peg | num(2) }}
+          {% elif valuation.primary_metric == 'PE' %}PE {{ valuation.current_pe | num(2) }}
+          {% elif valuation.primary_metric == 'PB' %}PB {{ valuation.current_pb | num(2) }}
+          {% elif valuation.primary_metric == 'PS' %}PS {{ valuation.current_ps | num(2) }}
+          {% elif valuation.primary_metric == 'EV_EBITDA' %}EV/EBITDA {{ valuation.current_ev_ebitda | num(2) }}
+          {% else %}{{ valuation.primary_metric }}{% endif %}
+        </span>
+      </div>
+      {% if valuation.zone_thresholds %}
+      <p class="meta">
+        thresholds: cheap_below {{ valuation.zone_thresholds.cheap_below }} &middot;
+        expensive_above {{ valuation.zone_thresholds.expensive_above }}
+        {% if valuation.size_tier %} &middot; tier {{ valuation.size_tier }}{% endif %}
+        {% if valuation.inverted %} &middot; INVERTED{% endif %}
+      </p>
+      {% endif %}
+      <table class="kv two-col">
+        {% if valuation.current_pe is not none %}<tr><th>current_pe</th><td>{{ valuation.current_pe | num(2) }}</td></tr>{% endif %}
+        {% if valuation.current_pb is not none %}<tr><th>current_pb</th><td>{{ valuation.current_pb | num(2) }}</td></tr>{% endif %}
+        {% if valuation.current_ps is not none %}<tr><th>current_ps</th><td>{{ valuation.current_ps | num(2) }}</td></tr>{% endif %}
+        {% if valuation.current_ev_ebitda is not none %}<tr><th>current_ev_ebitda</th><td>{{ valuation.current_ev_ebitda | num(2) }}</td></tr>{% endif %}
+        {% if valuation.current_dividend_yield_pct is not none %}<tr><th>div_yield_pct</th><td>{{ valuation.current_dividend_yield_pct | num(2) }}</td></tr>{% endif %}
+        {% if valuation.trailing_growth_pct is not none %}<tr><th>trailing_growth_pct</th><td>{{ valuation.trailing_growth_pct | num(2) }}</td></tr>{% endif %}
+        {% if valuation.peg is not none %}<tr><th>peg</th><td>{{ valuation.peg | num(2) }}</td></tr>{% endif %}
+      </table>
+      {% if valuation.percentile_basis %}
+      <details>
+        <summary>percentile_basis</summary>
+        <pre>{{ valuation.percentile_basis }}</pre>
+      </details>
+      {% endif %}
+      {{ source_meta(valuation) }}
+      {% if valuation.notes %}<details><summary>notes</summary><pre>{{ valuation.notes }}</pre></details>{% endif %}
+      {% else %}
+      {{ empty_card('valuation.yaml', 'run the fundamentals-fetcher subagent to populate') }}
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card position-calendar-card section-anchor" id="sec-calendar" data-empty="{{ 'true' if not has_calendar else 'false' }}">
+    <div class="calendar-head">
+      <div>
+        <span class="eyebrow">company calendar</span>
+        <h3><span class="icon">&#x1F4C5;</span> Upcoming events</h3>
+      </div>
+      {% if calendar_month %}<span class="calendar-window">{{ calendar_month.month_label }}</span>{% endif %}
+    </div>
+    {% if has_calendar %}
+      {% if calendar_month %}
+      <div class="mini-calendar" aria-label="{{ company_name }} calendar for {{ calendar_month.month_label }}">
+        {% for weekday in calendar_month.weekdays %}<div class="weekday">{{ weekday }}</div>{% endfor %}
+        {% for week in calendar_month.weeks %}
+          {% for cell in week %}
+          <div class="calendar-day {{ 'blank' if not cell.date else '' }} {{ 'today' if cell.is_today else '' }} {{ 'has-event' if cell.events else '' }}"{% if cell.events %} title="{{ cell.events | length }} event(s)"{% endif %}>
+            <span>{{ cell.day }}</span>
+            {% if cell.events %}<i>{{ cell.events | length }}</i>{% endif %}
+          </div>
+          {% endfor %}
+        {% endfor %}
+      </div>
+      {% endif %}
+      <ol class="event-list compact-event-list">
+        {% if calendar.upcoming %}
+          {% for ev in calendar.upcoming[:4] %}
+          <li>
+            <time>{{ ev._date | dt }}</time>
+            <span>{{ ev.event or '-' }}{% if ev.time %} <em>{{ ev.time }}</em>{% endif %}</span>
+          </li>
+          {% endfor %}
+        {% else %}
+          <p class="empty">No upcoming events.</p>
+        {% endif %}
+      </ol>
+      {% if calendar.past %}<p class="meta">{{ calendar.past | length }} past event{{ '' if calendar.past | length == 1 else 's' }} recorded.</p>{% endif %}
+    {% else %}
+      {{ empty_card('calendar.yaml', 'run the calendar-tracker subagent to populate') }}
+    {% endif %}
+  </div>
+</section>
+
+{% if meta.get('exchange_codes') %}
+<section class="card section-anchor" id="sec-exchange-codes" style="max-width:520px;">
+  <h3>Exchange codes</h3>
+  <table class="kv">
+    {% for k, v in meta.exchange_codes.items() %}
+    <tr><th>{{ k }}</th><td>{{ v }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+{# ============ News ============ #}
+<section class="section-group section-anchor" id="sec-news" data-empty="{{ 'true' if not has_news else 'false' }}">
+  <h2><span class="icon">&#x1F4F0;</span> News</h2>
+  {% if has_news %}
+    {% if news_cards %}
+    <div class="digest-card-grid">
+      {% for item in news_cards %}
+      <article class="card digest-card">
+        <header>
+          <div>
+            {% if item.date %}<time>{{ item.date | dt }}</time>{% endif %}
+            {% if item.period %}<span class="meta">{{ item.period }}</span>{% endif %}
+          </div>
+        </header>
+        <h3>{{ item.title }}</h3>
+        <p class="digest-headline">{{ item.headline }}</p>
+        <footer>
+          {% if item.url %}
+          <a href="{{ item.url }}" target="_blank" rel="noreferrer">{{ item.source }}</a>
+          {% else %}
+          <span>{{ item.source }}</span>
+          {% endif %}
+        </footer>
+        {% if item.impact or item.content %}
+        <details>
+          <summary>details</summary>
+          {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
+          {% if item.materiality %}<p class="meta">{{ item.materiality }}</p>{% endif %}
+          {% if item.impact %}<p class="meta">{{ item.impact }}</p>{% endif %}
+          <div class="prose compact-prose">{{ item.content | md | safe }}</div>
+        </details>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+      {% for n in news %}
+      <details class="md-detail" {% if loop.first %}open{% endif %}>
+        <summary>{{ n.period }} <span class="meta">{{ n.path.name }}</span></summary>
+        <div class="prose">{{ n.content | md | safe }}</div>
+      </details>
+      {% endfor %}
+    {% endif %}
+  {% else %}
+  {{ empty_card('news/&lt;quarter&gt;.md', 'run the news-researcher subagent to populate') }}
+  {% endif %}
+</section>
+
+{# ============ Disclosures ============ #}
+<section class="section-group section-anchor" id="sec-disclosures" data-empty="{{ 'true' if not has_disclosures else 'false' }}">
+  <h2><span class="icon">&#x1F4DC;</span> Disclosures</h2>
+  {% if has_disclosures %}
+    {% if disclosure_cards %}
+    <div class="digest-card-grid">
+      {% for item in disclosure_cards %}
+      <article class="card digest-card disclosure-card">
+        <header>
+          <div>
+            {% if item.date %}<time>{{ item.date | dt }}</time>{% endif %}
+            {% if item.period %}<span class="meta">{{ item.period }}</span>{% endif %}
+          </div>
+        </header>
+        <h3>{{ item.title }}</h3>
+        <p class="digest-headline">{{ item.headline }}</p>
+        <footer>
+          {% if item.url %}
+          <a href="{{ item.url }}" target="_blank" rel="noreferrer">{{ item.source }}</a>
+          {% else %}
+          <span>{{ item.source }}</span>
+          {% endif %}
+        </footer>
+        {% if item.impact or item.content %}
+        <details>
+          <summary>details</summary>
+          {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
+          {% if item.materiality %}<p class="meta">{{ item.materiality }}</p>{% endif %}
+          {% if item.impact %}<p class="meta">{{ item.impact }}</p>{% endif %}
+          <div class="prose compact-prose">{{ item.content | md | safe }}</div>
+        </details>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <details class="md-detail">
+      <summary>disclosures.md</summary>
+      <div class="prose">{{ disclosures_md | md | safe }}</div>
+    </details>
+    {% endif %}
+  {% else %}
+  {{ empty_card('disclosures.md', 'run the disclosure-fetcher subagent to populate') }}
+  {% endif %}
+</section>
+
+{# ============ Fundamentals ============ #}
+<section class="section-group section-anchor" id="sec-fundamentals" data-empty="{{ 'true' if not has_fund else 'false' }}">
+  <h2>
+    <span class="icon">&#x1F4CA;</span> Fundamentals
+    {% if fundamentals and fundamentals.currency %}
+    <span class="meta">{{ fundamentals.currency }} mm &middot; {{ fund_rows | length }} quarters</span>
+    {% endif %}
+  </h2>
+  {% if has_fund %}
+  <div class="sparkline-row">
+    <div class="sparkline-block">
+      <h4>revenue</h4>
+      {{ spark_revenue | spark | safe }}
+    </div>
+    <div class="sparkline-block color-gold">
+      <h4>OPM%</h4>
+      {{ spark_opm | spark | safe }}
+    </div>
+    <div class="sparkline-block color-teal">
+      <h4>FCF</h4>
+      {{ spark_fcf | spark | safe }}
+    </div>
+  </div>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>period</th>
+        <th>as_of</th>
+        <th class="num">revenue</th>
+        <th class="num">gross %</th>
+        <th class="num">OPM %</th>
+        <th class="num">net inc</th>
+        <th class="num">EPS</th>
+        <th class="num">OCF</th>
+        <th class="num">CapEx</th>
+        <th class="num">FCF</th>
+        <th>source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in fund_rows %}
+      <tr>
+        <td><strong>{{ q.period }}</strong></td>
+        <td>{{ q.as_of | dt }}</td>
+        <td class="num">{{ q.revenue_mm | num(0) }}</td>
+        <td class="num">{{ q.gross_margin_pct | pct }}</td>
+        <td class="num">{{ q.opm_pct | pct }}</td>
+        <td class="num">{{ q.net_income_mm | num(0) }}</td>
+        <td class="num">{{ q.eps_diluted | num(2) }}</td>
+        <td class="num">{{ q.operating_cash_flow_mm | num(0) }}</td>
+        <td class="num">{{ q.capex_mm | num(0) }}</td>
+        <td class="num">{{ q.fcf_mm | num(0) }}</td>
+        <td class="muted">{{ q.source }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {{ empty_card('fundamentals.yaml', 'run the fundamentals-fetcher subagent to populate') }}
+  {% endif %}
+</section>
+
+{# ============ Assumptions ============ #}
+<section class="section-group section-anchor" id="sec-assumptions" data-empty="{{ 'true' if not has_assumptions else 'false' }}">
+  <h2>
+    <span class="icon">&#x1F3AF;</span> Assumptions
+    {% if assumptions and assumptions.latest_period %}
+    <span class="meta">latest graded: {{ assumptions.latest_period }}</span>
+    {% endif %}
+  </h2>
+  {% if has_assumptions %}
+  {% for row in assumptions.rows %}
+  <div class="card assumption">
+    <header>
+      <span class="key">{{ row.key }}</span>
+      {{ category_badge(row.category) }}
+      {% if row.transcript_pending %}<span class="badge warn">transcript grading pending</span>{% endif %}
+    </header>
+    <p class="text">{{ row.text }}</p>
+    <table class="kv">
+      {% if row.quarterly_checkpoint %}<tr><th>quarterly</th><td>{{ row.quarterly_checkpoint }}</td></tr>{% endif %}
+      {% if row.transcript_checkpoint %}<tr><th>transcript</th><td>{{ row.transcript_checkpoint }}</td></tr>{% endif %}
+      {% if row.thesis_horizon_target %}<tr><th>horizon</th><td>{{ row.thesis_horizon_target }}</td></tr>{% endif %}
+      {% if row.checkpoint_metric_source %}<tr><th>source</th><td>{{ row.checkpoint_metric_source }}</td></tr>{% endif %}
+    </table>
+    {% if row.grades_by_quarter %}
+    <table class="data grades">
+      <thead>
+        <tr>
+          <th>period</th>
+          <th>graded_on</th>
+          <th>quarterly</th>
+          <th>transcript</th>
+          <th>horizon</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in row.grades_by_quarter %}
+        <tr>
+          <td>{{ g.period }}</td>
+          <td>{{ g.graded_on | dt }}</td>
+          <td>{{ grade_chip(g.quarterly) }}</td>
+          <td>{{ grade_chip(g.transcript) }}</td>
+          <td>{{ grade_chip(g.horizon) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  {{ empty_card('assumptions.yaml', 'created on first earnings event by earnings-grader') }}
+  {% endif %}
+</section>
+
+{# ============ Earnings ============ #}
+<section class="section-group section-anchor" id="sec-earnings" data-empty="{{ 'true' if not has_earnings else 'false' }}">
+  <h2><span class="icon">&#x1F4C8;</span> Earnings</h2>
+  {% if has_earnings %}
+  {% for e in earnings %}
+  <details class="md-detail" {% if loop.first %}open{% endif %}>
+    <summary>{{ e.period }} <span class="meta">{{ e.path.name }}</span></summary>
+    <div class="prose">{{ e.content | md | safe }}</div>
+  </details>
+  {% endfor %}
+  {% else %}
+  {{ empty_card('earnings/&lt;quarter&gt;.md', 'created by earnings-grader') }}
+  {% endif %}
+</section>
+
+{# ============ Insiders ============ #}
+<section class="section-group section-anchor" id="sec-insiders" data-empty="{{ 'true' if not has_insiders else 'false' }}">
+  <h2><span class="icon">&#x1F465;</span> Insider transactions</h2>
+  {% if has_insiders %}
+  {% if insiders.transactions %}
+  <table class="data">
+    <thead>
+      <tr>
+        <th>date</th>
+        <th>person</th>
+        <th>role</th>
+        <th>type</th>
+        <th class="num">shares</th>
+        <th class="num">price</th>
+        <th class="num">value</th>
+        <th>source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in insiders.transactions %}
+      <tr>
+        <td>{{ t.date | dt }}</td>
+        <td>{{ t.person }}</td>
+        <td class="muted">{{ t.role }}</td>
+        <td>{{ t.type }}</td>
+        <td class="num">{{ t.shares | num(0) }}</td>
+        <td class="num">{{ t.price | num(2) }}</td>
+        <td class="num">
+          {% if t.value_mm is defined and t.value_mm is not none %}${{ t.value_mm | num(3) }}M
+          {% elif t.value_cr is defined and t.value_cr is not none %}&#x20B9;{{ t.value_cr | num(3) }}Cr
+          {% else %}-{% endif %}
+        </td>
+        <td class="muted">{{ t.source }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if insiders.pledging %}
+  <h3>Pledging</h3>
+  <pre>{{ insiders.pledging }}</pre>
+  {% endif %}
+  {% else %}
+  {{ empty_card('insiders.yaml', 'run the ownership-tracker subagent to populate') }}
+  {% endif %}
+</section>
+
+{# ============ Shareholding ============ #}
+<section class="section-group section-anchor" id="sec-shareholding" data-empty="{{ 'true' if not has_share else 'false' }}">
+  <h2><span class="icon">&#x1F3DB;&#xFE0F;</span> Shareholding pattern</h2>
+  {% if has_share %}
+  <div class="card">
+    <p class="meta">
+      {% if shareholding.period %}{{ shareholding.period }}{% endif %}
+      {% if shareholding.as_of %} &middot; as_of {{ shareholding.as_of | dt }}{% endif %}
+      {% if shareholding.source %} &middot; {{ shareholding.source }}{% endif %}
+    </p>
+    <table class="kv two-col">
+      {% if shareholding.promoter_pct is defined %}<tr><th>promoter_pct</th><td>{{ shareholding.promoter_pct | num(2) }}</td></tr>{% endif %}
+      {% if shareholding.public_pct is defined %}<tr><th>public_pct</th><td>{{ shareholding.public_pct | num(2) }}</td></tr>{% endif %}
+      {% if shareholding.fii_pct is defined %}<tr><th>fii_pct</th><td>{% if shareholding.fii_pct is none %}<span class="muted">null (parked v2)</span>{% else %}{{ shareholding.fii_pct | num(2) }}{% endif %}</td></tr>{% endif %}
+      {% if shareholding.dii_pct is defined %}<tr><th>dii_pct</th><td>{% if shareholding.dii_pct is none %}<span class="muted">null (parked v2)</span>{% else %}{{ shareholding.dii_pct | num(2) }}{% endif %}</td></tr>{% endif %}
+      {% if shareholding.pledge_pct is defined %}<tr><th>pledge_pct</th><td>{% if shareholding.pledge_pct is none %}<span class="muted">null (parked v2)</span>{% else %}{{ shareholding.pledge_pct | num(2) }}{% endif %}</td></tr>{% endif %}
+      {% if shareholding.insider_pct is defined %}<tr><th>insider_pct</th><td>{{ shareholding.insider_pct | num(2) }}</td></tr>{% endif %}
+      {% if shareholding.institutional_pct is defined %}<tr><th>institutional_pct</th><td>{{ shareholding.institutional_pct | num(2) }}</td></tr>{% endif %}
+      {% if shareholding.retail_pct is defined %}<tr><th>retail_pct</th><td>{{ shareholding.retail_pct | num(2) }}</td></tr>{% endif %}
+    </table>
+    {% if shareholding.history %}
+    <h4>History</h4>
+    <table class="data">
+      <thead><tr><th>period</th><th class="num">promoter</th><th class="num">public</th><th class="num">fii</th><th class="num">dii</th></tr></thead>
+      <tbody>
+        {% for h in shareholding.history %}
+        <tr>
+          <td>{{ h.period }}</td>
+          <td class="num">{{ h.promoter_pct | num(2) }}</td>
+          <td class="num">{{ h.public_pct | num(2) }}</td>
+          <td class="num">{% if h.fii_pct is none %}<span class="muted">-</span>{% else %}{{ h.fii_pct | num(2) }}{% endif %}</td>
+          <td class="num">{% if h.dii_pct is none %}<span class="muted">-</span>{% else %}{{ h.dii_pct | num(2) }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+  {% else %}
+  {{ empty_card('shareholding.yaml', 'run the ownership-tracker subagent to populate') }}
+  {% endif %}
+</section>
+
+{# ============ Indicators ============ #}
+<section class="section-group section-anchor" id="sec-indicators" data-empty="{{ 'true' if not has_indicators else 'false' }}">
+  <h2><span class="icon">&#x1F9ED;</span> Sector indicators</h2>
+  {% if has_indicators %}
+  <div class="card">
+    {{ source_meta(indicators) }}
+    <table class="kv">
+      {% for k, v in indicators.items() %}
+      {% if k not in ('as_of', 'source') %}
+      <tr><th>{{ k }}</th><td>{{ v }}</td></tr>
+      {% endif %}
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+  {{ empty_card('indicators.yaml', 'sector-specific leading indicators') }}
+  {% endif %}
+</section>
+
+{# ============ Performance ============ #}
+<section class="section-group section-anchor" id="sec-performance" data-empty="{{ 'true' if not has_perf else 'false' }}">
+  <h2><span class="icon">&#x1F3C6;</span> Performance tracking</h2>
+  {% if has_perf %}
+  <div class="grid grid-cards">
+    {% if performance.entry %}
+    <div class="card">
+      <h3>Entry</h3>
+      <table class="kv">
+        {% for k, v in performance.entry.items() %}<tr><th>{{ k }}</th><td>{{ v | dt if 'date' in k else v }}</td></tr>{% endfor %}
+      </table>
+    </div>
+    {% endif %}
+    {% if performance.current %}
+    <div class="card">
+      <h3>Current</h3>
+      <table class="kv">
+        {% for k, v in performance.current.items() %}<tr><th>{{ k }}</th><td>{{ v | dt if 'date' in k or k == 'as_of' else v }}</td></tr>{% endfor %}
+      </table>
+    </div>
+    {% endif %}
+    {% if performance.returns %}
+    <div class="card with-gold">
+      <h3>Returns</h3>
+      <table class="kv">
+        {% for k, v in performance.returns.items() %}<tr><th>{{ k }}</th><td><strong>{{ v }}</strong></td></tr>{% endfor %}
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% if performance.thesis_tracking %}
+  <h3>Thesis tracking</h3>
+  <table class="data">
+    <thead><tr><th>assumption</th><th>status</th><th>note</th></tr></thead>
+    <tbody>
+      {% for t in performance.thesis_tracking %}
+      <tr><td>{{ t.assumption }}</td><td>{{ t.status }}</td><td class="muted">{{ t.note }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if performance.dividends_received is defined %}
+  <p class="meta">Dividends received (cumulative): {{ performance.dividends_received }}</p>
+  {% endif %}
+  {% else %}
+  {{ empty_card('performance.yaml', 'historical performance tracking') }}
+  {% endif %}
+</section>
+
+{# ============ Decisions ============ #}
+<section class="section-group section-anchor" id="sec-decisions" data-empty="{{ 'true' if not has_decisions else 'false' }}">
+  <h2>
+    <span class="icon">&#x2696;&#xFE0F;</span> Decisions
+    <span class="meta">{{ decisions | length }} total</span>
+  </h2>
+  {% if has_decisions %}
+  {% for d in decisions %}
+  <details class="md-detail" {% if loop.first %}open{% endif %}>
+    <summary>
+      <span class="badge action-{{ d.action }}">{{ d.action }}</span>
+      <strong>{{ d.date }}{{ d.suffix }}</strong>
+      <span class="muted">{{ d.title }}</span>
+    </summary>
+    <div class="prose">{{ d.content | md | safe }}</div>
+  </details>
+  {% endfor %}
+  {% else %}
+  {{ empty_card('decisions/', 'append-only audit log') }}
+  {% endif %}
+</section>
+
+{# ============ Thesis ============ #}
+<section class="section-group section-anchor" id="sec-thesis" data-empty="{{ 'true' if not has_thesis else 'false' }}">
+  <h2><span class="icon">&#x1F4A1;</span> Investment thesis</h2>
+  {% if has_thesis %}
+  <details class="md-detail" open>
+    <summary>thesis.md</summary>
+    <div class="prose">{{ thesis_md | md | safe }}</div>
+  </details>
+  {% else %}
+  {{ empty_card('thesis.md', 'first draft from company-kb-builder, then user-edited') }}
+  {% endif %}
+</section>
+
+{# ============ KB ============ #}
+<section class="section-group section-anchor" id="sec-kb" data-empty="{{ 'true' if not has_kb else 'false' }}">
+  <h2><span class="icon">&#x1F4DA;</span> Knowledge base</h2>
+  {% if has_kb %}
+  <details class="md-detail">
+    <summary>kb.md (click to expand)</summary>
+    <div class="prose">{{ kb_md | md | safe }}</div>
+  </details>
+  {% else %}
+  {{ empty_card('kb.md', 'run the company-kb-builder subagent to populate') }}
+  {% endif %}
+</section>
+
+{# ============ Governance ============ #}
+<section class="section-group section-anchor" id="sec-governance" data-empty="{{ 'true' if not has_governance else 'false' }}">
+  <h2><span class="icon">&#x1F6E1;&#xFE0F;</span> Governance</h2>
+  {% if has_governance %}
+  <details class="md-detail">
+    <summary>governance.md</summary>
+    <div class="prose">{{ governance_md | md | safe }}</div>
+  </details>
+  {% else %}
+  {{ empty_card('governance.md') }}
+  {% endif %}
+</section>
+
+{# ============ Risks ============ #}
+<section class="section-group section-anchor" id="sec-risks" data-empty="{{ 'true' if not has_risks else 'false' }}">
+  <h2><span class="icon">&#x26A0;&#xFE0F;</span> Risks</h2>
+  {% if has_risks %}
+  <details class="md-detail">
+    <summary>risks.md</summary>
+    <div class="prose">{{ risks_md | md | safe }}</div>
+  </details>
+  {% else %}
+  {{ empty_card('risks.md') }}
+  {% endif %}
+</section>
+
+{% if absorption_log_md %}
+<section class="section-group section-anchor" id="sec-absorption">
+  <h2><span class="icon">&#x1F9EA;</span> Absorption log</h2>
+  <details class="md-detail">
+    <summary>_absorption_log.md</summary>
+    <div class="prose">{{ absorption_log_md | md | safe }}</div>
+  </details>
+</section>
+{% endif %}
+
+</div>
+</div>
+
+{% endblock %}

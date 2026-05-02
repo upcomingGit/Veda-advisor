@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Settings · Veda{% endblock %}
+{% block content %}
+<section class="page-header settings-header">
+  <h1>Settings</h1>
+  <p class="subtitle">Runtime controls for the local dashboard.</p>
+</section>
+
+<section class="settings-overview-grid">
+  <article class="setting-card primary-setting-card">
+    <div class="summary-label">Workspace</div>
+    <div class="setting-main-value"><code>{{ config.workspace }}</code></div>
+    <p class="summary-note">Change with <code>--workspace PATH</code> when starting the server.</p>
+  </article>
+  <article class="setting-card">
+    <div class="summary-label">Local server</div>
+    <div class="setting-main-value"><code>{{ config.bind }}:{{ config.port }}</code></div>
+    <p class="summary-note">Port changes with <code>--port N</code>. Bind is locked to localhost.</p>
+  </article>
+  <article class="setting-card">
+    <div class="summary-label">Event horizon</div>
+    <div class="setting-main-value">{{ config.event_window_days }} days</div>
+    <p class="summary-note">Used by the overview calendar. Change with <code>--event-window-days N</code>.</p>
+  </article>
+</section>
+
+<section class="settings-layout">
+  <article class="setting-panel theme-panel">
+    <div class="setting-panel-head">
+      <div>
+        <div class="summary-label">Theme</div>
+        <h2>Appearance</h2>
+      </div>
+      <span class="runtime-pill">no restart</span>
+    </div>
+    <div class="theme-picker theme-picker-lg" role="group" aria-label="Theme">
+      <button type="button" data-theme-set="light">☼ Light</button>
+      <button type="button" data-theme-set="dark">☾ Dark</button>
+      <button type="button" data-theme-set="system">◑ System</button>
+    </div>
+    <dl class="setting-facts">
+      <div><dt>Initial</dt><dd><code>{{ config.initial_theme }}</code></dd></div>
+      <div><dt>This browser</dt><dd><span id="current-theme">—</span></dd></div>
+      <div><dt>Storage key</dt><dd><code>veda.theme</code></dd></div>
+    </dl>
+  </article>
+
+  <article class="setting-panel restart-panel">
+    <div class="setting-panel-head">
+      <div>
+        <div class="summary-label">Restart command</div>
+        <h2>Start with options</h2>
+      </div>
+      <span class="runtime-pill muted-pill">start-time</span>
+    </div>
+    <pre class="command-block"><code><span class="cmd">python -m dashboard</span> <span class="flag">--workspace</span> <span class="value">.</span> \
+  <span class="flag">--port</span> <span class="value">{{ config.port }}</span> \
+  <span class="flag">--theme</span> <span class="value">{{ config.initial_theme }}</span>{% if not config.auto_open %} \
+  <span class="flag">--no-open</span>{% endif %}{% if config.debug %} \
+  <span class="flag">--debug</span>{% endif %} \
+  <span class="flag">--event-window-days</span> <span class="value">{{ config.event_window_days }}</span></code></pre>
+    <p class="summary-note">Full flag reference: <code>python -m dashboard --help</code>.</p>
+  </article>
+</section>
+
+<section class="config-card-grid">
+  <article class="setting-card compact-setting-card">
+    <span class="setting-icon">↗</span>
+    <div><strong>Auto-open browser</strong><span>{{ config.auto_open }}</span></div>
+    <code>--no-open</code>
+  </article>
+  <article class="setting-card compact-setting-card">
+    <span class="setting-icon">⌘</span>
+    <div><strong>Debug mode</strong><span>{{ config.debug }}</span></div>
+    <code>--debug</code>
+  </article>
+  <article class="setting-card compact-setting-card locked-setting-card">
+    <span class="setting-icon">⌂</span>
+    <div><strong>Network exposure</strong><span>localhost only</span></div>
+    <code>locked</code>
+  </article>
+  <article class="setting-card compact-setting-card locked-setting-card">
+    <span class="setting-icon">✓</span>
+    <div><strong>Writes</strong><span>read-only</span></div>
+    <code>locked</code>
+  </article>
+</section>
+
+<section class="locked-grid">
+  <article class="locked-card">
+    <h3>Read-only workspace</h3>
+    <p>The dashboard never writes files. Portfolio changes still go through chat and the audit trail.</p>
+  </article>
+  <article class="locked-card">
+    <h3>Localhost binding</h3>
+    <p>The server binds to <code>127.0.0.1</code>. There is no network-facing host flag.</p>
+  </article>
+  <article class="locked-card">
+    <h3>Quote allowlist</h3>
+    <p>Live-price refresh only accepts tickers already present in <code>assets.md</code>.</p>
+  </article>
+  <article class="locked-card">
+    <h3>Fixed palette</h3>
+    <p>Light, dark, and system are the supported theme modes.</p>
+  </article>
+</section>
+
+<script>
+  document.getElementById('current-theme').textContent =
+    (localStorage.getItem('veda.theme') || 'using server initial');
+</script>
+{% endblock %}

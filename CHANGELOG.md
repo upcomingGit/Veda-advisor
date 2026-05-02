@@ -32,6 +32,41 @@ changelog on release.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-02
+
+### Added
+
+- **Local workspace dashboard** ([dashboard/](dashboard/)) — a single-command,
+  locally-running Flask + Jinja2 web UI that reads every artifact in the user's
+  workspace and renders them in one place. Strictly read-only; offline by
+  default. Routes: `/` (portfolio overview with India/US holdings tables, totals
+  and concentration, capital deployed vs target, cross-position upcoming
+  events, journal link), `/position/<slug>` (per-company page with valuation
+  zone from `valuation.yaml`, twelve-quarter `fundamentals.yaml` table with
+  derived OPM% and FCF, four-anchor `assumptions.yaml` grade chips and
+  miss-streak counts, `news/<quarter>.md`, `disclosures.md`, `calendar.yaml`
+  upcoming + past split, `decisions/`, `insiders.yaml`,
+  `shareholding.yaml`, `governance.md`, `risks.md`, `indicators.yaml`, the
+  rendered `kb.md` and `thesis.md`, and the `_absorption_log.md`),
+  `/journal`, `/settings`, and `POST /api/quote` (live-price refresh,
+  shells out to `scripts/fetch_quote.py`, **gated to tickers already
+  present in `assets.md`** so the endpoint cannot become an open relay,
+  result returned inline — never written back). Theme picker
+  (light/dark/system) persisted in `localStorage`. Single-process server
+  bound to `127.0.0.1:8765` by default; configurable via
+  `python -m dashboard --port N --theme {system,light,dark} --no-open
+  --workspace PATH --event-window-days N`. New runtime dependencies:
+  `Flask`, `markdown`, `PyYAML` (added to [requirements.txt](requirements.txt)).
+  Setup notes in [INSTALL.md](INSTALL.md); user-facing settings in
+  [docs/customization.md](docs/customization.md). Resolves Q-dash-1
+  (dashboard lives in the same repo as the orchestrator) per
+  [ROADMAP.md](ROADMAP.md#tier-14--richer-ux-surfaces).
+
+- **Tier 1.5 architecture commitments**
+  ([docs/design/tier-1.5-architecture.md](docs/design/tier-1.5-architecture.md)) —
+  records the required per-stage model tiering, DAG-based parallelism, and
+  BYOK LLM-provider abstraction before the Python orchestrator work begins.
+
 ## [0.5.0] - 2026-05-02
 
 ### Added
@@ -445,3 +480,4 @@ first version stamped for public consumption.
 [0.3.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.3.0
 [0.4.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.4.0
 [0.5.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.5.0
+[0.6.0]: https://github.com/upcomingGit/Veda-advisor/releases/tag/v0.6.0

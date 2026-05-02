@@ -25,3 +25,18 @@ beautifulsoup4>=4.12.0
 # Only imported inside the `auth` / `holdings` subcommands, so the rest of
 # Veda runs without it installed.
 kiteconnect>=4.2.0
+
+# dashboard/ - local read-only web UI invoked with `python -m dashboard`.
+# These dependencies are only needed when running the dashboard; the rest of
+# Veda (chat-side prose + scripts/) does not import them.
+#   Flask:    HTTP routing + Jinja2 templating bundle.
+#   markdown: render kb.md / thesis.md / decisions / journal as HTML.
+#   PyYAML:   parse the workspace YAML files (assumptions, fundamentals,
+#             valuation, calendar, insiders, shareholding, performance,
+#             indicators, _meta). Stdlib regex parsing was considered, to
+#             match validate_assumptions.py, but the dashboard reads many
+#             nested shapes for display rather than schema validation, so a
+#             real YAML parser is the smaller surface.
+Flask>=3.0
+markdown>=3.5
+PyYAML>=6.0

@@ -1,0 +1,42 @@
+{# Reusable macros: zone pill, grade chip, archetype/category badge, money cell. #}
+
+{% macro zone_pill(zone) -%}
+{%- if zone -%}
+<span class="pill {{ zone | zone_class }}">{{ zone }}</span>
+{%- else -%}
+<span class="pill zone-unknown">—</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro grade_chip(g) -%}
+{%- if g and g.grade -%}
+<span class="chip {{ g.grade | grade_class }}" title="{{ g.note or '' }} ({{ g.strength or '' }})">{{ g.grade }}</span>
+{%- else -%}
+<span class="chip grade-unknown">—</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro archetype_badge(arch) -%}
+{%- if arch -%}
+<span class="badge {{ arch | archetype_class }}">{{ arch }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro category_badge(cat) -%}
+{%- if cat -%}
+<span class="badge {{ cat | category_class }}">{{ cat }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro source_meta(yaml_dict) -%}
+{%- if yaml_dict and (yaml_dict.as_of or yaml_dict.source) -%}
+<span class="meta">
+  {% if yaml_dict.as_of %}as_of {{ yaml_dict.as_of | dt }}{% endif %}
+  {% if yaml_dict.source %} · {{ yaml_dict.source }}{% endif %}
+</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro empty_card(label, suggestion='') -%}
+<p class="empty">No <code>{{ label }}</code> yet{% if suggestion %} — {{ suggestion }}{% endif %}.</p>
+{%- endmacro %}

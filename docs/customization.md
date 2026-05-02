@@ -323,6 +323,40 @@ Veda, redo onboarding.
 
 The current profile is backed up to `profile.md.bak-<today>` before the interview restarts.
 
+## Local workspace dashboard
+
+The local web dashboard ([dashboard/](../dashboard/), invoked with `python -m dashboard`) reads your workspace and renders it. Its behaviour is controlled by command-line flags rather than `profile.md` — this is an interface preference, not an advice preference, and it never affects the chat-side reasoning.
+
+**Where to change each option:**
+
+- **Theme** is the only setting you can change at runtime, without restarting. Use the picker in the top-right of every page, or visit [`http://127.0.0.1:8765/settings`](http://127.0.0.1:8765/settings) for a larger picker. Your choice is persisted in your browser's `localStorage`.
+- **Everything else** (port, workspace, event window, debug) is set when you start the server. Change them by stopping the dashboard (`Ctrl+C` in the launching terminal) and starting it again with the matching flag below. The active set is always shown on the `/settings` page, with the flag spelled out next to each row.
+- The full flag list is also available at any time via `python -m dashboard --help`.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--port N` | `8765` | Bind the local server to a different port. The server only ever listens on `127.0.0.1`; the port is not exposed to other machines. Pick a free port if `8765` is taken. |
+| `--theme {system,light,dark}` | `system` | Initial theme written into the `<html data-theme=...>` attribute on first paint. `system` follows your OS dark-mode preference. The in-browser picker overrides this per-browser via `localStorage`; clear `localStorage.removeItem('veda.theme')` to revert to whatever `--theme` was passed. |
+| `--no-open` | (browser auto-opens) | Skip opening the browser tab. Useful if you want to start the server in one shell and visit the URL from a different browser, or if you are running it under tooling that already manages the tab. |
+| `--workspace PATH` | current directory | Point the dashboard at a different Veda workspace folder. Useful if you keep your `profile.md` / `assets.md` / `holdings/` in a separate private repo and only treat the cloned `Veda-advisor` folder as a read-only framework reference. |
+| `--event-window-days N` | `30` | How far ahead to roll up `calendar.yaml` upcoming events on the portfolio overview. Increase for a longer planning horizon (e.g. `--event-window-days 90` to see the next quarter). |
+| `--debug` | off | Developer flag. Enables Flask's debug error page (full traceback in the browser on exceptions). The reloader stays off so the browser tab is not re-opened on every save. Leave this off unless you are editing the dashboard code itself. |
+
+Examples:
+
+```powershell
+python -m dashboard
+python -m dashboard --port 9000 --theme dark --no-open
+python -m dashboard --workspace C:\Users\me\my-investing-notes --event-window-days 60
+```
+
+What is **not** configurable, by design:
+
+- **Read-only.** The dashboard never writes to your workspace. There is no flag to enable writes; every state change still goes through chat. This preserves the audit trail in `decisions/` and the journal.
+- **Localhost binding.** The server binds to `127.0.0.1` only and cannot be exposed to your network. There is no `--host` flag. If you need a hosted multi-user view, that is the future Tier 14 web app, not this dashboard.
+- **Live-price endpoint allowlist.** The "refresh price" button per row only accepts tickers already present in `assets.md`. Unknown tickers are rejected with HTTP 400. This stops the endpoint from being turned into an open quote relay.
+- **Theme palette.** Light, dark, and system are the only options; custom colour schemes are deliberately out of scope to keep the dashboard surface small.
+
 ## What you cannot customize
 
 Encoded in [SKILL.md](../SKILL.md) Hard Rules:

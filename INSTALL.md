@@ -25,6 +25,37 @@ Everything else in Veda — onboarding, the 9-stage pipeline, frameworks, decisi
 
 > `yfinance` is an unofficial Yahoo Finance client and may rate-limit under heavy use. It is adequate for personal use but not production-grade; the roadmap replaces it with paid feeds behind the same adapter interface. See [ROADMAP.md](ROADMAP.md#tier-5--live-market-data-and-fundamentals).
 
+## Optional — local workspace dashboard
+
+If you want to review your portfolio in a dense visual surface — sortable tables, valuation-zone chips, assumption grade history, the calendar across every position — Veda ships a small local web UI you start with one command. It is read-only: the dashboard never writes back to your workspace; every state change still happens through chat.
+
+The dashboard adds three Python dependencies on top of the live-quotes set above (`Flask`, `markdown`, `PyYAML`). They are listed in [requirements.txt](requirements.txt), so the same install command picks them up:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Then run:
+
+```powershell
+python -m dashboard
+```
+
+Your browser opens to `http://127.0.0.1:8765/`. Common flags:
+
+```powershell
+python -m dashboard --port 9000              # use a different port
+python -m dashboard --theme dark             # force dark mode (default: system)
+python -m dashboard --no-open                # don't auto-open the browser
+python -m dashboard --workspace C:\path\to\veda-workspace
+python -m dashboard --event-window-days 60   # how far ahead to roll up calendar events
+python -m dashboard --help                   # full flag reference
+```
+
+To change settings later: the **theme** picker (top-right of every page, or the larger one on the `/settings` page) switches light/dark/system at runtime and persists in your browser's `localStorage`. Everything else is start-time only — stop the server with `Ctrl+C` and restart with the flag you want. The active configuration is always shown on the [`/settings`](http://127.0.0.1:8765/settings) page next to the matching CLI flag, so you never have to guess.
+
+The server binds to `127.0.0.1` only — it is not reachable from other machines on your network. The single network call the dashboard ever makes is the explicit "refresh price" button per row, which shells out to [scripts/fetch_quote.py](scripts/fetch_quote.py) and is gated to tickers already present in your `assets.md` (so the endpoint cannot be turned into an open relay). The result is rendered inline; nothing is written back to disk. User-facing settings reference: [docs/customization.md](docs/customization.md#local-workspace-dashboard).
+
 ## Before you install — a word on privacy
 
 Onboarding writes a `profile.md` file containing your personal investment profile: net worth exposure, goals, risk tolerance, hard constraints. **Never commit this file.**
