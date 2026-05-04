@@ -599,6 +599,15 @@ For each selected framework, produce a short verdict:
 
 If the user will not supply DCF assumptions and you cannot source them, refuse the valuation: *"I can't DCF this without a growth/margin/discount assumption. Either supply one, or I can give a relative-multiple check — not an intrinsic value."*
 
+**Valuation-derived triggers before heuristic pullbacks.** For any valuation, buy/add, deployment-timing, or price-trigger recommendation, thresholds MUST be derived from the relevant valuation metric before using generic pullback bands. Thesis selects the watchlist; valuation sets the trigger; portfolio concentration sets timing and sizing.
+
+- Growth-led names: use PEG or a sourced forward-growth / earnings-multiple framework. If using PEG, state the current PEG, the target PEG, and the implied trigger price. A generic "buy on an 8% pullback" is invalid unless you first show what PEG or valuation that pullback implies.
+- Income/value names: use P/E, P/B, dividend yield, FCF yield, or the locally appropriate valuation metric, compared with historical, peer, or policy thresholds.
+- Cyclicals / semiconductors / commodity-like businesses: do not rely on PEG alone. Use EV/EBITDA, cycle-normalized earnings, replacement-cost, book value, or another cycle-aware metric, and explain why it is the right threshold.
+- Speculative / pre-revenue names: price pullbacks alone are not evidence. Require thesis evidence, milestone evidence, or a deliberately small Taleb-style sizing frame.
+
+If a heuristic trigger is still used, label it explicitly as an execution heuristic, state why valuation-derived thresholds are unavailable, and do not present it as an ideal buy price.
+
 **Novice structural-equivalence refusal.** If Stage 2 set `novice_blocked_by_equivalence: true`, do not apply any framework. Emit the refusal: *"Your profile blocks [leverage / options / lottery bets]. [Product] is structurally equivalent — same payoff asymmetry, same ruin risk. Refusing. You can graduate via your profile's graduation_criteria."* Stop.
 
 **Narrate framework application.** One line per framework: verdict, cited rule, key metric, kill criterion:

@@ -84,7 +84,7 @@ _SIZE_TIERS_USD = [
 ]
 
 # PEG thresholds for GROWTH archetype (profitable)
-# PEG = PE / (earnings_growth_pct). E.g., PE=50, growth=25% → PEG = 50/25 = 2.0
+# PEG = current/trailing PE / future earnings growth pct. E.g., PE=50, growth=25% → PEG = 2.0
 _PEG_THRESHOLDS = {
     "MEGA": (0.8, 1.5),   # (CHEAP_below, EXPENSIVE_above)
     "LARGE": (1.0, 2.0),
@@ -257,21 +257,39 @@ def fetch_us_fundamentals(
 
     # === Current valuation ratios ===
     current_pe = safe_float(info.get("trailingPE"))
+    current_forward_pe = safe_float(info.get("forwardPE"))
     current_pb = safe_float(info.get("priceToBook"))
     current_ps = safe_float(info.get("priceToSalesTrailing12Months"))
     current_ev_ebitda = safe_float(info.get("enterpriseToEbitda"))
     market_cap = safe_float(info.get("marketCap"))
     dividend_yield = safe_float(info.get("dividendYield"))
+    provider_peg = safe_float(info.get("pegRatio"))
+    if provider_peg is None:
+        provider_peg = safe_float(info.get("trailingPegRatio"))
+    earnings_growth = _to_pct(safe_float(info.get("earningsGrowth")))
+    revenue_growth = _to_pct(safe_float(info.get("revenueGrowth")))
 
     # Filter out negative values
     if current_pe is not None and current_pe <= 0:
         current_pe = None
+    if current_forward_pe is not None and current_forward_pe <= 0:
+        current_forward_pe = None
     if current_pb is not None and current_pb <= 0:
         current_pb = None
     if current_ps is not None and current_ps <= 0:
         current_ps = None
     if current_ev_ebitda is not None and current_ev_ebitda <= 0:
         current_ev_ebitda = None
+    if provider_peg is not None and provider_peg <= 0:
+        provider_peg = None
+
+    inferred_forward_growth_pct = None
+    if current_forward_pe is not None and provider_peg is not None:
+        # Yahoo's PEG is provider-specific and appears tied to forward PE.
+        # Veda's Lynch-style methodology is current/trailing PE divided by
+        # future growth, so infer the growth denominator and recompute PEG
+        # later from current_pe.
+        inferred_forward_growth_pct = current_forward_pe / provider_peg
 
     # Manual EV/EBITDA computation if yfinance didn't return it
     if current_ev_ebitda is None and market_cap and market_cap > 0:
@@ -282,10 +300,20 @@ def fetch_us_fundamentals(
 
     valuation = {
         "current_pe": safe_round(current_pe),
+        "current_forward_pe": safe_round(current_forward_pe),
         "current_pb": safe_round(current_pb),
         "current_ps": safe_round(current_ps),
         "current_ev_ebitda": safe_round(current_ev_ebitda),
-        "current_dividend_yield_pct": safe_round(dividend_yield * 100 if dividend_yield else None),
+        "current_dividend_yield_pct": safe_round(_normalize_yf_dividend_yield_pct(dividend_yield)),
+        "provider_peg": safe_round(provider_peg),
+        "provider_peg_source": "yfinance.info.pegRatio" if provider_peg is not None else None,
+        "inferred_forward_growth_pct": safe_round(inferred_forward_growth_pct),
+        "inferred_forward_growth_source": (
+            "yfinance.info.forwardPE / yfinance.info.pegRatio"
+            if inferred_forward_growth_pct is not None else None
+        ),
+        "yfinance_earnings_growth_pct": safe_round(earnings_growth),
+        "yfinance_revenue_growth_pct": safe_round(revenue_growth),
         "market_cap": market_cap,
         "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "source": "yfinance",
@@ -411,6 +439,24 @@ def _get_yf_metric(df, col_date, label_variants: List[str]) -> Optional[float]:
             except (ValueError, TypeError, KeyError):
                 continue
     return None
+
+
+def _to_pct(value: Optional[float]) -> Optional[float]:
+    """Convert yfinance growth ratios like 0.234 to percentage points."""
+    if value is None:
+        return None
+    return value * 100 if abs(value) <= 1 else value
+
+
+def _normalize_yf_dividend_yield_pct(value: Optional[float]) -> Optional[float]:
+    """Normalize yfinance dividendYield to percentage points.
+
+    yfinance can return dividendYield either as 0.0088 (ratio) or 0.88
+    (percentage points), depending on ticker/source path.
+    """
+    if value is None or value <= 0:
+        return None
+    return value * 100 if value <= 0.2 else value
 
 
 def _compute_historical_pe(stock, errors: List[str]) -> List[float]:
@@ -1024,9 +1070,12 @@ def compute_zone(
     Returns the valuation block with zone, thresholds, etc.
     """
     current_pe = valuation.get("current_pe")
+    current_forward_pe = valuation.get("current_forward_pe")
     current_pb = valuation.get("current_pb")
     current_ps = valuation.get("current_ps")
     current_ev_ebitda = valuation.get("current_ev_ebitda")
+    provider_peg = valuation.get("provider_peg")
+    inferred_forward_growth = valuation.get("inferred_forward_growth_pct")
     market_cap = valuation.get("market_cap")
     historical_pe = valuation.get("historical_pe", [])
 
@@ -1038,10 +1087,17 @@ def compute_zone(
     result: Dict[str, Any] = {
         "primary_metric": primary_metric,
         "current_pe": safe_round(current_pe),
+        "current_forward_pe": safe_round(current_forward_pe),
         "current_pb": safe_round(current_pb),
         "current_ps": safe_round(current_ps),
         "current_ev_ebitda": safe_round(current_ev_ebitda),
         "current_dividend_yield_pct": valuation.get("current_dividend_yield_pct"),
+        "provider_peg": valuation.get("provider_peg"),
+        "provider_peg_source": valuation.get("provider_peg_source"),
+        "inferred_forward_growth_pct": valuation.get("inferred_forward_growth_pct"),
+        "inferred_forward_growth_source": valuation.get("inferred_forward_growth_source"),
+        "yfinance_earnings_growth_pct": valuation.get("yfinance_earnings_growth_pct"),
+        "yfinance_revenue_growth_pct": valuation.get("yfinance_revenue_growth_pct"),
         "as_of": valuation.get("as_of"),
         "source": valuation.get("source"),
     }
@@ -1076,9 +1132,16 @@ def compute_zone(
 
     if primary_metric == "PEG":
         # GROWTH archetype with positive PE
-        zone, thresholds, peg = _compute_peg_zone(
-            current_pe, trailing_growth, size_tier
-        )
+        if inferred_forward_growth is not None and inferred_forward_growth > 0:
+            zone, thresholds, peg = _compute_peg_zone(
+                current_pe, inferred_forward_growth, size_tier
+            )
+            result["peg_source"] = "current_pe / inferred_forward_growth_pct"
+        else:
+            zone, thresholds, peg = _compute_peg_zone(
+                current_pe, trailing_growth, size_tier
+            )
+            result["peg_source"] = "derived_from_trailing_growth" if peg is not None else None
         result["zone"] = zone
         result["zone_thresholds"] = thresholds
         result["peg"] = peg
