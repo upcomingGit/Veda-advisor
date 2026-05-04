@@ -509,7 +509,32 @@ def fetch_india_fundamentals(
             try:
                 resp = session.get(url, timeout=15, allow_redirects=True)
                 if resp.status_code == 200 and len(resp.text) > 5000:
-                    html = resp.text
+                    # Liveness check passed; now verify the #quarters section
+                    # actually contains tabular data. Standalone-only filers
+                    # (e.g., Wonderla) return HTTP 200 with an empty #quarters
+                    # table on the /consolidated/ URL — fall through to the
+                    # standalone slug rather than accept the skeleton page.
+                    # We require >= 4 dated <th>/<td> cells inside the section
+                    # (the parser's own header-detection threshold). A loose
+                    # body-wide date check would false-match Screener's
+                    # "Upcoming result date: <DD MMM YYYY>" badge that sits
+                    # in the section even when the table is empty.
+                    sect_match = re.search(
+                        r'<section[^>]*id="quarters"[^>]*>(.*?)</section>',
+                        resp.text,
+                        re.DOTALL,
+                    )
+                    if sect_match:
+                        date_cells = re.findall(
+                            r'<t[dh][^>]*>\s*'
+                            r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)'
+                            r'\s+\d{4}\s*</t[dh]>',
+                            sect_match.group(1),
+                        )
+                        if len(date_cells) >= 4:
+                            html = resp.text
+                            break
+                    # Empty quarters section — try next slug
                     break
                 elif resp.status_code == 429:
                     time.sleep(RETRY_BASE_DELAY * (2 ** attempt))
