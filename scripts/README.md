@@ -110,13 +110,13 @@ Exit codes: `0` valid, `1` validation errors printed to stderr, `2` file missing
 ### What it checks
 
 - `schema_version` is `1`.
-- Sibling `_meta.yaml` exists and supplies `archetype` (one of `GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL`) and `market` (one of `US | IN`). `instrument_class` must be `equity` if present.
+- Sibling `_meta.yaml` exists and supplies `archetype` (one of `GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL`) and `market` (one of `US | IN`). `instrument_class` must be `equity` if present. When `archetype_secondary` is set, it must be one of the same enum and differ from `archetype`; `segments:` must then also be present.
 - Exactly four assumption keys: `A1`, `A2`, `A3`, `A4`.
 - Each assumption has all six fields: `text`, `category`, `quarterly_checkpoint`, `transcript_checkpoint`, `thesis_horizon_target`, `checkpoint_metric_source`.
-- `category` is one of `GROWTH | FINANCIAL_HEALTH | COMPETITIVE | GOING_CONCERN`.
-- Slot allocation: category counts match the archetype's required mix exactly (see schema).
+- `category` is one of `GROWTH | FINANCIAL_HEALTH | COMPETITIVE | CYCLE_POSITION | GOING_CONCERN`.
+- Slot allocation: category counts match the `(archetype, archetype_secondary)` tuple's required mix exactly (4 monoline rows + 12 composite rows; see schema).
 - `checkpoint_metric_source` is `consolidated` for non-GOING_CONCERN, `non_financial` for GOING_CONCERN.
-- `transcript_checkpoint` is non-null for GROWTH / FINANCIAL_HEALTH / COMPETITIVE; null for GOING_CONCERN.
+- `transcript_checkpoint` is non-null for GROWTH / FINANCIAL_HEALTH / COMPETITIVE / CYCLE_POSITION; null for GOING_CONCERN.
 - `quarterly_checkpoint` target statement (text before the first parenthesis) contains no banned metrics. Indian (`market: IN`) workspaces have a tighter whitelist that additionally bans Gross Margin / Gross Profit / OCF / CapEx / FCF.
 - `quarterly_checkpoint` target statement uses exactly one whitelisted primary metric (single-metric rule).
 - Each non-GOING_CONCERN `quarterly_checkpoint` uses a distinct primary metric across the four assumptions (uniqueness rule).
@@ -186,6 +186,7 @@ python scripts/fetch_fundamentals.py \
 | `--ticker` | yes | e.g., `NVDA`, `RELIANCE` | For India, suffix (.NS/.BO) is stripped |
 | `--market` | yes | `US` \| `IN` | Routes to yfinance or Screener.in |
 | `--archetype` | yes | `GROWTH` \| `INCOME_VALUE` \| `TURNAROUND` \| `CYCLICAL` | Determines primary valuation metric |
+| `--archetype-secondary` | no | same enum as `--archetype` | When set, emits a parallel `valuation.secondary` block with the secondary archetype's primary metric and zone. Must differ from `--archetype`. Banks/NBFC override (P/B) does not propagate to the secondary block. See [internal/holdings-schema.md § "Composite valuation — `secondary:` block"](../internal/holdings-schema.md#composite-valuation--secondary-block). |
 | `--sector` | no | e.g., `"Banking"` | For banking/NBFC detection (forces P/B) |
 | `--sector-kind` | no | `COMMODITY` \| `CREDIT` \| `OTHER` | `COMMODITY` inverts EV/EBITDA zone; `CREDIT` forces P/B |
 | `--history-quarters` | no | default: 12 | Number of quarters to fetch |

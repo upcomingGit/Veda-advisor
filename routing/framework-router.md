@@ -14,7 +14,7 @@ Frameworks cluster around these. Most questions touch one problem primarily; som
 
 ## Archetype input
 
-For ticker-specific questions, read the position's `archetype` from `holdings/<instance_key>/_meta.yaml`. The archetype informs conditional routing:
+For ticker-specific questions, read the position's `archetype` (and, when set, `archetype_secondary`) from `holdings/<instance_key>/_meta.yaml`. The archetype informs conditional routing:
 
 | Archetype | Maps to | Conditional frameworks elevated |
 |---|---|---|
@@ -22,6 +22,15 @@ For ticker-specific questions, read the position's `archetype` from `holdings/<i
 | `INCOME_VALUE` | Lynch Stalwart / Slow Grower | Buffett (moat, margin of safety), Klarman (value discipline) |
 | `TURNAROUND` | Lynch Turnaround | Klarman (margin of safety on distressed), Marks (permanent loss vs volatility) |
 | `CYCLICAL` | Lynch Cyclical | Druckenmiller (cycle timing), Marks (second-level thinking on cycle position) |
+
+**Composite (`archetype_secondary` set).** When a position carries two archetypes, the primary's two always-load frameworks remain. The secondary contributes **one** conditional framework, capped at **3 frameworks total** to honour the existing 2–3 framework rule. Pick the secondary framework most distinctive to that archetype (per the table below). When the same framework would already be loaded by the primary, drop the secondary contribution rather than duplicate.
+
+| Secondary archetype | Conditional framework added |
+|---|---|
+| `GROWTH` | Fisher (growth-quality lens on the secondary segment) |
+| `INCOME_VALUE` | Buffett (moat / margin-of-safety lens on the secondary segment) |
+| `TURNAROUND` | Klarman (distressed-segment margin of safety) |
+| `CYCLICAL` | Marks (cycle-position lens on the secondary segment) |
 
 If no workspace exists or archetype is missing, infer from company profile (per [internal/holdings-schema.md](../internal/holdings-schema.md) § "Archetype inference") and proceed.
 

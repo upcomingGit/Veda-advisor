@@ -307,6 +307,7 @@ For every workspace directory under `holdings/`:
 | `instrument_class` matches the registry row for this `instance_key` | Registry says equity, meta says etf | Hard mismatch; workspace quarantined until registry and meta agree. |
 | `archetype` present iff `instrument_class == equity` | Non-equity workspace with archetype, equity without | Equity: prompt for archetype. Non-equity: surplus archetype flagged as stray. |
 | `archetype` in enum (`GROWTH`, `INCOME_VALUE`, `TURNAROUND`, `CYCLICAL`) | Typo or custom value | Reject with allowlist; propose closest match if Levenshtein ≤ 2. |
+| `archetype_secondary` (optional) in same enum and ≠ `archetype` when set | Same value as `archetype`, or unrecognised | Reject; the validator additionally requires `segments:` when `archetype_secondary` is set. See [internal/holdings-schema.md § "Composite archetype rules"](../../internal/holdings-schema.md#composite-archetype-rules). |
 | `last_touched` parses as ISO date | Garbled | Reject; suggest today's date if empty. |
 
 ### Instance-key slugging rule

@@ -21,13 +21,18 @@ ticker: <e.g., NVDA, RELIANCE.NS>
 instance_key: <e.g., nvda, reliance_ns>   # slug for holdings/<instance_key>/
 market: <US | IN>                          # routes the fetch script's adapter
 archetype: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL>
+archetype_secondary: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL | null>
+                                           # OPTIONAL (default null). When non-null, the script adds
+                                           # a parallel `valuation.secondary` block; must differ from
+                                           # archetype. See internal/holdings-schema.md § "Composite
+                                           # archetype rules".
 sector: <string | null>                    # optional; banking/NBFC override depends on this
 sector_kind: <COMMODITY | CREDIT | OTHER | null>  # optional; inverts cyclical zone if COMMODITY
 force_refresh: <true | false>              # if false and latest stored quarter is current, skip
 latest_stored_quarter: <e.g., "2025-Q4" | null>   # from existing fundamentals.yaml; null if file does not exist
 ```
 
-If any required field (`ticker`, `instance_key`, `market`, `archetype`, `force_refresh`, `latest_stored_quarter`) is missing, return `status: failed` with a `warnings` entry listing the absent fields. Do not proceed.
+If any required field (`ticker`, `instance_key`, `market`, `archetype`, `force_refresh`, `latest_stored_quarter`) is missing, return `status: failed` with a `warnings` entry listing the absent fields. Do not proceed. `archetype_secondary` is optional; treat as `null` when omitted.
 
 ## What you output (output contract)
 
@@ -61,10 +66,13 @@ python scripts/fetch_fundamentals.py \
   --ticker <ticker> \
   --market <market> \
   --archetype <archetype> \
+  --archetype-secondary <archetype_secondary or omit when null> \
   --sector "<sector or empty>" \
   --sector-kind <sector_kind or empty> \
   --history-quarters 12
 ```
+
+Omit `--archetype-secondary` entirely when input `archetype_secondary` is null. When set, the JSON output adds a `valuation.secondary` block with the same shape as the top-level valuation block. Persist that block under `secondary:` in `valuation.yaml` (see [internal/holdings-schema.md § "Composite valuation — `secondary:` block"](../../internal/holdings-schema.md#composite-valuation--secondary-block)).
 
 The script returns structured JSON on stdout. Expected shape:
 

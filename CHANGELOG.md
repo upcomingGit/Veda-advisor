@@ -32,6 +32,56 @@ changelog on release.
 
 ## [Unreleased]
 
+### Added
+
+- **Composite archetypes for multi-business-line equity positions.** `_meta.yaml`
+  schema gains optional `archetype_secondary` and `segments` fields, capped at
+  two archetypes per position. `valuation.yaml` adds a parallel `secondary:`
+  block when composite, with the secondary archetype's primary metric and zone
+  computed independently against the same fundamentals. `routing/framework-router.md`
+  composite rule: primary's two always-load frameworks remain; secondary
+  contributes one conditional framework, capped at three total. Drives by:
+  `internal/holdings-schema.md` § "Composite archetype rules", new section
+  "Composite valuation — `secondary:` block", `internal/agents/company-kb-builder.md`
+  Rule 3 extension. Backward compatible: monoline positions are unchanged
+  (existing four holdings keep their single-archetype configuration unless
+  `company-kb-builder` reclassifies them).
+- **`CYCLE_POSITION` assumption category.** Fifth assumption category, used
+  in any slot-allocation row where `archetype` or `archetype_secondary` is
+  `CYCLICAL`. `quarterly_checkpoint` is qualitative (cite an external cycle
+  indicator: commodity price feed, tourism arrivals data, sector orderbook),
+  `checkpoint_metric_source: non_financial`, `transcript_checkpoint` required
+  non-null, inline grounding required (cite the indicator source).
+- **`scripts/fetch_fundamentals.py --archetype-secondary` flag.** Optional CLI
+  argument; when set, emits a parallel `valuation.secondary` block. Banks
+  override (`primary_metric: PB`) does not propagate to the secondary block.
+- **Dashboard composite-archetype rendering** ([dashboard/templates/position.html](dashboard/templates/position.html),
+  [dashboard/static/veda.css](dashboard/static/veda.css), [dashboard/formatters.py](dashboard/formatters.py)).
+  The position page now (a) shows both primary and secondary archetype badges
+  in the company header when composite, (b) renders `valuation.secondary` as a
+  separate block beneath the primary lens with its own zone, primary metric,
+  thresholds, and percentile basis, (c) splits the snapshot-row Valuation cell
+  into "primary / secondary" form, (d) renders `_meta.segments` as a new
+  Segment archetype map section with a sidebar nav entry, and (e) adds the
+  `cat-cycle-position` colour class for the new assumption category. Read-only
+  rendering only \u2014 the dashboard never writes back to `_meta.yaml` or
+  `valuation.yaml`.
+
+### Changed
+
+- **CYCLICAL monoline slot allocation revised.** Previously `1× GROWTH +
+  1× FINANCIAL_HEALTH + 1× COMPETITIVE + 1× GOING_CONCERN`; now `0× GROWTH +
+  1× FINANCIAL_HEALTH + 1× COMPETITIVE + 1× CYCLE_POSITION + 1× GOING_CONCERN`.
+  Cycle reasoning is required on any cyclical position. **Migration:** existing
+  CYCLICAL workspaces' `assumptions.yaml` files will fail validation under the
+  new rules until `company-kb-builder` re-runs (Rule 19 derives a fresh
+  assumptions block from the new slot table). The validator prints the exact
+  category-count mismatch.
+- **`scripts/validate_assumptions.py` `SLOT_ALLOCATION` keyed by tuple.** Now
+  keyed `(primary, secondary_or_None)`; reads `archetype_secondary` from
+  `_meta.yaml`; rejects `archetype_secondary == archetype`. Sixteen rows total
+  (4 monoline + 12 composite). All rows still sum to 4 assumptions.
+
 ## [0.6.0] - 2026-05-02
 
 ### Added

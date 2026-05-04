@@ -24,6 +24,7 @@ Usage:
         --ticker NVDA \\
         --market US \\
         --archetype GROWTH \\
+        --archetype-secondary CYCLICAL \\  # optional; emits a parallel `secondary:` block
         --sector "Semiconductors" \\
         --sector-kind OTHER \\
         --history-quarters 12
@@ -553,10 +554,101 @@ def fetch_india_fundamentals(
     quarters, parse_errors = _parse_screener_quarters(html, history_quarters)
     errors.extend(parse_errors)
 
-    # Fetch valuation chart data (PE)
+    # Parse current-snapshot fields from the page itself (Stock P/E, BVPS,
+    # Market Cap, Dividend Yield) — the chart API alone does not surface
+    # these, and using it as the only source has masked silent fetch
+    # failures in the past.
+    top_ratios = _parse_screener_top_ratios(html)
+
+    # Parse latest balance-sheet column (annual + interim) for Borrowings,
+    # Reserves, Equity Capital, and Cash (when broken out). Used both as a
+    # snapshot attached to the latest quarter AND as input to EV/EBITDA.
+    bs_snapshot = _parse_screener_balance_sheet(html)
+
+    # Fetch valuation chart data (PE history → percentile basis)
     time.sleep(SCREENER_REQUEST_DELAY)
     valuation, val_errors = _fetch_screener_valuation(symbol, session)
     errors.extend(val_errors)
+
+    # Merge top-ratios into the valuation block. Page-scraped values are
+    # authoritative for the current-snapshot metrics; chart-API values
+    # remain the source for `historical_pe`.
+    if "current_pe" in top_ratios:
+        valuation["current_pe"] = top_ratios["current_pe"]
+    if "current_pb" in top_ratios:
+        valuation["current_pb"] = top_ratios["current_pb"]
+    if "current_dividend_yield_pct" in top_ratios:
+        valuation["current_dividend_yield_pct"] = top_ratios["current_dividend_yield_pct"]
+    # Convert market cap from Crores to native rupees for the size-tier
+    # threshold table (which expects rupees, e.g. ₹10 lakh-Cr = 10e12).
+    if "market_cap_cr" in top_ratios:
+        valuation["market_cap"] = top_ratios["market_cap_cr"] * 1e7
+
+    # Attach balance-sheet snapshot to the latest quarter (annual cadence;
+    # we are explicit about that via a warning, not by silently propagating
+    # stale numbers across all quarters).
+    if quarters and bs_snapshot:
+        latest = quarters[-1]
+        if "total_debt_cr" in bs_snapshot:
+            latest["total_debt_mm"] = round(bs_snapshot["total_debt_cr"] * 10, 2)
+        if "total_equity_cr" in bs_snapshot:
+            latest["total_equity_mm"] = round(bs_snapshot["total_equity_cr"] * 10, 2)
+        if "cash_and_equivalents_cr" in bs_snapshot:
+            latest["cash_and_equivalents_mm"] = round(
+                bs_snapshot["cash_and_equivalents_cr"] * 10, 2
+            )
+        # Diluted-share approximation: shares = equity_capital / face_value.
+        # Equity Capital is reported in Crores of Rupees; Face Value is in
+        # Rupees per share; result is in Crores of shares → ×10 → millions.
+        face_val = top_ratios.get("face_value")
+        eq_cap = bs_snapshot.get("equity_capital_cr")
+        if face_val and face_val > 0 and eq_cap and eq_cap > 0:
+            latest["diluted_shares_mm"] = round((eq_cap / face_val) * 10, 2)
+        bs_label = bs_snapshot.get("as_of_label")
+        if bs_label:
+            errors.append(
+                f"Balance-sheet fields on latest quarter are from Screener "
+                f"snapshot column '{bs_label}' (annual+interim cadence), "
+                f"not the quarter close itself."
+            )
+
+    # Compute EV/EBITDA when components are available.
+    # EBITDA = TTM Operating Profit (Screener's `Operating Profit` row is
+    # pre-D&A; verified by the identity Sales − Expenses → Operating Profit
+    # while Depreciation appears as a separate line below it).
+    # EV = Market Cap + Total Debt − Cash. Cash defaults to 0 with a warning
+    # when Screener does not break out a `Cash & Bank` row.
+    if quarters and "market_cap_cr" in top_ratios:
+        last4 = quarters[-4:] if len(quarters) >= 4 else []
+        ttm_op_mm_vals = [q.get("operating_income_mm") for q in last4]
+        if last4 and all(v is not None for v in ttm_op_mm_vals):
+            ttm_ebitda_mm = sum(ttm_op_mm_vals)
+            mc_mm = top_ratios["market_cap_cr"] * 10  # Cr → MM
+            debt_mm = (bs_snapshot.get("total_debt_cr") or 0) * 10
+            cash_cr = bs_snapshot.get("cash_and_equivalents_cr")
+            if cash_cr is None:
+                errors.append(
+                    "Cash & Bank row not broken out by Screener for this "
+                    "ticker; EV/EBITDA computed assuming cash=0."
+                )
+                cash_mm = 0.0
+            else:
+                cash_mm = cash_cr * 10
+            ev_mm = mc_mm + debt_mm - cash_mm
+            if ttm_ebitda_mm > 0:
+                valuation["current_ev_ebitda"] = round(ev_mm / ttm_ebitda_mm, 2)
+            else:
+                errors.append(
+                    "Trailing-4Q EBITDA is non-positive — EV/EBITDA not meaningful."
+                )
+
+    # Document fields that Screener.in genuinely does not provide so the
+    # orchestrator's confidence-flagging is informed by data, not guesswork.
+    errors.append(
+        "Screener.in does not provide quarterly cash-flow, capex, "
+        "free-cash-flow, gross-profit, or diluted-share-count fields; "
+        "those quarters are recorded with the four required P&L lines only."
+    )
 
     return quarters, valuation, errors
 
@@ -614,6 +706,7 @@ def _parse_screener_quarters(html: str, limit: int) -> Tuple[List[Dict], List[st
             "Revenue": "revenue",
             "Operating Profit": "operating_income",
             "Financing Profit": "operating_income",
+            "Depreciation": "depreciation",
             "Net Profit": "net_income",
             "EPS in Rs": "eps",
         }
@@ -632,9 +725,13 @@ def _parse_screener_quarters(html: str, limit: int) -> Tuple[List[Dict], List[st
     if not quarter_headers:
         return [], ["Could not parse quarter headers"]
 
-    # Build quarters list
-    num_quarters = min(len(quarter_headers), limit)
-    for i in range(num_quarters):
+    # Build quarters list. Screener serves columns OLDEST-FIRST and may include
+    # one extra interim/preliminary column beyond `limit`. We want the most
+    # recent `limit` quarters; iterate from the tail of the column list, not
+    # the head — otherwise we silently drop the latest reporting period.
+    total_cols = len(quarter_headers)
+    start_idx = max(0, total_cols - limit)
+    for i in range(start_idx, total_cols):
         label = quarter_headers[i]
         quarter_end = _quarter_label_to_date(label)
         if not quarter_end:
@@ -662,6 +759,11 @@ def _parse_screener_quarters(html: str, limit: int) -> Tuple[List[Dict], List[st
             val = parsed_rows["net_income"][i]
             if val is not None:
                 q_data["net_income_mm"] = round(val * 10, 2)
+
+        if "depreciation" in parsed_rows and i < len(parsed_rows["depreciation"]):
+            val = parsed_rows["depreciation"][i]
+            if val is not None:
+                q_data["depreciation_mm"] = round(val * 10, 2)
 
         if "eps" in parsed_rows and i < len(parsed_rows["eps"]):
             val = parsed_rows["eps"][i]
@@ -696,6 +798,144 @@ def _quarter_label_to_date(label: str) -> Optional[str]:
     if month == 2 and (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)):
         day = 29
     return f"{year}-{month:02d}-{day:02d}"
+
+
+def _parse_screener_top_ratios(html: str) -> Dict[str, Optional[float]]:
+    """Extract current valuation snapshot from Screener.in `<ul id="top-ratios">`.
+
+    Returns a dict with whichever of these keys could be parsed:
+
+      - ``current_price``           — INR per share (e.g. 530.0)
+      - ``market_cap_cr``           — INR Crores (e.g. 3360.0)
+      - ``current_pe``              — trailing-12M P/E (e.g. 40.5)
+      - ``book_value_per_share``    — INR per share (e.g. 278.0)
+      - ``current_pb``              — derived: current_price / book_value_per_share
+      - ``current_dividend_yield_pct`` — percentage (e.g. 0.38)
+      - ``face_value``              — INR per share (e.g. 10.0)
+
+    Schema is stable across all Indian listings on Screener (verified for
+    Wonderla, NTPC, Reliance, Pidilite, HDFC Bank). Missing keys are simply
+    omitted; callers must handle absence.
+    """
+
+    out: Dict[str, Optional[float]] = {}
+    block = re.search(r'<ul[^>]*id="top-ratios"[^>]*>(.*?)</ul>', html, re.DOTALL)
+    if not block:
+        return out
+
+    items = re.findall(r'<li[^>]*>(.*?)</li>', block.group(1), re.DOTALL)
+    label_map = {
+        "Market Cap": "market_cap_cr",
+        "Current Price": "current_price",
+        "Stock P/E": "current_pe",
+        "Book Value": "book_value_per_share",
+        "Dividend Yield": "current_dividend_yield_pct",
+        "Face Value": "face_value",
+    }
+
+    for item in items:
+        name_m = re.search(r'<span[^>]*class="name"[^>]*>(.*?)</span>', item, re.DOTALL)
+        num_m = re.search(r'<span[^>]*class="number"[^>]*>(.*?)</span>', item, re.DOTALL)
+        if not name_m or not num_m:
+            continue
+        label = re.sub(r'<[^>]+>', '', name_m.group(1)).strip()
+        raw = re.sub(r'<[^>]+>', '', num_m.group(1)).strip()
+        # Indian number format: "3,87,285" → 387285 ; "3,360" → 3360
+        cleaned = raw.replace(",", "").strip()
+        try:
+            value = float(cleaned)
+        except ValueError:
+            continue
+        key = label_map.get(label)
+        if key:
+            out[key] = value
+
+    # Derive P/B from price and book-value-per-share
+    cp, bvps = out.get("current_price"), out.get("book_value_per_share")
+    if cp is not None and bvps is not None and bvps > 0:
+        out["current_pb"] = round(cp / bvps, 4)
+
+    return out
+
+
+def _parse_screener_balance_sheet(html: str) -> Dict[str, Optional[float]]:
+    """Extract latest-column balance-sheet snapshot from Screener `#balance-sheet`.
+
+    Screener serves the balance-sheet section annual + (optionally) one trailing
+    interim column. We always read the right-most column. Returns a dict with:
+
+      - ``total_debt_cr``       — `Borrowings` row, INR Crores
+      - ``total_equity_cr``     — `Equity Capital` + `Reserves`, INR Crores
+      - ``equity_capital_cr``   — face-value share capital, INR Crores
+      - ``cash_and_equivalents_cr`` — only when a `Cash & Bank` row is present
+                                     (some companies don't break it out)
+      - ``as_of_label``         — the right-most column header string
+                                  (e.g. "Sep 2025" or "Mar 2025")
+
+    Missing rows are omitted. Cash is genuinely unavailable on many Indian
+    listings (e.g. Wonderla); callers must treat absence as "unknown",
+    not zero.
+    """
+
+    out: Dict[str, Any] = {}
+    sect = re.search(r'<section[^>]*id="balance-sheet"[^>]*>(.*?)</section>', html, re.DOTALL)
+    if not sect:
+        return out
+
+    qr_section = sect.group(1)
+    rows = re.findall(r'<tr[^>]*>(.*?)</tr>', qr_section, re.DOTALL)
+    if not rows:
+        return out
+
+    label_map = {
+        "Borrowings": "total_debt_cr",
+        "Equity Capital": "equity_capital_cr",
+        "Reserves": "reserves_cr",
+        "Cash & Bank": "cash_and_equivalents_cr",
+        "Cash and Bank": "cash_and_equivalents_cr",  # rare alt spelling
+    }
+
+    last_col_index: Optional[int] = None
+
+    for row_html in rows:
+        cells = re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row_html, re.DOTALL)
+        clean = [
+            re.sub(r'<[^>]+>', '', c).replace('\n', '').replace('\r', '')
+                .replace('&nbsp;', '').replace(',', '').strip()
+            for c in cells
+        ]
+        if not clean:
+            continue
+
+        # First non-empty row should be the thead (date columns)
+        if last_col_index is None:
+            date_cells = [
+                idx for idx, c in enumerate(clean[1:], start=1)
+                if c and re.match(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}', c)
+            ]
+            if len(date_cells) >= 4:
+                last_col_index = date_cells[-1]
+                out["as_of_label"] = clean[last_col_index]
+            continue
+
+        label = clean[0].rstrip('+').strip()
+        if not label or last_col_index is None or last_col_index >= len(clean):
+            continue
+        key = label_map.get(label)
+        if not key:
+            continue
+        try:
+            out[key] = float(clean[last_col_index])
+        except (ValueError, TypeError):
+            pass
+
+    # Derived: total_equity_cr = equity_capital + reserves (Indian convention)
+    eq_cap = out.get("equity_capital_cr")
+    reserves = out.get("reserves_cr")
+    if eq_cap is not None and reserves is not None:
+        out["total_equity_cr"] = round(eq_cap + reserves, 2)
+
+    return out
 
 
 def _fetch_screener_valuation(symbol: str, session) -> Tuple[Dict, List[str]]:
@@ -739,7 +979,11 @@ def _fetch_screener_pe_history(company_id: int, session) -> Tuple[Dict, List[flo
 
     try:
         url = f"https://www.screener.in/api/company/{company_id}/chart/"
-        params = {"q": "Price+to+Earning-Median+PE", "days": 1825, "consolidated": "true"}
+        # NOTE: requests will URL-encode the value of `q`. Pass literal spaces;
+        # they encode to `+` on the wire, which is what Screener's chart API
+        # expects. Using `+` characters in the value would encode to `%2B` and
+        # return HTTP 404 for every metric.
+        params = {"q": "Price to Earning-Median PE", "days": 1825, "consolidated": "true"}
         resp = session.get(url, params=params, headers=SCREENER_CHART_HEADERS, timeout=15)
 
         if resp.status_code == 200:
@@ -810,6 +1054,25 @@ def compute_zone(
     result["trailing_growth_pct"] = safe_round(trailing_growth)
 
     # === Zone computation by primary metric ===
+    # When the primary metric VALUE is unavailable (e.g., EV/EBITDA could not
+    # be derived because the source omits Cash & Bank or trailing-4Q EBITDA
+    # was negative), we surface that explicitly with `zone: null` rather than
+    # silently returning FAIR. This lets the orchestrator distinguish "data
+    # places this in the FAIR band" from "could not compute".
+    primary_value_map = {
+        "PEG": current_pe,
+        "PE": current_pe,
+        "PS": current_ps,
+        "EV_EBITDA": current_ev_ebitda,
+        "PB": current_pb,
+    }
+    if primary_value_map.get(primary_metric) is None:
+        result["zone"] = None
+        result["zone_thresholds"] = None
+        result["percentile_basis"] = None
+        result["primary_metric_value"] = None
+        result["inverted"] = False
+        return result
 
     if primary_metric == "PEG":
         # GROWTH archetype with positive PE
@@ -1045,11 +1308,29 @@ def main() -> int:
     parser.add_argument("--ticker", required=True, help="Stock ticker (e.g., NVDA, RELIANCE.NS)")
     parser.add_argument("--market", required=True, choices=["US", "IN"], help="Market: US or IN")
     parser.add_argument("--archetype", required=True, choices=["GROWTH", "INCOME_VALUE", "TURNAROUND", "CYCLICAL"])
+    parser.add_argument(
+        "--archetype-secondary",
+        default="",
+        choices=["GROWTH", "INCOME_VALUE", "TURNAROUND", "CYCLICAL", ""],
+        help=(
+            "Optional secondary archetype for composite positions. When set, "
+            "the output adds a parallel `valuation.secondary` block computed "
+            "against the same fundamentals using the secondary archetype's "
+            "primary metric. Must differ from --archetype."
+        ),
+    )
     parser.add_argument("--sector", default="", help="Sector name (optional)")
     parser.add_argument("--sector-kind", default="", choices=["COMMODITY", "CREDIT", "OTHER", ""], help="Sector kind (optional)")
     parser.add_argument("--history-quarters", type=int, default=12, help="Number of quarters to fetch")
 
     args = parser.parse_args()
+
+    if args.archetype_secondary and args.archetype_secondary == args.archetype:
+        parser.error(
+            "--archetype-secondary must differ from --archetype (composite "
+            "requires two distinct archetypes; omit --archetype-secondary for "
+            "a monoline position)."
+        )
 
     is_indian = args.market == "IN"
 
@@ -1075,6 +1356,27 @@ def main() -> int:
 
     # Remove internal fields from zone_result
     zone_result.pop("historical_pe", None)
+
+    # Composite: when --archetype-secondary is set, compute a parallel block
+    # using the secondary archetype's primary-metric path. The banks override
+    # (sector_kind=CREDIT or banking sector keyword) is intentionally NOT
+    # applied to the secondary block: PB-override exists because banks have a
+    # single business model (lending). When a non-bank sector carries a
+    # secondary archetype, the secondary metric is the right lens for that
+    # segment. See internal/holdings-schema.md § "Composite valuation —
+    # `secondary:` block".
+    if args.archetype_secondary:
+        secondary_zone = compute_zone(
+            archetype=args.archetype_secondary,
+            sector=None,            # bypass banks override on the secondary block
+            sector_kind=None,
+            valuation=valuation,
+            quarters=quarters,
+            is_indian=is_indian,
+        )
+        secondary_zone.pop("historical_pe", None)
+        secondary_zone["archetype"] = args.archetype_secondary
+        zone_result["secondary"] = secondary_zone
 
     # Build output
     as_of = quarters[-1]["as_of"] if quarters else datetime.now(timezone.utc).strftime("%Y-%m-%d")

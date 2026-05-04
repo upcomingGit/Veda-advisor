@@ -875,6 +875,7 @@ h4 {
 .cat-growth          { background: var(--accent-soft); color: var(--accent); border-color: rgba(94, 53, 177, 0.18); }
 .cat-financial       { background: var(--gold-soft);   color: var(--gold-ink); border-color: rgba(184, 134, 11, 0.22); }
 .cat-competitive     { background: var(--green-bg);    color: var(--green); }
+.cat-cycle-position  { background: var(--slate-bg);    color: var(--slate); }
 .cat-going-concern   { background: var(--red-bg);      color: var(--red); }
 .cat-unknown         { background: var(--slate-bg);    color: var(--slate); }
 
@@ -1174,6 +1175,22 @@ h4 {
 [data-theme="system"] .valuation-card .big { color: var(--accent-2); }
 @media (prefers-color-scheme: dark) {
   [data-theme="system"] .valuation-card .big { color: var(--accent-2); }
+}
+
+.valuation-card .valuation-secondary {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.valuation-card .valuation-secondary h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .assumption {

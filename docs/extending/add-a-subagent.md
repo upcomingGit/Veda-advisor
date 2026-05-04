@@ -77,6 +77,7 @@ The exact shape of what Veda hands your subagent:
 input:
   ticker: <string, required, e.g. "MSFT">
   archetype: <one of: GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL>
+  archetype_secondary: <optional; one of GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL or null; must differ from archetype when set>
 ```
 
 ## Output contract

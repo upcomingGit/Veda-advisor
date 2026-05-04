@@ -31,17 +31,40 @@ from pathlib import Path
 
 # -------- Allowed enums --------
 
-VALID_CATEGORIES = {"GROWTH", "FINANCIAL_HEALTH", "COMPETITIVE", "GOING_CONCERN"}
+VALID_CATEGORIES = {
+    "GROWTH",
+    "FINANCIAL_HEALTH",
+    "COMPETITIVE",
+    "CYCLE_POSITION",
+    "GOING_CONCERN",
+}
 VALID_METRIC_SOURCES = {"consolidated", "non_financial"}
 VALID_MARKETS = {"US", "IN"}
 VALID_ARCHETYPES = {"GROWTH", "INCOME_VALUE", "TURNAROUND", "CYCLICAL"}
 
-# Required slot allocation per archetype (strict counts).
-SLOT_ALLOCATION: dict[str, dict[str, int]] = {
-    "GROWTH":       {"GROWTH": 2, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 0, "GOING_CONCERN": 1},
-    "INCOME_VALUE": {"GROWTH": 1, "FINANCIAL_HEALTH": 2, "COMPETITIVE": 0, "GOING_CONCERN": 1},
-    "TURNAROUND":   {"GROWTH": 1, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 1, "GOING_CONCERN": 1},
-    "CYCLICAL":     {"GROWTH": 1, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 1, "GOING_CONCERN": 1},
+# Required slot allocation per (primary_archetype, secondary_archetype_or_None).
+# Every row sums to 4. GOING_CONCERN is always 1. Every CYCLICAL pairing carries
+# one CYCLE_POSITION slot. See internal/holdings-schema.md § "Slot allocation by
+# archetype" for the canonical table and design rationale.
+SLOT_ALLOCATION: dict[tuple[str, str | None], dict[str, int]] = {
+    # Monoline (archetype_secondary absent or null)
+    ("GROWTH",       None): {"GROWTH": 2, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 0, "CYCLE_POSITION": 0, "GOING_CONCERN": 1},
+    ("INCOME_VALUE", None): {"GROWTH": 1, "FINANCIAL_HEALTH": 2, "COMPETITIVE": 0, "CYCLE_POSITION": 0, "GOING_CONCERN": 1},
+    ("TURNAROUND",   None): {"GROWTH": 1, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 1, "CYCLE_POSITION": 0, "GOING_CONCERN": 1},
+    ("CYCLICAL",     None): {"GROWTH": 0, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 1, "CYCLE_POSITION": 1, "GOING_CONCERN": 1},
+    # Composite
+    ("GROWTH",       "INCOME_VALUE"): {"GROWTH": 1, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 1, "CYCLE_POSITION": 0, "GOING_CONCERN": 1},
+    ("GROWTH",       "TURNAROUND"):   {"GROWTH": 1, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 1, "CYCLE_POSITION": 0, "GOING_CONCERN": 1},
+    ("GROWTH",       "CYCLICAL"):     {"GROWTH": 1, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 0, "CYCLE_POSITION": 1, "GOING_CONCERN": 1},
+    ("INCOME_VALUE", "GROWTH"):       {"GROWTH": 2, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 0, "CYCLE_POSITION": 0, "GOING_CONCERN": 1},
+    ("INCOME_VALUE", "TURNAROUND"):   {"GROWTH": 0, "FINANCIAL_HEALTH": 2, "COMPETITIVE": 1, "CYCLE_POSITION": 0, "GOING_CONCERN": 1},
+    ("INCOME_VALUE", "CYCLICAL"):     {"GROWTH": 0, "FINANCIAL_HEALTH": 2, "COMPETITIVE": 0, "CYCLE_POSITION": 1, "GOING_CONCERN": 1},
+    ("TURNAROUND",   "GROWTH"):       {"GROWTH": 2, "FINANCIAL_HEALTH": 0, "COMPETITIVE": 1, "CYCLE_POSITION": 0, "GOING_CONCERN": 1},
+    ("TURNAROUND",   "INCOME_VALUE"): {"GROWTH": 0, "FINANCIAL_HEALTH": 2, "COMPETITIVE": 1, "CYCLE_POSITION": 0, "GOING_CONCERN": 1},
+    ("TURNAROUND",   "CYCLICAL"):     {"GROWTH": 0, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 1, "CYCLE_POSITION": 1, "GOING_CONCERN": 1},
+    ("CYCLICAL",     "GROWTH"):       {"GROWTH": 1, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 0, "CYCLE_POSITION": 1, "GOING_CONCERN": 1},
+    ("CYCLICAL",     "INCOME_VALUE"): {"GROWTH": 0, "FINANCIAL_HEALTH": 2, "COMPETITIVE": 0, "CYCLE_POSITION": 1, "GOING_CONCERN": 1},
+    ("CYCLICAL",     "TURNAROUND"):   {"GROWTH": 0, "FINANCIAL_HEALTH": 1, "COMPETITIVE": 1, "CYCLE_POSITION": 1, "GOING_CONCERN": 1},
 }
 
 # Banned metrics in quarterly_checkpoint (case-insensitive substring match).
@@ -243,7 +266,9 @@ def find_banned(text: str, banned_list: list[str]) -> list[str]:
 
 def read_meta(workspace_dir: Path) -> dict[str, str | None]:
     """Read _meta.yaml from a workspace directory. Returns dict with archetype,
-    market, instrument_class, schema_version. Empty dict if file is missing."""
+    archetype_secondary, market, instrument_class, schema_version. Empty dict
+    if file is missing.
+    """
     meta_path = workspace_dir / "_meta.yaml"
     if not meta_path.exists():
         return {}
@@ -255,6 +280,7 @@ def read_meta(workspace_dir: Path) -> dict[str, str | None]:
         "schema_version": find_top_field(text, "schema_version"),
         "instrument_class": find_top_field(text, "instrument_class"),
         "archetype": find_top_field(text, "archetype"),
+        "archetype_secondary": find_top_field(text, "archetype_secondary"),
         "market": find_top_field(text, "market"),
     }
 
@@ -279,6 +305,10 @@ def validate(assumptions_path: Path) -> list[str]:
     workspace_dir = assumptions_path.parent
     meta = read_meta(workspace_dir)
     archetype = meta.get("archetype")
+    archetype_secondary_raw = meta.get("archetype_secondary")
+    archetype_secondary = (
+        None if is_null_value(archetype_secondary_raw) else archetype_secondary_raw
+    )
     market = meta.get("market")
     instrument_class = meta.get("instrument_class")
 
@@ -288,6 +318,19 @@ def validate(assumptions_path: Path) -> list[str]:
         errors.append(
             f"_meta.yaml archetype {archetype!r} not in {sorted(VALID_ARCHETYPES)}"
         )
+    if archetype_secondary is not None:
+        if archetype_secondary not in VALID_ARCHETYPES:
+            errors.append(
+                f"_meta.yaml archetype_secondary {archetype_secondary!r} not in "
+                f"{sorted(VALID_ARCHETYPES)}"
+            )
+        elif archetype_secondary == archetype:
+            errors.append(
+                f"_meta.yaml archetype_secondary {archetype_secondary!r} must "
+                f"differ from archetype {archetype!r} (composite requires two "
+                f"distinct archetypes; use monoline by leaving "
+                f"archetype_secondary null/absent)"
+            )
     if market is None:
         errors.append(
             f"_meta.yaml at {workspace_dir} missing market "
@@ -329,20 +372,35 @@ def validate(assumptions_path: Path) -> list[str]:
                 f"{k}.category: {cat!r} not in {sorted(VALID_CATEGORIES)}"
             )
 
-    # 3. Slot allocation per archetype
-    if archetype in SLOT_ALLOCATION:
-        actual: dict[str, int] = {c: 0 for c in VALID_CATEGORIES}
-        for k in EXPECTED_KEYS:
-            cat = parsed[k]["category"]
-            if cat in actual:
-                actual[cat] += 1
-        expected = SLOT_ALLOCATION[archetype]
-        for c in sorted(VALID_CATEGORIES):
-            if actual[c] != expected[c]:
-                errors.append(
-                    f"slot allocation: archetype {archetype} requires "
-                    f"{expected[c]} {c} assumption(s), found {actual[c]}"
-                )
+    # 3. Slot allocation per (archetype, archetype_secondary)
+    slot_key = (archetype, archetype_secondary)
+    if archetype in VALID_ARCHETYPES and (
+        archetype_secondary is None or archetype_secondary in VALID_ARCHETYPES
+    ):
+        if slot_key not in SLOT_ALLOCATION:
+            errors.append(
+                f"slot allocation: no allocation defined for "
+                f"(archetype={archetype}, archetype_secondary={archetype_secondary}) "
+                f"— see internal/holdings-schema.md § 'Slot allocation by archetype'"
+            )
+        else:
+            actual: dict[str, int] = {c: 0 for c in VALID_CATEGORIES}
+            for k in EXPECTED_KEYS:
+                cat = parsed[k]["category"]
+                if cat in actual:
+                    actual[cat] += 1
+            expected = SLOT_ALLOCATION[slot_key]
+            label = (
+                archetype
+                if archetype_secondary is None
+                else f"{archetype}+{archetype_secondary}"
+            )
+            for c in sorted(VALID_CATEGORIES):
+                if actual[c] != expected[c]:
+                    errors.append(
+                        f"slot allocation: archetype {label} requires "
+                        f"{expected[c]} {c} assumption(s), found {actual[c]}"
+                    )
 
     # 4. checkpoint_metric_source enum + per-category rule
     for k in EXPECTED_KEYS:
@@ -357,9 +415,9 @@ def validate(assumptions_path: Path) -> list[str]:
                 f"{sorted(VALID_METRIC_SOURCES)}"
             )
             continue
-        if cat == "GOING_CONCERN" and ms != "non_financial":
+        if cat in {"GOING_CONCERN", "CYCLE_POSITION"} and ms != "non_financial":
             errors.append(
-                f"{k} (GOING_CONCERN).checkpoint_metric_source: must be "
+                f"{k} ({cat}).checkpoint_metric_source: must be "
                 f"'non_financial', got {ms!r}"
             )
         if cat in {"GROWTH", "FINANCIAL_HEALTH", "COMPETITIVE"} and ms != "consolidated":
@@ -377,7 +435,7 @@ def validate(assumptions_path: Path) -> list[str]:
                 f"{k} (GOING_CONCERN).transcript_checkpoint: must be null, "
                 f"got non-null value"
             )
-        if cat in {"GROWTH", "FINANCIAL_HEALTH", "COMPETITIVE"} and is_null_value(tc):
+        if cat in {"GROWTH", "FINANCIAL_HEALTH", "COMPETITIVE", "CYCLE_POSITION"} and is_null_value(tc):
             errors.append(
                 f"{k} ({cat}).transcript_checkpoint: required (non-null)"
             )
@@ -385,8 +443,8 @@ def validate(assumptions_path: Path) -> list[str]:
     # 6. Banned metrics in quarterly_checkpoint
     for k in EXPECTED_KEYS:
         cat = parsed[k]["category"]
-        if cat == "GOING_CONCERN":
-            continue  # binary sentinels; metric whitelist does not apply
+        if cat in {"GOING_CONCERN", "CYCLE_POSITION"}:
+            continue  # qualitative checkpoints; metric whitelist does not apply
         qc = parsed[k]["quarterly_checkpoint"]
         if is_null_value(qc):
             continue
@@ -414,7 +472,7 @@ def validate(assumptions_path: Path) -> list[str]:
     # 7. Single-metric rule (compound detection)
     for k in EXPECTED_KEYS:
         cat = parsed[k]["category"]
-        if cat == "GOING_CONCERN":
+        if cat in {"GOING_CONCERN", "CYCLE_POSITION"}:
             continue
         qc = parsed[k]["quarterly_checkpoint"]
         if is_null_value(qc):
@@ -427,11 +485,12 @@ def validate(assumptions_path: Path) -> list[str]:
                 f"the target statement"
             )
 
-    # 8. Checkpoint uniqueness across non-GOING_CONCERN assumptions
+    # 8. Checkpoint uniqueness across non-GOING_CONCERN, non-CYCLE_POSITION
+    # assumptions.
     seen: dict[str, str] = {}  # primary metric -> first key that used it
     for k in EXPECTED_KEYS:
         cat = parsed[k]["category"]
-        if cat == "GOING_CONCERN":
+        if cat in {"GOING_CONCERN", "CYCLE_POSITION"}:
             continue
         qc = parsed[k]["quarterly_checkpoint"]
         if is_null_value(qc):

@@ -36,6 +36,11 @@
       </p>
       <div class="badges">
         {{ archetype_badge(meta.get('archetype')) }}
+        {% if meta.get('archetype_secondary') %}
+        <span class="meta">+</span>
+        {{ archetype_badge(meta.get('archetype_secondary')) }}
+        <span class="meta">composite</span>
+        {% endif %}
         {% if meta.get('last_touched') %}<span class="meta">last touched {{ meta.last_touched | dt }}</span>{% endif %}
         {% if registry_row and registry_row.first_acquired %}<span class="meta">first acquired {{ registry_row.first_acquired }}</span>{% endif %}
       </div>
@@ -57,7 +62,9 @@
     </div>
     <div>
       <span>Valuation</span>
-      <strong>{% if valuation and valuation.zone %}{{ valuation.zone }}{% else %}not captured{% endif %}</strong>
+      <strong>
+        {% if valuation and valuation.zone %}{{ valuation.zone }}{% else %}not captured{% endif %}{% if valuation and valuation.secondary and valuation.secondary.zone %} / {{ valuation.secondary.zone }}{% endif %}
+      </strong>
     </div>
   </div>
 </section>
@@ -69,6 +76,7 @@
   <div class="subnav-list">
     {% if has_position %}<a href="#sec-position" class="has-data">&#x1F4CD; Position</a>{% endif %}
     <a href="#sec-valuation" class="{{ 'has-data' if has_valuation else 'empty-section' }}">&#x2696;&#xFE0F; Valuation</a>
+    {% if meta.get('segments') %}<a href="#sec-segments" class="has-data">&#x1F9E9; Segments</a>{% endif %}
     <a href="#sec-calendar" class="{{ 'has-data' if has_calendar else 'empty-section' }}">&#x1F4C5; Calendar</a>
     <a href="#sec-news" class="{{ 'has-data' if has_news else 'empty-section' }}">&#x1F4F0; News</a>
     <a href="#sec-disclosures" class="{{ 'has-data' if has_disclosures else 'empty-section' }}">&#x1F4DC; Disclosures</a>
@@ -163,6 +171,40 @@
       {% endif %}
       {{ source_meta(valuation) }}
       {% if valuation.notes %}<details><summary>notes</summary><pre>{{ valuation.notes }}</pre></details>{% endif %}
+      {% if valuation.secondary %}
+      {% set sec = valuation.secondary %}
+      <div class="valuation-secondary">
+        <h4>
+          <span class="meta">secondary lens</span>
+          {{ archetype_badge(sec.archetype) }}
+        </h4>
+        <div class="valuation-headline">
+          {{ zone_pill(sec.zone) }}
+          <span class="big">
+            {% if sec.primary_metric == 'PEG' %}PEG {{ sec.peg | num(2) }}
+            {% elif sec.primary_metric == 'PE' %}PE {{ sec.current_pe | num(2) }}
+            {% elif sec.primary_metric == 'PB' %}PB {{ sec.current_pb | num(2) }}
+            {% elif sec.primary_metric == 'PS' %}PS {{ sec.current_ps | num(2) }}
+            {% elif sec.primary_metric == 'EV_EBITDA' %}EV/EBITDA {{ sec.current_ev_ebitda | num(2) }}
+            {% else %}{{ sec.primary_metric }}{% endif %}
+          </span>
+        </div>
+        {% if sec.zone_thresholds %}
+        <p class="meta">
+          thresholds: cheap_below {{ sec.zone_thresholds.cheap_below }} &middot;
+          expensive_above {{ sec.zone_thresholds.expensive_above }}
+          {% if sec.size_tier %} &middot; tier {{ sec.size_tier }}{% endif %}
+          {% if sec.inverted %} &middot; INVERTED{% endif %}
+        </p>
+        {% endif %}
+        {% if sec.percentile_basis %}
+        <details>
+          <summary>percentile_basis (secondary)</summary>
+          <pre>{{ sec.percentile_basis }}</pre>
+        </details>
+        {% endif %}
+      </div>
+      {% endif %}
       {% else %}
       {{ empty_card('valuation.yaml', 'run the fundamentals-fetcher subagent to populate') }}
       {% endif %}
@@ -209,6 +251,28 @@
     {% endif %}
   </div>
 </section>
+
+{% if meta.get('segments') %}
+<section class="card section-anchor" id="sec-segments" style="max-width:720px;">
+  <h3><span class="icon">&#x1F9E9;</span> Segment archetype map</h3>
+  <p class="meta">Composite archetype: each segment classified independently. See <code>internal/holdings-schema.md &sect; Composite archetype rules</code> for the rule set.</p>
+  <table class="kv">
+    <thead>
+      <tr><th>Segment</th><th>Archetype</th><th>Revenue %</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      {% for seg in meta.segments %}
+      <tr>
+        <td><strong>{{ seg.name }}</strong></td>
+        <td>{{ archetype_badge(seg.archetype) }}</td>
+        <td>{% if seg.revenue_share_pct is not none %}{{ seg.revenue_share_pct }}%{% else %}-{% endif %}</td>
+        <td>{{ seg.notes or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
 
 {% if meta.get('exchange_codes') %}
 <section class="card section-anchor" id="sec-exchange-codes" style="max-width:520px;">

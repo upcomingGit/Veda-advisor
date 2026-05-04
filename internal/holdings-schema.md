@@ -13,7 +13,15 @@ Every workspace directory MUST contain a `_meta.yaml` at its root.
 ```yaml
 schema_version: 1
 instrument_class: equity
-archetype: GROWTH          # GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL
+archetype: GROWTH                # primary; GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL
+archetype_secondary: CYCLICAL    # optional; absent or null for monoline. Max one secondary.
+segments:                        # required iff archetype_secondary is set; absent for monoline
+  - name: "HBM / AI memory"
+    archetype: GROWTH
+    revenue_share_pct: 35
+  - name: "DRAM commodity"
+    archetype: CYCLICAL
+    revenue_share_pct: 50
 market: US                 # US | IN  (drives the `quarterly_checkpoint` metric whitelist)
 last_touched: 2026-04-23   # ISO date; updated on any file write in this workspace
 exchange_codes:            # optional — populated lazily by disclosure-fetcher
@@ -26,7 +34,9 @@ exchange_codes:            # optional — populated lazily by disclosure-fetcher
 |---|---|---|---|
 | `schema_version` | int | yes | Current version is `1`. Validators reject values > current. |
 | `instrument_class` | enum | yes | Must match the registry row. V1 allows `equity` only. |
-| `archetype` | enum | yes (equity) | One of `GROWTH`, `INCOME_VALUE`, `TURNAROUND`, `CYCLICAL`. Drives framework routing AND assumption slot allocation (see [`assumptions.yaml` § "Writing assumptions and checkpoints"](#writing-assumptions-and-checkpoints--guardrails-validator-enforced)). |
+| `archetype` | enum | yes (equity) | The **primary** archetype. One of `GROWTH`, `INCOME_VALUE`, `TURNAROUND`, `CYCLICAL`. Drives framework routing AND assumption slot allocation (see [`assumptions.yaml` § "Writing assumptions and checkpoints"](#writing-assumptions-and-checkpoints--guardrails-validator-enforced)). |
+| `archetype_secondary` | enum | optional (equity) | Set only when the company has a materially different second business archetype (≥ 25% revenue or thesis-driver). Same enum as `archetype`. Must differ from `archetype`. Drives composite slot allocation and a parallel `valuation.yaml > secondary` block. See § "Composite archetype rules" below. |
+| `segments` | list | required when `archetype_secondary` set | Audit trail for the composite classification. Each item: `name` (free text), `archetype` (must be `archetype` or `archetype_secondary`), `revenue_share_pct` (number 0-100, or null if cross-cutting / undisclosed), optional `notes`. At least one segment must carry each of the two archetypes. See § "Composite archetype rules". |
 | `market` | enum | yes (equity) | One of `US`, `IN`. Drives the `quarterly_checkpoint` metric whitelist (Indian companies have a tighter set per Screener.in's quarterly schema; US equities have access to gross-margin / OCF / CapEx / FCF that Indian companies do not). |
 | `last_touched` | ISO date | yes | Updated automatically on any write to the workspace. |
 | `exchange_codes.cik` | string | optional (US) | SEC Central Index Key, 10-digit zero-padded. Auto-resolved by `disclosure-fetcher` from `sec.gov/files/company_tickers.json` on first invocation when absent; orchestrator persists the resolved value here. |
@@ -122,6 +132,39 @@ Archetype determines which investor frameworks are routed to the position. Infer
 >
 > *Which fits your thesis for [TICKER]?"*
 
+#### Composite archetype rules
+
+Some companies have two materially different business archetypes — Micron (cyclical DRAM + growth HBM), HBL Engineering (industrial-battery cyclicality + Kavach defence-electronics growth), Reliance (cyclical refining + growth retail/telecom). For these, set both `archetype` (primary) and `archetype_secondary` in `_meta.yaml`, and document the segment composition in `segments`. Monoline (single-archetype) is the default and stays untouched.
+
+**When to use composite (`company-kb-builder` decision rule).** A position is composite when **both** of the following are true:
+
+1. Two distinct business segments exist (per filings, investor letters, or annual-report segment reporting).
+2. The two segments resolve to different archetypes per the standard Lynch-mapping table, AND the secondary archetype represents either ≥ 25% of revenue OR is the active thesis driver (e.g., HBM at Micron is < 25% of revenue today but is the equity story).
+
+If only one of the two is true, the position is monoline. Pick the dominant-segment archetype and document the secondary character in `kb.md § Business Model` and `thesis.md § Lynch Category` rationale per `company-kb-builder.md` Rule 3.
+
+**Hard cap of two.** Companies with three or more genuinely different archetype segments (true conglomerates: Berkshire, ITC, Reliance) collapse to two by merging the closest pair or by classifying the smallest under the same archetype as the larger that it most resembles economically. The kb-builder narrates the merge in `thesis.md § Lynch Category`.
+
+**Validator invariants** (enforced by `scripts/validate_assumptions.py` against `_meta.yaml`):
+
+- `archetype_secondary` must be one of the four archetype enums OR null/absent.
+- If `archetype_secondary` is set, it must differ from `archetype`.
+- If `archetype_secondary` is set, `segments` must be a non-empty list.
+- Each segment's `archetype` must equal either `archetype` or `archetype_secondary` (no third archetype permitted in segments).
+- At least one segment must carry `archetype: <primary>`, and at least one must carry `archetype: <secondary>`.
+
+`revenue_share_pct` may be null on segments that are cross-cutting or undisclosed (e.g., a cyclicality lens that applies across all parks). The list does not need to sum to 100 — partial-disclosure realities are accepted.
+
+**Effects of composite classification.**
+
+| Surface | Effect |
+|---|---|
+| `valuation.yaml` | Adds a parallel `secondary:` block with the secondary archetype's primary metric and zone, computed independently against the same fundamentals. Both are surfaced; neither is a roll-up. |
+| Slot allocation in `assumptions.yaml` | Uses the (primary, secondary) row in the slot table — see § "Slot allocation by archetype" below. |
+| `routing/framework-router.md` | The primary's two always-load frameworks remain; the secondary contributes one conditional-load framework, capped at 3 total per the existing rule. |
+
+**No composite for ETFs / SGBs / FDs.** This entire section applies only to `instrument_class: equity`. Other classes have no archetype field.
+
 #### Narration
 
 On lazy scaffold:
@@ -131,6 +174,10 @@ On lazy scaffold:
 or
 
 > *"Creating workspace at holdings/<slug>/. Archetype: INCOME_VALUE (user confirmed)."*
+
+When `company-kb-builder` upgrades a monoline to composite (or proposes to):
+
+> *"Archetype: GROWTH (primary, ~35% revenue: HBM/AI memory) + CYCLICAL (secondary, ~65% revenue: DRAM/NAND). Composite — both lenses applied."*
 
 ### Word caps and absorption
 
@@ -524,6 +571,45 @@ source: screener.in
 
 The fetch script applies these rules. The subagent only records the result.
 
+### Composite valuation — `secondary:` block
+
+When `_meta.yaml > archetype_secondary` is set, the fetch script computes a parallel valuation block keyed under `secondary:` with the same shape as the top-level block (same common-fields contract, same metric-value fields, same percentile-rules logic). Both lenses are computed independently against the same fundamentals; neither is a roll-up.
+
+```yaml
+# Top-level block — primary archetype
+primary_metric: PEG
+current_pe: 28.0
+trailing_growth_pct: 18.0
+peg: 1.56
+zone: FAIR
+zone_thresholds:
+  cheap_below: 1.0
+  expensive_above: 2.0
+size_tier: LARGE
+as_of: 2026-04-25
+source: yfinance
+
+# Parallel block — secondary archetype (only present when _meta.archetype_secondary is set)
+secondary:
+  archetype: CYCLICAL
+  primary_metric: EV_EBITDA
+  current_ev_ebitda: 4.8
+  zone: EXPENSIVE
+  zone_thresholds:
+    cheap_below: 4.5
+    expensive_above: 8.0
+  percentile_basis:
+    p25: 4.6
+    p75: 7.9
+    sector_median: 6.2
+    history_years: 5
+  inverted: true
+  as_of: 2026-04-25
+  source: yfinance
+```
+
+Reading rule: when `secondary:` is present, surface both zones to the user and frameworks. The orchestrator reconciles disagreement (e.g., primary FAIR + secondary EXPENSIVE) — there is no automatic blended verdict. Banks override (`primary_metric: PB`) applies to the primary block only; the secondary block uses the secondary archetype's metric path even when the primary is PB.
+
 ---
 
 ## `indicators.yaml` — optional
@@ -810,7 +896,7 @@ Each assumption carries up to three forward-looking anchors. Without an anchor, 
 
 Anchor presence is governed by the rules in [§ "Writing assumptions and checkpoints — guardrails"](#writing-assumptions-and-checkpoints--guardrails-validator-enforced):
 - `quarterly_checkpoint` — at most one assumption may set this null (rule 10, coverage).
-- `transcript_checkpoint` — non-null for GROWTH / FINANCIAL_HEALTH / COMPETITIVE; null for GOING_CONCERN (rule 6).
+- `transcript_checkpoint` — non-null for GROWTH / FINANCIAL_HEALTH / COMPETITIVE / CYCLE_POSITION; null for GOING_CONCERN (rule 6).
 - `thesis_horizon_target` — at most one assumption may set this null (rule 10, coverage).
 
 The `quarterly_checkpoint` is the headline anchor and should be set for almost all assumptions. `transcript_checkpoint` captures segment metrics and management commentary the consolidated P&L cannot — it is required on every operating-business assumption. `thesis_horizon_target` records the multi-year goal alongside the quarterly rhythm.
@@ -887,11 +973,11 @@ quarters:
 | `schema_version` | int | yes | Current version is `1`. |
 | `assumptions` | map | yes | Exactly four keys: `A1`, `A2`, `A3`, `A4`. Must mirror the four bullets in `thesis.md § Key assumptions`. |
 | `assumptions[Ax].text` | string | yes | The assumption statement. |
-| `assumptions[Ax].category` | enum | yes | One of `GROWTH`, `FINANCIAL_HEALTH`, `COMPETITIVE`, `GOING_CONCERN`. Slot allocation by `_meta.yaml > archetype` — see [§ "Writing assumptions and checkpoints — guardrails"](#writing-assumptions-and-checkpoints--guardrails-validator-enforced) below. |
+| `assumptions[Ax].category` | enum | yes | One of `GROWTH`, `FINANCIAL_HEALTH`, `COMPETITIVE`, `CYCLE_POSITION`, `GOING_CONCERN`. Slot allocation by `_meta.yaml > archetype` and (when set) `archetype_secondary` — see [§ "Writing assumptions and checkpoints — guardrails"](#writing-assumptions-and-checkpoints--guardrails-validator-enforced) below. |
 | `assumptions[Ax].quarterly_checkpoint` | string or null | conditional | Single-metric, whitelisted-metric target for the next reportable quarter. Coverage rule: at most one assumption may set this null (≥3 of 4 must have both this AND `thesis_horizon_target` non-null). See § "Writing assumptions and checkpoints — guardrails". |
-| `assumptions[Ax].transcript_checkpoint` | string or null | conditional | Required non-null for `GROWTH` / `FINANCIAL_HEALTH` / `COMPETITIVE` (segment metric or call commentary). Required null for `GOING_CONCERN`. |
+| `assumptions[Ax].transcript_checkpoint` | string or null | conditional | Required non-null for `GROWTH` / `FINANCIAL_HEALTH` / `COMPETITIVE` / `CYCLE_POSITION` (segment metric, call commentary, or cycle indicator). Required null for `GOING_CONCERN`. |
 | `assumptions[Ax].thesis_horizon_target` | string or null | conditional | Multi-year target. Coverage rule: at most one assumption may set this null. |
-| `assumptions[Ax].checkpoint_metric_source` | enum | yes | One of `consolidated` (GROWTH / FINANCIAL_HEALTH / COMPETITIVE — reads from quarterly P&L) or `non_financial` (GOING_CONCERN — binary event). |
+| `assumptions[Ax].checkpoint_metric_source` | enum | yes | One of `consolidated` (GROWTH / FINANCIAL_HEALTH / COMPETITIVE — reads from quarterly P&L) or `non_financial` (CYCLE_POSITION — reads from external cycle indicators; GOING_CONCERN — binary event). |
 | `quarters[]` | list | yes | Append-only. Each entry is one graded earnings event. |
 | `quarters[].period` | string | yes | Fiscal-quarter label, e.g., `2026-Q1`. Unique across `quarters[]`. |
 | `quarters[].graded_on` | ISO date | yes | When the grading pass ran. |
@@ -934,20 +1020,42 @@ Each assumption's `category` MUST be exactly one of:
 | `GROWTH` | Revenue trajectory and growth catalysts (new products, market expansion, order book) |
 | `FINANCIAL_HEALTH` | Margins, leverage, cash flow quality, dividend sustainability, cost control |
 | `COMPETITIVE` | Market-share trajectory, pricing power vs peers, deal win rates, customer retention |
+| `CYCLE_POSITION` | Where the operating cycle stands for a CYCLICAL business: input-commodity prices, end-market demand-cycle indicators, capacity-cycle indicators, sector benchmark footfall / shipment / orderbook trend. Quarterly checkpoint is qualitative / binary (cite the indicator and its source); not a P&L metric. |
 | `GOING_CONCERN` | Governance integrity, regulatory risk, management transparency, fraud / delisting risk |
 
 Free-form categories (e.g., `MARGIN`) are no longer valid. Replace `MARGIN` with `FINANCIAL_HEALTH`.
 
 #### 2. Slot allocation by archetype
 
-The `archetype` in `_meta.yaml` determines the required category mix. The validator enforces exact counts.
+The `archetype` (and, when set, `archetype_secondary`) in `_meta.yaml` determines the required category mix. Every row totals 4. The validator enforces exact counts. `GOING_CONCERN` is always 1.
 
-| Archetype | GROWTH | FINANCIAL_HEALTH | COMPETITIVE | GOING_CONCERN |
-|---|---|---|---|---|
-| `GROWTH` | 2 | 1 | 0 | 1 |
-| `INCOME_VALUE` | 1 | 2 | 0 | 1 |
-| `TURNAROUND` | 1 | 1 | 1 | 1 |
-| `CYCLICAL` | 1 | 1 | 1 | 1 |
+**Monoline (`archetype_secondary` absent or null):**
+
+| Primary | GROWTH | FINANCIAL_HEALTH | COMPETITIVE | CYCLE_POSITION | GOING_CONCERN |
+|---|---|---|---|---|---|
+| `GROWTH` | 2 | 1 | 0 | 0 | 1 |
+| `INCOME_VALUE` | 1 | 2 | 0 | 0 | 1 |
+| `TURNAROUND` | 1 | 1 | 1 | 0 | 1 |
+| `CYCLICAL` | 0 | 1 | 1 | 1 | 1 |
+
+**Composite (`archetype_secondary` set; row keyed by [primary, secondary]):**
+
+| Primary | Secondary | GROWTH | FINANCIAL_HEALTH | COMPETITIVE | CYCLE_POSITION | GOING_CONCERN |
+|---|---|---|---|---|---|---|
+| `GROWTH` | `INCOME_VALUE` | 1 | 1 | 1 | 0 | 1 |
+| `GROWTH` | `TURNAROUND` | 1 | 1 | 1 | 0 | 1 |
+| `GROWTH` | `CYCLICAL` | 1 | 1 | 0 | 1 | 1 |
+| `INCOME_VALUE` | `GROWTH` | 2 | 1 | 0 | 0 | 1 |
+| `INCOME_VALUE` | `TURNAROUND` | 0 | 2 | 1 | 0 | 1 |
+| `INCOME_VALUE` | `CYCLICAL` | 0 | 2 | 0 | 1 | 1 |
+| `TURNAROUND` | `GROWTH` | 2 | 0 | 1 | 0 | 1 |
+| `TURNAROUND` | `INCOME_VALUE` | 0 | 2 | 1 | 0 | 1 |
+| `TURNAROUND` | `CYCLICAL` | 0 | 1 | 1 | 1 | 1 |
+| `CYCLICAL` | `GROWTH` | 1 | 1 | 0 | 1 | 1 |
+| `CYCLICAL` | `INCOME_VALUE` | 0 | 2 | 0 | 1 | 1 |
+| `CYCLICAL` | `TURNAROUND` | 0 | 1 | 1 | 1 | 1 |
+
+Design principles for the composite rows: (a) every CYCLICAL pairing carries one `CYCLE_POSITION` slot; (b) `GOING_CONCERN` is always present once; (c) the primary's distinguishing category dominates over the secondary's where they conflict; (d) every row sums to 4.
 
 #### 3. Mandatory metric whitelist for `quarterly_checkpoint`
 
@@ -975,6 +1083,8 @@ Driven by `market` in `_meta.yaml` (`US` or `IN`). The whitelist mirrors what is
 
 The `transcript_checkpoint` field is **NOT subject to this whitelist** — segment metrics, ARPU, NIM, etc. are appropriate there because they live in the call, not the headline P&L.
 
+`CYCLE_POSITION` and `GOING_CONCERN` quarterly_checkpoints are also **NOT subject to this whitelist** — both are qualitative (cycle indicators / binary sentinels). The whitelist exists to keep `quarterly_checkpoint` parseable from the consolidated P&L; cycle and going-concern checks read from external indicators or governance events, not the P&L.
+
 #### 4. Single-metric rule
 
 Each `quarterly_checkpoint` MUST target exactly ONE measurable metric. Compound expressions (`AND`, `OR`, two metrics joined) are rejected.
@@ -983,13 +1093,13 @@ Each `quarterly_checkpoint` MUST target exactly ONE measurable metric. Compound 
 - ✗ `Revenue growth >= 14% AND OPM% >= 18.5%`
 - ✗ `Revenue >= ₹4,200 Cr OR Net Profit >= ₹500 Cr`
 
-Exception: GOING_CONCERN binary sentinels may list multiple binary events ("no fines > $X, no DOJ actions, no CEO/CFO departures").
+Exception: `GOING_CONCERN` and `CYCLE_POSITION` checkpoints are qualitative (binary sentinels or indicator-trend statements) and may list multiple binary events ("no fines > $X, no DOJ actions") or compound indicator references ("DRAM spot price stabilised AND wafer-fab utilisation improving").
 
 If two metrics genuinely need tracking on one assumption, split into two assumptions OR put the secondary in `transcript_checkpoint`.
 
 #### 5. Checkpoint uniqueness
 
-Each non-GOING_CONCERN assumption's `quarterly_checkpoint` MUST use a different primary metric:
+Each non-`GOING_CONCERN`, non-`CYCLE_POSITION` assumption's `quarterly_checkpoint` MUST use a different primary metric:
 
 | Assumption | Primary metric for `quarterly_checkpoint` |
 |---|---|
@@ -998,22 +1108,24 @@ Each non-GOING_CONCERN assumption's `quarterly_checkpoint` MUST use a different 
 | FINANCIAL_HEALTH (slot 1) | OPM% (margin level, not growth) |
 | FINANCIAL_HEALTH (slot 2, when present) | A US-only cash-flow metric distinct from slot 1 (Operating Cash Flow OR Free Cash Flow) |
 | COMPETITIVE | Revenue (absolute) OR EPS |
+| CYCLE_POSITION | qualitative indicator statement (no whitelisted-metric check, no uniqueness check) |
 | GOING_CONCERN | binary sentinel (no numeric metric, no primary-metric collision) |
 
-Two assumptions sharing the same primary metric → rejected.
+Two non-`CYCLE_POSITION` non-`GOING_CONCERN` assumptions sharing the same primary metric → rejected.
 
 #### 6. Mandatory `transcript_checkpoint`
 
-`transcript_checkpoint` MUST be non-null for `GROWTH`, `FINANCIAL_HEALTH`, `COMPETITIVE`. MUST be `null` for `GOING_CONCERN`.
+`transcript_checkpoint` MUST be non-null for `GROWTH`, `FINANCIAL_HEALTH`, `COMPETITIVE`, `CYCLE_POSITION`. MUST be `null` for `GOING_CONCERN`.
 
-The transcript anchor is where segment metrics, management commentary, and business KPIs live — the things the call discloses but the consolidated P&L does not.
+The transcript anchor is where segment metrics, management commentary, business KPIs, and (for `CYCLE_POSITION`) management's own read of cycle phase live — things the call discloses but the consolidated P&L does not.
 
 #### 7. `checkpoint_metric_source` field
 
 Each assumption MUST set `checkpoint_metric_source`:
 
 - `consolidated` for GROWTH / FINANCIAL_HEALTH / COMPETITIVE — checkpoint reads from the quarterly P&L.
-- `non_financial` for GOING_CONCERN — checkpoint is a binary event, not a financial metric.
+- `non_financial` for `CYCLE_POSITION` — checkpoint reads from an external cycle indicator (commodity price feed, tourism arrivals data, sector orderbook), not the company's P&L.
+- `non_financial` for `GOING_CONCERN` — checkpoint is a binary event, not a financial metric.
 
 #### 8. Calibration
 
@@ -1023,11 +1135,12 @@ Each assumption MUST set `checkpoint_metric_source`:
 | **Floor** | Never set a target BELOW the most recent actual unless an explicit reason is cited (seasonal decline, one-time prior-quarter benefit, management-guided deceleration). |
 | **Per-archetype Revenue tilt** | GROWTH: trailing growth + 1–3pp. INCOME_VALUE: trailing flat. TURNAROUND: trailing flat (the thesis is margin recovery, not revenue acceleration). CYCLICAL: same-quarter-prior-year for seasonal context. |
 | **Per-archetype Margin tilt** | GROWTH: trailing 2Q average (flat — no penalty for growth-driven compression). INCOME_VALUE: trailing 2Q + 0.5pp. TURNAROUND: trailing 2Q + 1pp. CYCLICAL: same-quarter-prior-year. |
+| **CYCLE_POSITION** | Qualitative; cite the indicator source and the directional state ("input commodity stable / falling / rising"). Not subject to growth math. |
 | **GOING_CONCERN** | Binary; not subject to growth math. |
 
 #### 9. Inline grounding
 
-Every `quarterly_checkpoint` and `thesis_horizon_target` on a non-GOING_CONCERN assumption MUST cite its evidence source inline, in parentheses or brackets. Source types:
+Every `quarterly_checkpoint` and `thesis_horizon_target` on a non-`GOING_CONCERN` assumption MUST cite its evidence source inline, in parentheses or brackets. Source types:
 
 - Management guidance: `(mgmt guided 12-14%, Q3 FY2026 call)`
 - Historical / trailing: `(4Q avg: 54.2% per fundamentals.yaml)`
@@ -1035,8 +1148,9 @@ Every `quarterly_checkpoint` and `thesis_horizon_target` on a non-GOING_CONCERN 
 - Analyst consensus: `(consensus $2.15)`
 - Filing: `(BSE announcement 2026-04-22)`
 - Workspace file: `(per kb.md § Revenue Drivers)`
+- Cycle indicator (`CYCLE_POSITION` only): `(TrendForce DRAM spot index 2026-04-22)`, `(Ministry of Tourism monthly arrivals release)`
 
-GOING_CONCERN binary checkpoints are exempt.
+`GOING_CONCERN` binary checkpoints are exempt; `CYCLE_POSITION` qualitative checkpoints still require an indicator-source citation (otherwise the cycle claim is unfalsifiable).
 
 #### 10. Coverage
 

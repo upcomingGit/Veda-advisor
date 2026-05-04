@@ -124,6 +124,8 @@ def category_class(cat: Optional[str]) -> str:
         return "cat-financial"
     if c == "COMPETITIVE":
         return "cat-competitive"
+    if c == "CYCLE_POSITION":
+        return "cat-cycle-position"
     if c == "GOING_CONCERN":
         return "cat-going-concern"
     return "cat-unknown"
