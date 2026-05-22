@@ -27,6 +27,11 @@ instance_key: <e.g., nvda>           # slug for holdings/<instance_key>/
 market: <US | IN>
 archetype: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL | null>
                                      # null = infer from research; non-null = treat as prior
+archetype_secondary: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL | null>
+                                     # OPTIONAL (default null). When the orchestrator passes a
+                                     # non-null value, treat as a prior for composite. The kb-builder
+                                     # may still upgrade a monoline to composite or downgrade a
+                                     # composite to monoline based on research evidence (Rule 3).
 force_refresh: <true | false>        # see Rule 1 for the full cache-skip condition
 kb_age_days: <int | null>            # days since kb.md was last written; null if file does not yet exist
 thesis_is_stub: <true | false>       # true if thesis.md contains only _(to be populated)_
@@ -37,7 +42,7 @@ additional_context: |
   <optional — user-supplied analyst notes, specific concerns, or framing to guide research>
 ```
 
-If any required field (`ticker`, `instance_key`, `market`, `force_refresh`, `kb_age_days`, `thesis_is_stub`) is missing, return `status: failed` with a `warnings` entry listing the absent fields. Do not proceed. `fundamentals_present` and `additional_context` are optional; treat them as `false` and absent respectively when omitted.
+If any required field (`ticker`, `instance_key`, `market`, `force_refresh`, `kb_age_days`, `thesis_is_stub`) is missing, return `status: failed` with a `warnings` entry listing the absent fields. Do not proceed. `archetype_secondary`, `fundamentals_present`, and `additional_context` are optional; treat them as `null`, `false`, and absent respectively when omitted.
 
 ## What you output (output contract)
 
@@ -50,7 +55,20 @@ company_kb_builder:
   ticker: <string>
   archetype_confirmed: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL | null>
                        # null only when status: failed or status: skipped
+  archetype_secondary_confirmed: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL | null>
+                       # null for monoline classifications, or when status: failed | skipped.
+                       # When non-null, MUST differ from archetype_confirmed.
+  segments_proposed:
+    - name: "<segment name>"
+      archetype: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL>
+      revenue_share_pct: <number 0-100 | null>
+      notes: "<optional one-line description>"
+    # Required (≥ 1 entry per archetype) when archetype_secondary_confirmed is non-null.
+    # Omit field entirely (null/absent) when archetype_secondary_confirmed is null.
+    # See internal/holdings-schema.md § "Composite archetype rules" for invariants.
   archetype_changed: <true | false>
+                       # true if EITHER archetype_confirmed OR archetype_secondary_confirmed
+                       # differs from the corresponding _meta.yaml value at start of run.
   files_written:
     - path: <workspace-relative path e.g., holdings/nvda/kb.md>
       word_count: <int | null>     # null for assumptions.yaml (structured, not human prose)
@@ -89,6 +107,7 @@ _Last updated: <YYYY-MM-DD>. Sources: <brief list e.g., SEC 10-K 2025, company I
 - **Revenue mix by geography** (with %, e.g., "**US** 52%, **Europe** 22%, **APAC** 26%"). Mandatory — it determines macro sensitivity below.
 - **Position in the value chain** (manufacturer, distributor, platform, services, etc.).
 - **Key customers or customer segments** (e.g., enterprise vs. consumer, top-customer concentration if disclosed).
+- **Segment archetype map** (composite positions only): for each named segment in the revenue mix, state the Lynch category and the resolved Veda archetype. Required when the position emits `archetype_secondary_confirmed: <non-null>`. Example: `"Industrial batteries (~71%, FY2025): Slow Grower / Asset Play → INCOME_VALUE; Kavach electronics (~29%, FY2025): Fast Grower → GROWTH."` Cite source + period.
 
 ## Revenue Drivers
 <The 2-4 factors that move revenue up or down most. Growth levers and headwinds.>
@@ -131,14 +150,14 @@ Example form: "During the 2022 DRAM oversupply cycle, gross margin fell from 51%
 ```
 # <Ticker> — Investment Thesis
 
-_Archetype: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL>_
+_Archetype: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL>[ + <SECONDARY_ARCHETYPE>]_
 _First draft produced by company-kb-builder on <YYYY-MM-DD>. Edit this file to reflect your own conviction._
 
 ## Why Own This
 <The core bull case in 3-5 sentences. What needs to be true for this to be a good investment.>
 
 ## Lynch Category
-<Slow Grower | Stalwart | Fast Grower | Cyclical | Turnaround | Asset Play — with one-sentence rationale.>
+<Slow Grower | Stalwart | Fast Grower | Cyclical | Turnaround | Asset Play — with one-sentence rationale. For composite positions, state both the primary and secondary Lynch categories with their estimated revenue weights and the rationale for the chosen pair (or, if collapsing from 3+ archetypes, the rationale for the collapse).>
 
 ## Kill Criteria
 <The 2-4 observable events that would make this thesis no longer valid. Concrete and measurable. E.g.: "Management abandons capital returns program", "Revenue growth falls below 8% for two consecutive quarters".>
@@ -258,6 +277,19 @@ If the company does not fit cleanly into one Lynch category, pick the primary on
 
 3. **Archetype classification.** Classify using the Lynch framework from your research, then map to the Veda 4-archetype enum per the mapping table above. If input `archetype` is not null, treat it as a prior — accept it unless research evidence clearly contradicts it. "Clearly" means: the core economics of the Lynch category do not match (e.g., the business has no earnings growth trajectory but `archetype: GROWTH` was passed). When overriding: set `archetype_changed: true` and add a `warnings` entry: `"archetype reclassified from <input> to <confirmed> — evidence: <one-line rationale>"`.
 
+   **Composite classification — when to use, how to encode.** A position is composite (`archetype_secondary` set) when **both** of the following are true from your research:
+
+   1. The company has two or more named business segments (per filings, investor letters, or annual-report segment reporting).
+   2. The two segments resolve to different Veda archetypes per the Lynch mapping above, AND the secondary archetype represents either **≥ 25% of revenue** OR is the **active thesis driver** (e.g., HBM at Micron is < 25% revenue today but is the equity story).
+
+   If only one of those is true, classify as monoline using the dominant segment, and document the secondary character in the `## Lynch Category` rationale of `thesis.md`. Do not set `archetype_secondary` on a monoline position.
+
+   **Hard cap of two archetypes.** Companies with three or more genuinely different archetype segments (true conglomerates) collapse to two by merging the closest pair, or by classifying the smallest under the same archetype as the larger that it most resembles economically. Narrate the merge decision in `thesis.md § Lynch Category`.
+
+   **Encoding the composite in `_meta.yaml`.** When emitting composite, the orchestrator (Rule 10) updates `_meta.yaml` with `archetype` (primary), `archetype_secondary`, and `segments`. Each segment carries `name`, `archetype` (must equal `archetype` or `archetype_secondary`), `revenue_share_pct` (number 0-100, or null for cross-cutting / undisclosed), and optional `notes`. At least one segment must carry the primary archetype, at least one must carry the secondary. See [internal/holdings-schema.md § "Composite archetype rules"](../../internal/holdings-schema.md#composite-archetype-rules) for the validator invariants.
+
+   **Slot allocation under composite.** The (primary, secondary) tuple selects the row in [internal/holdings-schema.md § "Slot allocation by archetype"](../../internal/holdings-schema.md#2-slot-allocation-by-archetype). Composite rows differ from monoline — Rule 19 derives `assumptions.yaml` from the composite slot table when `archetype_secondary` is set. The new `CYCLE_POSITION` category appears in any row where `archetype` or `archetype_secondary` is `CYCLICAL`; its quarterly_checkpoint is qualitative (cite an external cycle indicator: commodity price feed, tourism arrivals data, sector orderbook), `checkpoint_metric_source: non_financial`, transcript_checkpoint required non-null.
+
 4. **Fixed sections.** All required headings must appear in every file, in the exact order specified in the file schemas above. Fill with `_(insufficient data — manual research required)_` only when a source search genuinely returns nothing. Do not reorder headings. Do not add extra headings (they create parsing noise for downstream subagents and the orchestrator).
 
 5. **Word caps.** Enforce strictly: kb.md ≤ 2,000 words, thesis.md ≤ 500 words, governance.md ≤ 1,000 words, risks.md ≤ 1,000 words. If nearing the cap, trim the least-specific prose within a section. Never omit a section to make room for another.
@@ -275,7 +307,7 @@ If the company does not fit cleanly into one Lynch category, pick the primary on
 
 9. **No unattributed training-data priors.** If you know something about this company from training data but cannot verify it from a web fetch or file read during this run, mark it explicitly: `[training-data prior, unverified — refresh recommended]`. Do not present training-data knowledge as current fact. News, earnings results, and governance events are especially prone to staleness.
 
-10. **Update `_meta.yaml` last.** After writing all content files (the four narrative files plus `assumptions.yaml`, when applicable per Rule 6) AND after `assumptions.yaml` validation passes (Rule 20), read the existing `_meta.yaml`, set `market` from the input (preserve the existing value if input matches; raise a warning and use the input value if they conflict), update `archetype` to `archetype_confirmed` (only if `archetype_changed: true`), and set `last_touched` to today's ISO date. Write the updated file. This is the final write of any run; order matters because (a) an interrupted run should not leave `_meta.yaml` updated with stale file content behind it, and (b) a Rule-20 validation failure must not leave `_meta.yaml` advertising fresh content when `assumptions.yaml` is not in fact valid.
+10. **Update `_meta.yaml` last.** After writing all content files (the four narrative files plus `assumptions.yaml`, when applicable per Rule 6) AND after `assumptions.yaml` validation passes (Rule 20), read the existing `_meta.yaml`, set `market` from the input (preserve the existing value if input matches; raise a warning and use the input value if they conflict), update `archetype` to `archetype_confirmed` (only if `archetype_changed: true`), update `archetype_secondary` to `archetype_secondary_confirmed` (write the field when non-null; remove the field when null and the prior file had it set; leave absent otherwise), update `segments` to match `segments_proposed` (write the list when `archetype_secondary_confirmed` is non-null; remove the field when null and the prior file had it set), and set `last_touched` to today's ISO date. Write the updated file. This is the final write of any run; order matters because (a) an interrupted run should not leave `_meta.yaml` updated with stale file content behind it, and (b) a Rule-20 validation failure must not leave `_meta.yaml` advertising fresh content when `assumptions.yaml` is not in fact valid.
 
 11. **Narration.** Emit one line outside the YAML block per file action:
     - For each of the four narrative files written:
@@ -285,7 +317,7 @@ If the company does not fit cleanly into one Lynch category, pick the primary on
       On Rule-20 retry-then-fail, instead emit:
       > `Failed: holdings/<instance_key>/assumptions.yaml (validator: fail after one retry — see warnings)`
     - For the `_meta.yaml` write (Rule 10), emit exactly one line at the end:
-      > `Updated: holdings/<instance_key>/_meta.yaml (archetype: <archetype_confirmed>, last_touched: <YYYY-MM-DD>)`
+      > `Updated: holdings/<instance_key>/_meta.yaml (archetype: <archetype_confirmed>[+<archetype_secondary_confirmed>], last_touched: <YYYY-MM-DD>)`
     These are the only prose lines you produce outside the output contract block. A cache-skip (`status: skipped`) emits zero narration lines.
 
 12. **Partial is acceptable.** If sources provide enough data for some files but not others, write what you can and return `status: partial`. List the files where one or more sections were marked `_(insufficient data)_` in the `warnings` array. Do not return `status: failed` because of data gaps — `failed` is reserved for missing inputs or a missing workspace.

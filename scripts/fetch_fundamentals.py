@@ -49,7 +49,22 @@ import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# Shared with fetch_company_info.py + fetch_calendar.py. Single source of
+# truth for market detection, sector classification, and Screener.in HTTP.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import (  # noqa: E402
+    MAX_RETRIES,
+    RETRY_BASE_DELAY,
+    SCREENER_CHART_HEADERS,
+    SCREENER_HEADERS,
+    SCREENER_REQUEST_DELAY,
+    classify_sector_kind,  # re-exported for callers; not used directly here
+    detect_market,
+    is_banking_sector,
+)
 
 # Silence noisy loggers
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
@@ -58,13 +73,9 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 # =============================================================================
 # Constants — mirrored from StockClarity's valuation_fetcher.py
+# (Screener HTTP settings, retry knobs, sector keyword lists, and
+# is_banking_sector live in scripts/_common.py.)
 # =============================================================================
-
-# Banking / NBFC sector keywords — force PB as primary metric
-BANKING_SECTOR_KEYWORDS = [
-    "banking", "bank", "nbfc", "financial services",
-    "housing finance", "microfinance",
-]
 
 # Size tier thresholds (native currency: INR for India, USD for US)
 # INR thresholds: MEGA > ₹10 lakh Cr, LARGE > ₹50K Cr, MID > ₹10K Cr
@@ -103,28 +114,6 @@ _INCOME_VALUE_PEG_THRESHOLDS = {
 # PE absolute cap: above this, force EXPENSIVE regardless of PEG
 PE_ABSOLUTE_CAP = 150
 
-# Screener.in HTTP settings
-SCREENER_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Referer": "https://www.screener.in/",
-}
-
-SCREENER_CHART_HEADERS = {
-    "User-Agent": SCREENER_HEADERS["User-Agent"],
-    "Accept": "application/json, text/plain, */*",
-    "Referer": "https://www.screener.in/",
-}
-
-# Retry settings
-MAX_RETRIES = 2
-RETRY_BASE_DELAY = 2.0
-SCREENER_REQUEST_DELAY = 2.0  # Rate limiting between Screener calls
-
 
 # =============================================================================
 # Helper functions
@@ -139,16 +128,6 @@ def compute_size_tier(market_cap: Optional[float], is_indian: bool) -> str:
         if market_cap > threshold:
             return tier_name
     return "SMALL"
-
-
-def is_banking_sector(sector: Optional[str], sector_kind: Optional[str]) -> bool:
-    """Check if sector indicates a bank/NBFC (forces P/B metric)."""
-    if sector_kind and sector_kind.upper() == "CREDIT":
-        return True
-    if sector:
-        sector_lower = sector.lower()
-        return any(kw in sector_lower for kw in BANKING_SECTOR_KEYWORDS)
-    return False
 
 
 def determine_primary_metric(
@@ -237,23 +216,24 @@ def to_millions(val: Optional[float]) -> Optional[float]:
 def fetch_us_fundamentals(
     ticker: str,
     history_quarters: int,
-) -> Tuple[List[Dict], Dict, List[str]]:
+) -> Tuple[List[Dict], Dict, List[Dict], List[str]]:
     """Fetch quarterly fundamentals for a US stock from yfinance.
 
     Returns:
-        (quarters_list, valuation_dict, errors_list)
+        (quarters_list, valuation_dict, annuals_list, errors_list)
     """
     import yfinance as yf
 
     errors: List[str] = []
     quarters: List[Dict] = []
+    annuals: List[Dict] = []
 
     try:
         with contextlib.redirect_stderr(io.StringIO()):
             stock = yf.Ticker(ticker)
             info = stock.info or {}
     except Exception as exc:
-        return [], {}, [f"Failed to fetch info for {ticker}: {exc}"]
+        return [], {}, [], [f"Failed to fetch info for {ticker}: {exc}"]
 
     # === Current valuation ratios ===
     current_pe = safe_float(info.get("trailingPE"))
@@ -291,6 +271,14 @@ def fetch_us_fundamentals(
         # later from current_pe.
         inferred_forward_growth_pct = current_forward_pe / provider_peg
 
+    # Veda-methodology PEG: trailing PE divided by inferred forward growth
+    # (Lynch convention). Mirrors the capped-growth math in _compute_peg_zone
+    # so the default multiples line matches the verdict produced with --archetype.
+    current_peg = None
+    if current_pe is not None and inferred_forward_growth_pct is not None and inferred_forward_growth_pct > 0:
+        capped_growth = min(inferred_forward_growth_pct, 100.0)
+        current_peg = current_pe / capped_growth
+
     # Manual EV/EBITDA computation if yfinance didn't return it
     if current_ev_ebitda is None and market_cap and market_cap > 0:
         ebitda_raw = safe_float(info.get("ebitda"))
@@ -305,6 +293,11 @@ def fetch_us_fundamentals(
         "current_ps": safe_round(current_ps),
         "current_ev_ebitda": safe_round(current_ev_ebitda),
         "current_dividend_yield_pct": safe_round(_normalize_yf_dividend_yield_pct(dividend_yield)),
+        "current_peg": safe_round(current_peg),
+        "current_peg_source": (
+            "trailingPE / inferred_forward_growth_pct (capped at 100%)"
+            if current_peg is not None else None
+        ),
         "provider_peg": safe_round(provider_peg),
         "provider_peg_source": "yfinance.info.pegRatio" if provider_peg is not None else None,
         "inferred_forward_growth_pct": safe_round(inferred_forward_growth_pct),
@@ -422,11 +415,18 @@ def fetch_us_fundamentals(
     quarters.sort(key=lambda q: q.get("as_of", ""))
 
     # === Historical PE for percentile computation ===
-    # Compute 5-year PE history from monthly prices + TTM EPS
+    # Compute 10-year monthly PE history from prices + TTM EPS
     historical_pe = _compute_historical_pe(stock, errors)
     valuation["historical_pe"] = historical_pe
 
-    return quarters, valuation, errors
+    # === Monthly price history (10y) ===
+    prices = fetch_us_prices(stock, errors)
+
+    # === Annual statements (5y) ===
+    annuals, annual_errors = fetch_us_annuals(stock, history_years=5)
+    errors.extend(annual_errors)
+
+    return quarters, valuation, annuals, prices, errors
 
 
 def _get_yf_metric(df, col_date, label_variants: List[str]) -> Optional[float]:
@@ -459,14 +459,20 @@ def _normalize_yf_dividend_yield_pct(value: Optional[float]) -> Optional[float]:
     return value * 100 if value <= 0.2 else value
 
 
-def _compute_historical_pe(stock, errors: List[str]) -> List[float]:
-    """Compute 5-year monthly PE history from prices and TTM EPS."""
-    historical_pe: List[float] = []
+def _compute_historical_pe(stock, errors: List[str]) -> List[Dict[str, Any]]:
+    """Compute 10-year monthly PE history from prices and TTM EPS.
+
+    Returns a list of `{"date": "YYYY-MM-DD", "pe": float}` records,
+    oldest first. yfinance's `quarterly_income_stmt` typically carries ~5y
+    of quarterly EPS, so the earliest PE points will be sparse — that's
+    expected and the orchestrator should treat short series accordingly.
+    """
+    historical_pe: List[Dict[str, Any]] = []
 
     try:
         with contextlib.redirect_stderr(io.StringIO()):
-            # 5 years of monthly prices
-            hist = stock.history(period="5y", interval="1mo")
+            # 10 years of monthly prices
+            hist = stock.history(period="10y", interval="1mo")
             income_stmt = stock.quarterly_income_stmt
     except Exception as exc:
         errors.append(f"Historical PE computation failed: {exc}")
@@ -516,11 +522,50 @@ def _compute_historical_pe(stock, errors: List[str]) -> List[float]:
             if ttm_eps > 0:
                 pe = round(close_price / ttm_eps, 2)
                 if 0 < pe < 500:  # Sanity bound
-                    historical_pe.append(pe)
+                    historical_pe.append({
+                        "date": price_date.strftime("%Y-%m-%d"),
+                        "pe": pe,
+                    })
         except Exception:
             continue
 
     return historical_pe
+
+
+def fetch_us_prices(stock, errors: List[str]) -> List[Dict[str, Any]]:
+    """Fetch 10y monthly close prices via yfinance.
+
+    Returns a list of `{"date": "YYYY-MM-DD", "close": float}` records,
+    oldest first. Close prices are split- and dividend-adjusted by yfinance
+    by default.
+    """
+    prices: List[Dict[str, Any]] = []
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            hist = stock.history(period="10y", interval="1mo")
+    except Exception as exc:
+        errors.append(f"US monthly price fetch failed: {exc}")
+        return []
+
+    if hist is None or hist.empty:
+        return []
+
+    for idx, row in hist.iterrows():
+        try:
+            close_price = float(row["Close"])
+            if close_price <= 0:
+                continue
+            dt = idx.to_pydatetime()
+            if dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
+            prices.append({
+                "date": dt.strftime("%Y-%m-%d"),
+                "close": round(close_price, 2),
+            })
+        except Exception:
+            continue
+
+    return prices
 
 
 # =============================================================================
@@ -530,16 +575,17 @@ def _compute_historical_pe(stock, errors: List[str]) -> List[float]:
 def fetch_india_fundamentals(
     ticker: str,
     history_quarters: int,
-) -> Tuple[List[Dict], Dict, List[str]]:
+) -> Tuple[List[Dict], Dict, List[Dict], List[str]]:
     """Fetch quarterly fundamentals for an Indian stock from Screener.in.
 
     Returns:
-        (quarters_list, valuation_dict, errors_list)
+        (quarters_list, valuation_dict, annuals_list, errors_list)
     """
     import requests
 
     errors: List[str] = []
     quarters: List[Dict] = []
+    annuals: List[Dict] = []
     valuation: Dict[str, Any] = {}
 
     # Normalize ticker: remove .NS/.BO suffix if present
@@ -594,7 +640,7 @@ def fetch_india_fundamentals(
             break
 
     if not html:
-        return [], {}, errors if errors else [f"No data found for {symbol} on Screener.in"]
+        return [], {}, [], [], errors if errors else [f"No data found for {symbol} on Screener.in"]
 
     # Parse quarterly P&L from #quarters section
     quarters, parse_errors = _parse_screener_quarters(html, history_quarters)
@@ -611,9 +657,11 @@ def fetch_india_fundamentals(
     # snapshot attached to the latest quarter AND as input to EV/EBITDA.
     bs_snapshot = _parse_screener_balance_sheet(html)
 
-    # Fetch valuation chart data (PE history → percentile basis)
+    # Fetch valuation chart data (PE history → percentile basis) and the
+    # 10y monthly price series. Done in a single helper because both endpoints
+    # need the resolved Screener company_id.
     time.sleep(SCREENER_REQUEST_DELAY)
-    valuation, val_errors = _fetch_screener_valuation(symbol, session)
+    valuation, prices, val_errors = _fetch_screener_valuation(symbol, session)
     errors.extend(val_errors)
 
     # Merge top-ratios into the valuation block. Page-scraped values are
@@ -629,6 +677,18 @@ def fetch_india_fundamentals(
     # threshold table (which expects rupees, e.g. ₹10 lakh-Cr = 10e12).
     if "market_cap_cr" in top_ratios:
         valuation["market_cap"] = top_ratios["market_cap_cr"] * 1e7
+
+    # Derive current_ps. Screener.in does not publish P/S on either the
+    # page top-ratios block or the chart API (StockClarity confirms the
+    # same), so we compute it from market cap ÷ TTM revenue using data
+    # we already have. 1 Cr = 10 MM, so PS = (market_cap_cr × 10) ÷ Σ4Q revenue_mm.
+    if quarters and "market_cap_cr" in top_ratios and "current_ps" not in valuation:
+        last4 = quarters[-4:] if len(quarters) >= 4 else []
+        rev_vals = [q.get("revenue_mm") for q in last4]
+        if last4 and all(v is not None and v > 0 for v in rev_vals):
+            ttm_rev_mm = sum(rev_vals)
+            mc_mm = top_ratios["market_cap_cr"] * 10
+            valuation["current_ps"] = round(mc_mm / ttm_rev_mm, 2)
 
     # Attach balance-sheet snapshot to the latest quarter (annual cadence;
     # we are explicit about that via a warning, not by silently propagating
@@ -688,6 +748,21 @@ def fetch_india_fundamentals(
                     "Trailing-4Q EBITDA is non-positive — EV/EBITDA not meaningful."
                 )
 
+    # Derive current_peg for India. Screener.in does not publish PEG and does
+    # not surface forward PE / forward growth, so unlike the US path (which
+    # uses yfinance forwardPE / pegRatio) we fall back to trailing-4Q YoY
+    # net-income growth. Mirrors the capped-growth math in _compute_peg_zone
+    # so the multiples line stays consistent with the GROWTH verdict.
+    current_pe_in = valuation.get("current_pe")
+    if current_pe_in is not None and current_pe_in > 0 and quarters:
+        trailing_growth_in = _compute_trailing_growth(quarters)
+        if trailing_growth_in is not None and trailing_growth_in > 0:
+            capped_growth_in = min(trailing_growth_in, 100.0)
+            valuation["current_peg"] = round(current_pe_in / capped_growth_in, 2)
+            valuation["current_peg_source"] = (
+                "current_pe / trailing_growth_pct (capped at 100%)"
+            )
+
     # Document fields that Screener.in genuinely does not provide so the
     # orchestrator's confidence-flagging is informed by data, not guesswork.
     errors.append(
@@ -696,7 +771,11 @@ def fetch_india_fundamentals(
         "those quarters are recorded with the four required P&L lines only."
     )
 
-    return quarters, valuation, errors
+    # === Annual statements (5y) from #profit-loss / #balance-sheet / #cash-flow ===
+    annuals, annual_errors = fetch_india_annuals(html)
+    errors.extend(annual_errors)
+
+    return quarters, valuation, annuals, prices, errors
 
 
 def _parse_screener_quarters(html: str, limit: int) -> Tuple[List[Dict], List[str]]:
@@ -984,11 +1063,12 @@ def _parse_screener_balance_sheet(html: str) -> Dict[str, Optional[float]]:
     return out
 
 
-def _fetch_screener_valuation(symbol: str, session) -> Tuple[Dict, List[str]]:
-    """Fetch current valuation metrics from Screener.in Chart API."""
+def _fetch_screener_valuation(symbol: str, session) -> Tuple[Dict, List[Dict[str, Any]], List[str]]:
+    """Fetch current valuation metrics + monthly price history from Screener.in Chart API."""
     import requests
 
     errors: List[str] = []
+    prices: List[Dict[str, Any]] = []
     valuation: Dict[str, Any] = {
         "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "source": "screener.in",
@@ -998,59 +1078,138 @@ def _fetch_screener_valuation(symbol: str, session) -> Tuple[Dict, List[str]]:
     # For simplicity, fetch current PE from the chart API using the symbol
     # The chart API needs a numeric company_id, which we'd normally get from the HTML
 
-    # Try to extract company_id from a search
+    # Resolve Screener company_id via search API, preferring an exact slug
+    # match (StockClarity pattern: /api/company/search/?q= returns entries
+    # with url="/company/SLUG/" where SLUG is usually the NSE symbol).
     try:
         search_url = f"https://www.screener.in/api/company/search/?q={symbol}"
         headers = SCREENER_CHART_HEADERS.copy()
         resp = session.get(search_url, headers=headers, timeout=10)
         if resp.status_code == 200:
-            results = resp.json()
-            if results and len(results) > 0:
+            results = resp.json() or []
+            company_id = None
+            sym_u = symbol.upper()
+            for entry in results:
+                parts = [p for p in entry.get("url", "").strip("/").split("/") if p]
+                if len(parts) >= 2 and parts[1].upper() == sym_u:
+                    company_id = entry.get("id")
+                    break
+            if company_id is None and results:
                 company_id = results[0].get("id")
-                if company_id:
-                    time.sleep(SCREENER_REQUEST_DELAY)
-                    pe_data, hist_pe = _fetch_screener_pe_history(company_id, session)
-                    valuation.update(pe_data)
-                    valuation["historical_pe"] = hist_pe
+            if company_id:
+                time.sleep(SCREENER_REQUEST_DELAY)
+                pe_data, hist_pe = _fetch_screener_pe_history(company_id, session)
+                valuation.update(pe_data)
+                valuation["historical_pe"] = hist_pe
+                time.sleep(SCREENER_REQUEST_DELAY)
+                prices = _fetch_screener_prices(company_id, session, errors)
     except Exception as exc:
         errors.append(f"Screener valuation fetch failed: {exc}")
 
-    return valuation, errors
+    return valuation, prices, errors
 
 
-def _fetch_screener_pe_history(company_id: int, session) -> Tuple[Dict, List[float]]:
-    """Fetch PE history from Screener.in Chart API."""
-    result: Dict[str, Any] = {}
-    historical_pe: List[float] = []
+def _fetch_screener_chart_series(
+    company_id: int,
+    session,
+    metric_query: str,
+    metric_match,
+    errors: Optional[List[str]] = None,
+) -> Tuple[List[Tuple[str, float]], Optional[str]]:
+    """Hit Screener's chart API with consolidated→standalone fallback.
 
-    try:
-        url = f"https://www.screener.in/api/company/{company_id}/chart/"
-        # NOTE: requests will URL-encode the value of `q`. Pass literal spaces;
-        # they encode to `+` on the wire, which is what Screener's chart API
-        # expects. Using `+` characters in the value would encode to `%2B` and
-        # return HTTP 404 for every metric.
-        params = {"q": "Price to Earning-Median PE", "days": 1825, "consolidated": "true"}
-        resp = session.get(url, params=params, headers=SCREENER_CHART_HEADERS, timeout=15)
+    Returns `(values, basis)`. `values` is `[(date_str, float), ...]` in the
+    order Screener returns them (oldest-first). `basis` is
+    ``"consolidated"`` / ``"standalone"`` / ``None``.
 
-        if resp.status_code == 200:
-            data = resp.json()
-            for ds in data.get("datasets", []):
-                metric = ds.get("metric", "").lower()
-                values = ds.get("values", [])
+    `metric_match` is a predicate taking the lowercased Screener metric
+    string. Used because Screener labels PE as ``"Price to Earning-Median PE"``
+    (substring match) but Price as exactly ``"Price"`` (equality).
 
-                if "price to earning" in metric:
-                    for entry in values:
-                        if len(entry) >= 2 and entry[1] is not None:
-                            val = safe_float(entry[1])
-                            if val and val > 0:
-                                historical_pe.append(val)
-                    # Latest value
-                    if historical_pe:
-                        result["current_pe"] = historical_pe[-1]
-    except Exception:
-        pass
+    Pass `errors` to surface request-level failures; omit to swallow them
+    (the PE-history path is opportunistic and a miss simply yields no
+    historical_pe).
 
-    return result, historical_pe
+    NOTE: ``requests`` will URL-encode ``metric_query``. Pass literal spaces;
+    they encode to ``+``, which is what the chart API expects. Sending ``+``
+    directly encodes to ``%2B`` and returns HTTP 404.
+    """
+    url = f"https://www.screener.in/api/company/{company_id}/chart/"
+    for consolidated in (True, False):
+        try:
+            # 3650 days ≈ 10y; Screener returns whatever history it has.
+            params = {"q": metric_query, "days": 3650}
+            if consolidated:
+                params["consolidated"] = "true"
+            resp = session.get(url, params=params, headers=SCREENER_CHART_HEADERS, timeout=15)
+            if resp.status_code != 200:
+                continue
+            for ds in (resp.json() or {}).get("datasets", []):
+                if not metric_match(ds.get("metric", "").lower()):
+                    continue
+                values: List[Tuple[str, float]] = []
+                for entry in ds.get("values", []):
+                    if len(entry) >= 2 and entry[0] and entry[1] is not None:
+                        v = safe_float(entry[1])
+                        if v and v > 0:
+                            values.append((str(entry[0]), v))
+                if values:
+                    return values, ("consolidated" if consolidated else "standalone")
+            if consolidated:
+                time.sleep(SCREENER_REQUEST_DELAY)
+        except Exception as exc:
+            if errors is not None:
+                errors.append(f"Screener chart fetch failed for '{metric_query}': {exc}")
+            continue
+    return [], None
+
+
+def _fetch_screener_pe_history(company_id: int, session) -> Tuple[Dict, List[Dict[str, Any]]]:
+    """Fetch 10y PE history from Screener.in Chart API.
+
+    Returns `(metadata_dict, [{"date": "YYYY-MM-DD", "pe": float}, ...])`,
+    oldest first. The metadata dict carries ``current_pe`` (last point) and
+    ``historical_pe_basis`` (consolidated/standalone) when data is found.
+
+    Small/mid-cap Indian companies with no subsidiaries (e.g., Wonderla)
+    only publish standalone numbers, so the consolidated endpoint returns
+    200 with zero data points; the standalone fallback then yields the
+    full series.
+    """
+    values, basis = _fetch_screener_chart_series(
+        company_id, session,
+        metric_query="Price to Earning-Median PE",
+        metric_match=lambda m: "price to earning" in m,
+    )
+    historical_pe = [{"date": d, "pe": v} for d, v in values]
+    if not historical_pe:
+        return {}, []
+    return (
+        {"current_pe": historical_pe[-1]["pe"], "historical_pe_basis": basis},
+        historical_pe,
+    )
+
+
+def _fetch_screener_prices(company_id: int, session, errors: List[str]) -> List[Dict[str, Any]]:
+    """Fetch 10y monthly price history from Screener.in Chart API.
+
+    Returns `[{"date": "YYYY-MM-DD", "close": float}, ...]`, oldest first,
+    down-sampled to one observation per month (the last close in each
+    YYYY-MM bucket). Matches the US side's monthly cadence and keeps the
+    persisted file under a few hundred KB per holding.
+    """
+    values, _ = _fetch_screener_chart_series(
+        company_id, session,
+        metric_query="Price",
+        metric_match=lambda m: m == "price",
+        errors=errors,
+    )
+    if not values:
+        return []
+    by_month: Dict[str, Dict[str, Any]] = {}
+    for date_str, val in values:
+        by_month[date_str[:7]] = {"date": date_str, "close": round(val, 2)}
+    return sorted(by_month.values(), key=lambda r: r["date"])
 
 
 # =============================================================================
@@ -1058,16 +1217,21 @@ def _fetch_screener_pe_history(company_id: int, session) -> Tuple[Dict, List[flo
 # =============================================================================
 
 def compute_zone(
-    archetype: str,
+    archetype: Optional[str],
     sector: Optional[str],
     sector_kind: Optional[str],
     valuation: Dict[str, Any],
     quarters: List[Dict],
     is_indian: bool,
 ) -> Dict[str, Any]:
-    """Compute the valuation zone based on archetype.
+    """Build the valuation block.
 
-    Returns the valuation block with zone, thresholds, etc.
+    When `archetype` is provided, the returned block includes zone fields
+    (zone, zone_thresholds, primary_metric, primary_metric_value, etc.)
+    layered on top of the always-present multiples base.
+
+    When `archetype` is None or empty, only the multiples base is returned
+    (no verdict line, no single "zone" call).
     """
     current_pe = valuation.get("current_pe")
     current_forward_pe = valuation.get("current_forward_pe")
@@ -1081,23 +1245,23 @@ def compute_zone(
 
     has_positive_pe = current_pe is not None and current_pe > 0
 
-    # Determine primary metric
-    primary_metric = determine_primary_metric(archetype, sector, sector_kind, has_positive_pe)
-
+    # === Multiples base (always emitted, archetype-independent) ===
     result: Dict[str, Any] = {
-        "primary_metric": primary_metric,
         "current_pe": safe_round(current_pe),
         "current_forward_pe": safe_round(current_forward_pe),
         "current_pb": safe_round(current_pb),
         "current_ps": safe_round(current_ps),
         "current_ev_ebitda": safe_round(current_ev_ebitda),
         "current_dividend_yield_pct": valuation.get("current_dividend_yield_pct"),
+        "current_peg": valuation.get("current_peg"),
+        "current_peg_source": valuation.get("current_peg_source"),
         "provider_peg": valuation.get("provider_peg"),
         "provider_peg_source": valuation.get("provider_peg_source"),
         "inferred_forward_growth_pct": valuation.get("inferred_forward_growth_pct"),
         "inferred_forward_growth_source": valuation.get("inferred_forward_growth_source"),
         "yfinance_earnings_growth_pct": valuation.get("yfinance_earnings_growth_pct"),
         "yfinance_revenue_growth_pct": valuation.get("yfinance_revenue_growth_pct"),
+        "market_cap": market_cap,
         "as_of": valuation.get("as_of"),
         "source": valuation.get("source"),
     }
@@ -1109,6 +1273,40 @@ def compute_zone(
     trailing_growth = _compute_trailing_growth(quarters)
     result["trailing_growth_pct"] = safe_round(trailing_growth)
 
+    # Historical-PE percentile context (always useful, no archetype needed).
+    # `historical_pe` is now List[Dict[date, pe]]; extract floats for the
+    # sort-based percentile math. See § "PE history shape" in the contract.
+    historical_pe_floats = [
+        rec["pe"] for rec in historical_pe
+        if isinstance(rec, dict) and isinstance(rec.get("pe"), (int, float)) and rec["pe"] > 0
+    ]
+    if historical_pe_floats and current_pe is not None and current_pe > 0:
+        sorted_hist = sorted(historical_pe_floats)
+        below = sum(1 for x in sorted_hist if x < current_pe)
+        result["current_pe_percentile"] = safe_round(
+            100.0 * below / len(sorted_hist), decimals=0,
+        )
+        result["historical_pe_median"] = safe_round(
+            sorted_hist[len(sorted_hist) // 2]
+        )
+        # Carry the consolidated/standalone basis through so the human
+        # renderer can label which Screener report set we drew from.
+        if valuation.get("historical_pe_basis"):
+            result["historical_pe_basis"] = valuation["historical_pe_basis"]
+        result["historical_pe_n"] = len(sorted_hist)
+        result["historical_pe_min"] = safe_round(sorted_hist[0])
+        result["historical_pe_max"] = safe_round(sorted_hist[-1])
+
+    # No archetype: return multiples only, no verdict line.
+    if not archetype:
+        return result
+
+    # === Archetype-specific zone verdict layered on top of the multiples base ===
+    result["archetype"] = archetype
+
+    # Determine primary metric
+    primary_metric = determine_primary_metric(archetype, sector, sector_kind, has_positive_pe)
+    result["primary_metric"] = primary_metric
     # === Zone computation by primary metric ===
     # When the primary metric VALUE is unavailable (e.g., EV/EBITDA could not
     # be derived because the source omits Cash & Bank or trailing-4Q EBITDA
@@ -1149,9 +1347,11 @@ def compute_zone(
         result["inverted"] = False
 
     elif primary_metric == "PE":
-        # INCOME_VALUE or default
+        # INCOME_VALUE or default. Reuse `historical_pe_floats` extracted
+        # earlier for the percentile-context block — same source list, same
+        # filter (pe > 0).
         zone, thresholds, percentile_basis = _compute_percentile_zone(
-            current_pe, historical_pe, "PE"
+            current_pe, historical_pe_floats, "PE"
         )
         # Apply INCOME_VALUE PEG override if applicable
         if archetype == "INCOME_VALUE" and zone != "FAIR":
@@ -1361,6 +1561,334 @@ def _apply_income_value_peg_override(
 
 
 # =============================================================================
+# Slice 1: Annual Statements (5y) — US and India
+# =============================================================================
+
+def fetch_us_annuals(stock, history_years: int = 5) -> Tuple[List[Dict], List[str]]:
+    """Fetch annual P&L + BS + CF for a US stock via yfinance.
+
+    yfinance exposes annual statements as `income_stmt`, `balance_sheet`,
+    `cashflow` (the unprefixed properties; the `quarterly_*` variants are
+    already used for `quarters[]`). Returns a list of annual records,
+    oldest first; each carries the same `*_mm` keys as `quarters[]` plus
+    `fy_end` and `fiscal_year`.
+    """
+    errors: List[str] = []
+    annuals: List[Dict] = []
+
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            income_stmt = stock.income_stmt
+            balance_sheet = stock.balance_sheet
+            cash_flow = stock.cashflow
+    except Exception as exc:
+        return [], [f"Annual statements fetch failed: {exc}"]
+
+    if income_stmt is None or income_stmt.empty:
+        return [], ["Annual income statement not returned by yfinance"]
+
+    for col_date in income_stmt.columns[:history_years]:
+        try:
+            fy_end_dt = col_date.to_pydatetime()
+            fy_end = fy_end_dt.strftime("%Y-%m-%d")
+            a: Dict[str, Any] = {
+                "fy_end": fy_end,
+                "fiscal_year": fy_end_dt.year,
+                "source": "yfinance",
+            }
+
+            a["revenue_mm"] = to_millions(_get_yf_metric(
+                income_stmt, col_date, ["Total Revenue", "Revenue", "Net Sales"]
+            ))
+            a["gross_profit_mm"] = to_millions(_get_yf_metric(
+                income_stmt, col_date, ["Gross Profit"]
+            ))
+            a["operating_income_mm"] = to_millions(_get_yf_metric(
+                income_stmt, col_date, ["Operating Income", "EBIT"]
+            ))
+            a["net_income_mm"] = to_millions(_get_yf_metric(
+                income_stmt, col_date, ["Net Income", "Net Income Common Stockholders"]
+            ))
+            a["eps_diluted"] = safe_round(_get_yf_metric(
+                income_stmt, col_date, ["Diluted EPS", "Basic EPS"]
+            ))
+
+            if cash_flow is not None and not cash_flow.empty and col_date in cash_flow.columns:
+                ocf = _get_yf_metric(
+                    cash_flow, col_date,
+                    ["Operating Cash Flow", "Cash Flow From Continuing Operating Activities"],
+                )
+                capex = _get_yf_metric(
+                    cash_flow, col_date, ["Capital Expenditure", "Purchase Of PPE"]
+                )
+                a["operating_cash_flow_mm"] = to_millions(ocf)
+                if capex is not None:
+                    a["capex_mm"] = to_millions(capex)
+                    if ocf is not None:
+                        a["free_cash_flow_mm"] = to_millions(ocf + capex)
+
+            if balance_sheet is not None and not balance_sheet.empty and col_date in balance_sheet.columns:
+                a["cash_and_equivalents_mm"] = to_millions(_get_yf_metric(
+                    balance_sheet, col_date,
+                    ["Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"],
+                ))
+                a["total_debt_mm"] = to_millions(_get_yf_metric(
+                    balance_sheet, col_date, ["Total Debt", "Long Term Debt"]
+                ))
+                a["total_equity_mm"] = to_millions(_get_yf_metric(
+                    balance_sheet, col_date,
+                    ["Stockholders Equity", "Total Equity Gross Minority Interest"],
+                ))
+                a["total_assets_mm"] = to_millions(_get_yf_metric(
+                    balance_sheet, col_date, ["Total Assets"]
+                ))
+
+            a = {k: v for k, v in a.items() if v is not None}
+            annuals.append(a)
+        except Exception as exc:
+            errors.append(f"Annual parse failed for {col_date}: {exc}")
+
+    annuals.sort(key=lambda x: x.get("fy_end", ""))
+    return annuals, errors
+
+
+def fetch_india_annuals(html: str) -> Tuple[List[Dict], List[str]]:
+    """Parse annual P&L + BS + CF from Screener.in HTML sections.
+
+    Screener exposes three annual sections — `#profit-loss`, `#balance-sheet`,
+    `#cash-flow` — with FY-end column headers like "Mar 2024". This function
+    parses all three and merges them by FY-end into a single per-year record.
+    Records are returned oldest first.
+
+    Cash & Bank is not always broken out (some listings only report total
+    current assets); when absent, the field is simply omitted.
+    """
+    errors: List[str] = []
+    by_fy: Dict[str, Dict[str, Any]] = {}
+
+    sections = {
+        "profit-loss": {
+            "Sales": "revenue_cr",
+            "Revenue": "revenue_cr",
+            "Operating Profit": "operating_income_cr",
+            "Financing Profit": "operating_income_cr",
+            "Depreciation": "depreciation_cr",
+            "Net Profit": "net_income_cr",
+            "EPS in Rs": "eps",
+        },
+        "balance-sheet": {
+            "Equity Capital": "equity_capital_cr",
+            "Reserves": "reserves_cr",
+            "Borrowings": "total_debt_cr",
+            "Cash & Bank": "cash_and_equivalents_cr",
+            "Cash and Bank": "cash_and_equivalents_cr",
+            "Total Assets": "total_assets_cr",
+        },
+        "cash-flow": {
+            "Cash from Operating Activity": "operating_cash_flow_cr",
+            "Cash from Investing Activity": "investing_cash_flow_cr",
+            "Cash from Financing Activity": "financing_cash_flow_cr",
+            "Net Cash Flow": "net_cash_flow_cr",
+        },
+    }
+
+    for section_id, label_map in sections.items():
+        sect_match = re.search(
+            rf'<section[^>]*id="{section_id}"[^>]*>(.*?)</section>',
+            html,
+            re.DOTALL,
+        )
+        if not sect_match:
+            errors.append(f"Screener section #{section_id} not found")
+            continue
+
+        sect = sect_match.group(1)
+        unit_multiplier = 1.0
+        if re.search(r"Lakhs?", sect, re.IGNORECASE):
+            unit_multiplier = 0.01
+
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", sect, re.DOTALL)
+        headers: List[str] = []
+
+        for row_html in rows:
+            cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row_html, re.DOTALL)
+            clean = [
+                re.sub(r"<[^>]+>", "", c)
+                    .replace("\n", "").replace("\r", "")
+                    .replace("&nbsp;", "").replace(",", "").strip()
+                for c in cells
+            ]
+            if not clean:
+                continue
+
+            if not headers:
+                date_cells = [
+                    c for c in clean[1:]
+                    if c and re.match(
+                        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}",
+                        c,
+                    )
+                ]
+                if len(date_cells) >= 3:
+                    headers = date_cells
+                    continue
+
+            if not headers:
+                continue
+
+            label = clean[0].rstrip("+").strip()
+            field = label_map.get(label)
+            if not field:
+                continue
+
+            values = clean[1:1 + len(headers)]
+            for i, raw in enumerate(values):
+                raw_clean = raw.replace("%", "").strip()
+                try:
+                    val = float(raw_clean) * unit_multiplier
+                except (ValueError, TypeError):
+                    continue
+                fy_end = _quarter_label_to_date(headers[i])
+                if not fy_end:
+                    continue
+                rec = by_fy.setdefault(
+                    fy_end, {"fy_end": fy_end, "source": "screener.in"}
+                )
+                rec[field] = val
+
+    annuals: List[Dict] = []
+    cr_to_mm = {
+        "revenue_cr": "revenue_mm",
+        "operating_income_cr": "operating_income_mm",
+        "depreciation_cr": "depreciation_mm",
+        "net_income_cr": "net_income_mm",
+        "total_debt_cr": "total_debt_mm",
+        "cash_and_equivalents_cr": "cash_and_equivalents_mm",
+        "total_assets_cr": "total_assets_mm",
+        "operating_cash_flow_cr": "operating_cash_flow_mm",
+        "investing_cash_flow_cr": "investing_cash_flow_mm",
+        "financing_cash_flow_cr": "financing_cash_flow_mm",
+        "net_cash_flow_cr": "net_cash_flow_mm",
+    }
+    for fy_end, rec in sorted(by_fy.items()):
+        out: Dict[str, Any] = {
+            "fy_end": fy_end,
+            "fiscal_year": int(fy_end[:4]),
+            "source": rec.get("source", "screener.in"),
+        }
+        for cr_key, mm_key in cr_to_mm.items():
+            if cr_key in rec:
+                out[mm_key] = round(rec[cr_key] * 10, 2)
+        if "eps" in rec:
+            out["eps_diluted"] = round(rec["eps"], 2)
+        eq_cap = rec.get("equity_capital_cr")
+        reserves = rec.get("reserves_cr")
+        if eq_cap is not None and reserves is not None:
+            out["total_equity_mm"] = round((eq_cap + reserves) * 10, 2)
+        if any(k in out for k in ("revenue_mm", "net_income_mm", "total_equity_mm")):
+            annuals.append(out)
+
+    return annuals, errors
+
+
+# =============================================================================
+# Slice 1: Derived Ratios
+# =============================================================================
+
+def compute_derived_ratios(
+    quarters: List[Dict],
+    annuals: List[Dict],
+    valuation: Dict[str, Any],
+    is_indian: bool,
+) -> Dict[str, Any]:
+    """Compute latest-period derived ratios from quarters + annuals + valuation.
+
+    All inputs are already-fetched; no I/O. Mirrors Veda Hard Rule #8
+    (no LLM arithmetic): every ratio is a pure Python derivation.
+
+    Returned keys (each Optional[float]; omitted when inputs missing):
+      - roe_ttm_pct        — TTM net_income / latest total_equity * 100
+      - roce_ttm_pct       — TTM operating_income / (equity + debt) * 100
+      - op_margin_pct      — latest-quarter operating_income / revenue * 100
+      - net_margin_pct     — latest-quarter net_income / revenue * 100
+      - debt_to_equity     — latest total_debt / latest total_equity
+      - fcf_yield_pct      — TTM FCF / market_cap * 100
+      - basis_note         — short note about source of each number
+    """
+    ratios: Dict[str, Any] = {}
+    if not quarters:
+        return ratios
+
+    last = quarters[-1]
+    last4 = quarters[-4:] if len(quarters) >= 4 else []
+
+    def _ttm_sum(field: str) -> Optional[float]:
+        if not last4:
+            return None
+        vals = [q.get(field) for q in last4]
+        if any(v is None for v in vals):
+            return None
+        return sum(vals)
+
+    ttm_net_income = _ttm_sum("net_income_mm")
+    ttm_operating = _ttm_sum("operating_income_mm")
+    ttm_fcf = _ttm_sum("free_cash_flow_mm")
+
+    # Latest BS snapshot: prefer last quarter; fall back to latest annual.
+    latest_equity = last.get("total_equity_mm")
+    latest_debt = last.get("total_debt_mm")
+    if (latest_equity is None or latest_debt is None) and annuals:
+        latest_annual = annuals[-1]
+        if latest_equity is None:
+            latest_equity = latest_annual.get("total_equity_mm")
+        if latest_debt is None:
+            latest_debt = latest_annual.get("total_debt_mm")
+
+    market_cap = valuation.get("market_cap")  # native currency
+
+    if ttm_net_income is not None and latest_equity is not None and latest_equity > 0:
+        ratios["roe_ttm_pct"] = round(100.0 * ttm_net_income / latest_equity, 2)
+
+    if (
+        ttm_operating is not None
+        and latest_equity is not None
+        and latest_debt is not None
+        and (latest_equity + latest_debt) > 0
+    ):
+        ratios["roce_ttm_pct"] = round(
+            100.0 * ttm_operating / (latest_equity + latest_debt), 2
+        )
+
+    last_rev = last.get("revenue_mm")
+    last_op = last.get("operating_income_mm")
+    last_ni = last.get("net_income_mm")
+    if last_rev is not None and last_rev > 0:
+        if last_op is not None:
+            ratios["op_margin_pct"] = round(100.0 * last_op / last_rev, 2)
+        if last_ni is not None:
+            ratios["net_margin_pct"] = round(100.0 * last_ni / last_rev, 2)
+
+    if latest_debt is not None and latest_equity is not None and latest_equity > 0:
+        ratios["debt_to_equity"] = round(latest_debt / latest_equity, 2)
+
+    # FCF yield: native-currency consistent. market_cap is in raw native units
+    # (USD or INR); FCF is in MM-native. Convert mc to MM then divide.
+    if ttm_fcf is not None and market_cap and market_cap > 0:
+        mc_mm = market_cap / 1_000_000
+        if mc_mm > 0:
+            ratios["fcf_yield_pct"] = round(100.0 * ttm_fcf / mc_mm, 2)
+
+    if ratios:
+        ratios["basis_note"] = (
+            "Margins from latest quarter. ROE/ROCE: TTM 4Q numerator over "
+            "latest balance-sheet denominator. FCF yield: TTM 4Q FCF over "
+            "market cap (when FCF available; India Screener does not publish "
+            "quarterly cash-flow, so India FCF yield is typically null)."
+        )
+    return ratios
+
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -1369,8 +1897,25 @@ def main() -> int:
         description="Fetch quarterly fundamentals and compute valuation zone.",
     )
     parser.add_argument("--ticker", required=True, help="Stock ticker (e.g., NVDA, RELIANCE.NS)")
-    parser.add_argument("--market", required=True, choices=["US", "IN"], help="Market: US or IN")
-    parser.add_argument("--archetype", required=True, choices=["GROWTH", "INCOME_VALUE", "TURNAROUND", "CYCLICAL"])
+    parser.add_argument(
+        "--market",
+        choices=["US", "IN"],
+        default="",
+        help=(
+            "Market: US or IN. If omitted, auto-detected from ticker suffix "
+            "(.NS/.BO → IN; otherwise US)."
+        ),
+    )
+    parser.add_argument(
+        "--archetype",
+        choices=["GROWTH", "INCOME_VALUE", "TURNAROUND", "CYCLICAL", ""],
+        default="",
+        help=(
+            "Optional. When omitted, output is exploration-mode — all relevant "
+            "multiples are emitted with no single zone verdict. When provided, "
+            "a zone verdict is layered on top using the archetype's primary metric."
+        ),
+    )
     parser.add_argument(
         "--archetype-secondary",
         default="",
@@ -1388,6 +1933,10 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    # Auto-detect market from ticker suffix if not provided.
+    if not args.market:
+        args.market = detect_market(args.ticker)
+
     if args.archetype_secondary and args.archetype_secondary == args.archetype:
         parser.error(
             "--archetype-secondary must differ from --archetype (composite "
@@ -1399,26 +1948,55 @@ def main() -> int:
 
     # Fetch fundamentals
     if is_indian:
-        quarters, valuation, errors = fetch_india_fundamentals(args.ticker, args.history_quarters)
+        quarters, valuation, annuals, prices, errors = fetch_india_fundamentals(args.ticker, args.history_quarters)
         currency = "INR"
         source = "screener.in"
     else:
-        quarters, valuation, errors = fetch_us_fundamentals(args.ticker, args.history_quarters)
+        quarters, valuation, annuals, prices, errors = fetch_us_fundamentals(args.ticker, args.history_quarters)
         currency = "USD"
         source = "yfinance"
 
-    # Compute zone
+    # Bare-ticker IN fallback: if a US-routed bare ticker came back empty
+    # (no quarters, no annuals, no usable multiples), the user likely typed
+    # an Indian symbol bare (CDSL, HDFCBANK, TITAN). Try Screener.in with
+    # .NS then .BO before giving up. Mirrors the same fallback in
+    # fetch_company_info.py.
+    resolved_ticker = None
+    if not is_indian:
+        has_any_multiple = any(
+            valuation.get(k) is not None
+            for k in ("current_pe", "current_pb", "current_ps", "current_ev_ebitda", "market_cap")
+        )
+        if not quarters and not annuals and not has_any_multiple:
+            for suffix in (".NS", ".BO"):
+                candidate = f"{args.ticker.upper()}{suffix}"
+                in_q, in_v, in_a, in_p, in_e = fetch_india_fundamentals(candidate, args.history_quarters)
+                if in_q or in_a or in_v.get("market_cap") is not None:
+                    quarters, valuation, annuals, prices, errors = in_q, in_v, in_a, in_p, errors + in_e
+                    currency = "INR"
+                    source = "screener.in"
+                    is_indian = True
+                    args.market = "IN"
+                    args.ticker = candidate
+                    resolved_ticker = candidate
+                    break
+
+    # Capture dated PE history BEFORE compute_zone strips it off the
+    # valuation block. The valuation block keeps only summary stats
+    # (n / min / median / max / percentile); raw points live at top-level.
+    pe_history = valuation.get("historical_pe", []) or []
+
+    # Compute valuation block. When --archetype is empty, this returns the
+    # multiples-only base (no verdict line). When set, the zone verdict is
+    # layered on top.
     zone_result = compute_zone(
-        archetype=args.archetype,
+        archetype=args.archetype if args.archetype else None,
         sector=args.sector if args.sector else None,
         sector_kind=args.sector_kind if args.sector_kind else None,
         valuation=valuation,
         quarters=quarters,
         is_indian=is_indian,
     )
-
-    # Remove internal fields from zone_result
-    zone_result.pop("historical_pe", None)
 
     # Composite: when --archetype-secondary is set, compute a parallel block
     # using the secondary archetype's primary-metric path. The banks override
@@ -1428,7 +2006,7 @@ def main() -> int:
     # secondary archetype, the secondary metric is the right lens for that
     # segment. See internal/holdings-schema.md § "Composite valuation —
     # `secondary:` block".
-    if args.archetype_secondary:
+    if args.archetype and args.archetype_secondary:
         secondary_zone = compute_zone(
             archetype=args.archetype_secondary,
             sector=None,            # bypass banks override on the secondary block
@@ -1437,12 +2015,14 @@ def main() -> int:
             quarters=quarters,
             is_indian=is_indian,
         )
-        secondary_zone.pop("historical_pe", None)
         secondary_zone["archetype"] = args.archetype_secondary
         zone_result["secondary"] = secondary_zone
 
     # Build output
     as_of = quarters[-1]["as_of"] if quarters else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Slice 1: derived ratios (pure computation; no I/O)
+    derived_ratios = compute_derived_ratios(quarters, annuals, valuation, is_indian)
 
     output = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -1450,8 +2030,14 @@ def main() -> int:
         "as_of": as_of,
         "currency": currency,
         "quarters": quarters,
+        "annuals": annuals,
         "valuation": zone_result,
+        "derived_ratios": derived_ratios,
+        "pe_history": pe_history,
+        "prices": prices,
     }
+    if resolved_ticker:
+        output["resolved_ticker"] = resolved_ticker
 
     if errors:
         output["errors"] = errors
@@ -1459,11 +2045,18 @@ def main() -> int:
     # Output JSON
     print(json.dumps(output, indent=2))
 
-    # Exit code: 0 if we got some data, 1 if total failure
-    if not quarters and not zone_result.get("zone"):
+    # Exit code: 0 if we got some data, 1 if total failure.
+    # When no --archetype was passed there is no zone — success is
+    # defined as having at least one current multiple.
+    has_any_multiple = any(
+        zone_result.get(k) is not None
+        for k in ("current_pe", "current_pb", "current_ps", "current_ev_ebitda")
+    )
+    if not quarters and not zone_result.get("zone") and not has_any_multiple:
         return 1
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
+

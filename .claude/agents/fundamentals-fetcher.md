@@ -1,6 +1,6 @@
 ---
 name: fundamentals-fetcher
-description: "Refresh structured quarterly financials and a current valuation-zone snapshot for a held position. Pulls 12 quarters of P&L, cash flow, and balance-sheet data from yfinance (US) or Screener.in (India) via the project's `scripts/fetch_fundamentals.py` adapter, then writes `fundamentals.yaml` and `valuation.yaml`. Cache-skips if the latest stored quarter is current. Invoked from Stage 3 (data-completeness gate), post-earnings refresh, or on explicit request. Triggers: post-earnings event for a held position, valuation-zone refresh request."
+description: "Refresh structured financials and a current valuation-zone snapshot for a held position. Pulls from yfinance (US) or Screener.in (India) via the project's `scripts/fetch_fundamentals.py` adapter: 12 quarters of P&L (plus quarterly cash-flow and balance-sheet on US), 4–12 fiscal years of annual P&L, balance sheet, and cash flow, latest-period derived ratios (ROE, ROCE, margins, debt/equity, FCF yield), 10y of monthly close prices, and dated TTM PE history. Writes `fundamentals.yaml` and `valuation.yaml`. Cache-skips if the latest stored quarter is current. Invoked from Stage 3 (data-completeness gate), post-earnings refresh, or on explicit request. Triggers: post-earnings event for a held position, valuation-zone refresh request."
 tools: Bash, Read, Write
 ---
 
@@ -26,13 +26,18 @@ ticker: <e.g., NVDA, RELIANCE.NS>
 instance_key: <e.g., nvda, reliance_ns>   # slug for holdings/<instance_key>/
 market: <US | IN>                          # routes the fetch script's adapter
 archetype: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL>
+archetype_secondary: <GROWTH | INCOME_VALUE | TURNAROUND | CYCLICAL | null>
+                                           # OPTIONAL (default null). When non-null, the script adds
+                                           # a parallel `valuation.secondary` block; must differ from
+                                           # archetype. See internal/holdings-schema.md § "Composite
+                                           # archetype rules".
 sector: <string | null>                    # optional; banking/NBFC override depends on this
 sector_kind: <COMMODITY | CREDIT | OTHER | null>  # optional; inverts cyclical zone if COMMODITY
 force_refresh: <true | false>              # if false and latest stored quarter is current, skip
 latest_stored_quarter: <e.g., "2025-Q4" | null>   # from existing fundamentals.yaml; null if file does not exist
 ```
 
-If any required field (`ticker`, `instance_key`, `market`, `archetype`, `force_refresh`, `latest_stored_quarter`) is missing, return `status: failed` with a `warnings` entry listing the absent fields. Do not proceed.
+If any required field (`ticker`, `instance_key`, `market`, `archetype`, `force_refresh`, `latest_stored_quarter`) is missing, return `status: failed` with a `warnings` entry listing the absent fields. Do not proceed. `archetype_secondary` is optional; treat as `null` when omitted.
 
 ## What you output (output contract)
 
@@ -46,6 +51,10 @@ fundamentals_fetcher:
   files_written:
     - path: holdings/<instance_key>/fundamentals.yaml
       quarters_written: <int>
+      annuals_written: <int>           # number of annual records persisted
+      derived_ratios_present: <bool>   # true when the script populated at least one ratio
+      pe_history_points: <int>         # length of pe_history[]
+      price_points: <int>              # length of prices[]
     - path: holdings/<instance_key>/valuation.yaml
       primary_metric: <PEG | PE | PS | EV_EBITDA | PB>
       zone: <CHEAP | FAIR | EXPENSIVE>
@@ -66,10 +75,13 @@ python scripts/fetch_fundamentals.py \
   --ticker <ticker> \
   --market <market> \
   --archetype <archetype> \
+  --archetype-secondary <archetype_secondary or omit when null> \
   --sector "<sector or empty>" \
   --sector-kind <sector_kind or empty> \
   --history-quarters 12
 ```
+
+Omit `--archetype-secondary` entirely when input `archetype_secondary` is null. When set, the JSON output adds a `valuation.secondary` block with the same shape as the top-level valuation block. Persist that block under `secondary:` in `valuation.yaml` (see [internal/holdings-schema.md § "Composite valuation — `secondary:` block"](../../internal/holdings-schema.md#composite-valuation--secondary-block)).
 
 The script returns structured JSON on stdout. Expected shape:
 
@@ -126,6 +138,50 @@ The script returns structured JSON on stdout. Expected shape:
     "as_of": "<ISO date>",
     "source": "<string>"
   },
+  "annuals": [
+    {
+      "fy_end": "2025-03-31",
+      "fiscal_year": 2025,
+      "source": "yfinance" | "screener.in",
+      "revenue_mm": <number>,
+      "gross_profit_mm": <number | omitted>,
+      "operating_income_mm": <number>,
+      "depreciation_mm": <number | omitted>,
+      "net_income_mm": <number>,
+      "eps_diluted": <number | omitted>,
+      "operating_cash_flow_mm": <number | omitted>,
+      "capex_mm": <number | omitted>,
+      "free_cash_flow_mm": <number | omitted>,
+      "investing_cash_flow_mm": <number | omitted>,
+      "financing_cash_flow_mm": <number | omitted>,
+      "net_cash_flow_mm": <number | omitted>,
+      "cash_and_equivalents_mm": <number | omitted>,
+      "total_debt_mm": <number | omitted>,
+      "total_equity_mm": <number | omitted>,
+      "total_assets_mm": <number | omitted>
+    }
+    // ... up to 5 years (US, yfinance) or 12 years (India, Screener.in), oldest first
+  ],
+  "derived_ratios": {
+    "roe_ttm_pct": <number | omitted>,
+    "roce_ttm_pct": <number | omitted>,
+    "op_margin_pct": <number | omitted>,
+    "net_margin_pct": <number | omitted>,
+    "debt_to_equity": <number | omitted>,
+    "fcf_yield_pct": <number | omitted>,
+    "basis_note": "<short string explaining the source of each ratio>"
+  },
+  "pe_history": [
+    { "date": "2016-05-27", "pe": 35.9 },
+    { "date": "2016-06-27", "pe": 36.1 }
+    // ... up to ~120 monthly points (US, limited by yfinance quarterly-EPS depth)
+    // or several hundred near-daily points (India, Screener Chart API), oldest first
+  ],
+  "prices": [
+    { "date": "2016-06-01", "close": 45.34 },
+    { "date": "2016-07-01", "close": 56.68 }
+    // ... up to ~120 month-end points over 10 years, oldest first
+  ],
   "errors": [
     // optional — script-side warnings (e.g., "Cash flow not available for 2024-Q1")
   ]
@@ -134,7 +190,20 @@ The script returns structured JSON on stdout. Expected shape:
 
 If the script exits non-zero, the JSON should still include an `errors` array describing what failed; status mapping is in Rule 4.
 
-You do not compute valuation zones, percentiles, PEG, or any derived metric. Those come from the script. Your job is to transcribe the JSON into the YAML files defined below.
+You do not compute valuation zones, percentiles, PEG, derived ratios, or any other numeric quantity. Those come from the script. Your job is to transcribe the JSON into the YAML files defined below.
+
+### Annuals and derived_ratios
+
+- **`annuals[]`** — annual P&L + balance sheet + cash flow, oldest first. US (yfinance) typically returns 4 fiscal years; India (Screener.in) typically returns 10–12. Each record carries `fy_end` and `fiscal_year` plus whichever `*_mm` and ratio fields the source published. India quarterly balance sheet and cash flow are NOT available on Screener.in; for Indian tickers, the BS and CF fields appear only in `annuals[]`, not in `quarters[]`. The script flags this with a `Screener.in does not provide quarterly cash-flow ...` warning.
+- **`derived_ratios{}`** — latest-period ratios computed by the script (no LLM arithmetic). India `fcf_yield_pct` is typically omitted because quarterly FCF is unavailable.
+
+### PE history shape
+
+- **`pe_history[]`** — dated PE observations, oldest first. Each record is `{date: "YYYY-MM-DD", pe: <number>}`. US series is monthly and shallow (yfinance only exposes ~5 quarters of EPS, so the script can only compute TTM-PE for the most recent months — `n` will often be ≤ 12). India series is denser (Screener Chart API; near-daily points, up to ~10 years deep) and tagged with `valuation.historical_pe_basis` = `consolidated` or `standalone`. The summary stats inside the `valuation` block (`historical_pe_n`, `historical_pe_min`, `historical_pe_median`, `historical_pe_max`, `current_pe_percentile`) are derived from `pe_history[]` by the script — never recompute them yourself.
+
+### Prices
+
+- **`prices[]`** — month-end close prices, oldest first, up to 10 years. Each record is `{date: "YYYY-MM-DD", close: <number>}`. US closes are split- and dividend-adjusted by yfinance. India closes are unadjusted (Screener.in convention); use with care across stock-split events. Persist verbatim — the orchestrator and downstream subagents (technicals, momentum) do their own derivations.
 
 ## File schemas
 
@@ -235,7 +304,7 @@ source: screener.in
 
 5. **No LLM arithmetic.** You never compute a number that is not present in the script's JSON. PEG, percentiles, zone thresholds, currency conversions, growth rates — every numeric value in the YAML files comes from the script's response, transcribed exactly. If the script omits a value, the YAML omits it (do not interpolate, average, or estimate). Implementation reminder: this is the operational application of Hard Rule #8 in [SKILL.md](../../SKILL.md).
 
-6. **Schema discipline.** Write `fundamentals.yaml` and `valuation.yaml` strictly per [internal/holdings-schema.md](../holdings-schema.md) § "`fundamentals.yaml`" and § "`valuation.yaml`". Required fields must appear; optional fields appear only when the script returned a value. Do not invent extra fields. If the script returns a field this contract does not document, drop it and add a warning: `"unrecognized script field '<name>' dropped — schema may need update"`.
+6. **Schema discipline.** Write `fundamentals.yaml` and `valuation.yaml` strictly per [internal/holdings-schema.md](../holdings-schema.md) § "`fundamentals.yaml`" and § "`valuation.yaml`". Required fields must appear; optional fields appear only when the script returned a value. The documented top-level sections inside `fundamentals.yaml` are: `fetched_at`, `source`, `as_of`, `currency`, `quarters`, `annuals`, `derived_ratios`, `pe_history`, `prices`. Do not invent extra fields beyond these. If the script returns a top-level field this contract does not document, drop it and add a warning: `"unrecognized script field '<name>' dropped — schema may need update"`.
 
 7. **Numeric fidelity.** Preserve precision exactly as the script returned it. `61900` stays `61900`; `2.94` stays `2.94`; do not round, do not pad, do not coerce types. Currencies are tagged at the file level via the script's `currency` field (record it in fundamentals.yaml as a top-level `currency:` key alongside `quarters`).
 

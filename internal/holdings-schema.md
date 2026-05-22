@@ -340,9 +340,11 @@ _(which investor frameworks informed the decision)_
 
 ## `fundamentals.yaml` — optional
 
-Structured quarterly financials. One snapshot per quarter covering P&L, cash flow, and balance-sheet summary. Populated by `fundamentals-fetcher` (see [subagents.md](subagents.md)) or manually. All monetary values in millions (reporting currency of the company) unless suffixed otherwise.
+Structured financials. Quarterly snapshots covering P&L, cash flow, and balance-sheet summary, plus annual records, latest-period derived ratios, dated TTM PE history, and month-end close prices. Populated by `fundamentals-fetcher` (see [subagents.md](subagents.md)) or manually. All monetary values in millions (reporting currency of the company) unless suffixed otherwise.
 
-**Derived ratios are not stored.** Gross margin, operating margin, ROE, FCF yield, debt/equity, etc. are computed on read from the fields below — same principle as `assumptions.yaml`'s cross-quarter view. Storing them would duplicate state and risk drift on data revisions.
+**Top-level sections.** The file may contain any of these top-level keys: `fetched_at`, `source`, `as_of`, `currency`, `quarters`, `annuals`, `derived_ratios`, `pe_history`, `prices`. `currency` and `quarters` are the load-bearing pair; the others are populated when the script returns them.
+
+**Derived ratios are stored when computed by the script.** ROE, ROCE, operating margin, net margin, debt/equity, and FCF yield are written under `derived_ratios:` exactly as the script returns them — never recomputed by the LLM. Other derivations (gross margin, multi-quarter averages) are computed on read.
 
 ```yaml
 currency: USD            # reporting currency for all monetary fields below
@@ -369,6 +371,36 @@ quarters:
     cash_and_equivalents_mm: 76000
     total_debt_mm: 52000
     total_equity_mm: 238000
+
+annuals:                  # oldest first; 4–5 years (US, yfinance), 10–12 years (India, Screener.in)
+  - fy_end: 2025-06-30
+    fiscal_year: 2025
+    source: yfinance
+    revenue_mm: 245100
+    operating_income_mm: 109400
+    net_income_mm: 88100
+    # ... other *_mm fields when present (balance sheet, cash flow, eps_diluted)
+
+derived_ratios:           # latest-period only; only fields the script populated
+  roe_ttm_pct: 33.6
+  roce_ttm_pct: 24.1
+  op_margin_pct: 44.6
+  net_margin_pct: 36.0
+  debt_to_equity: 0.21
+  fcf_yield_pct: 2.7
+  basis_note: "TTM ratios computed from latest 4 quarters of yfinance income statement, cash flow, and balance sheet."
+
+pe_history:               # dated TTM PE observations, oldest first; US ~5–12 points, India hundreds
+  - date: 2016-05-27
+    pe: 35.9
+  - date: 2016-06-27
+    pe: 36.1
+
+prices:                   # month-end close prices, oldest first, up to ~120 points over 10 years
+  - date: 2016-06-01
+    close: 45.34
+  - date: 2016-07-01
+    close: 56.68
 ```
 
 | Field | Required | Notes |
