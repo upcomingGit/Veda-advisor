@@ -186,7 +186,7 @@ calendar_tracker:
    - If `existing_<calendar>_path` is set, `Read` it. Note all existing rows (both `upcoming:` and `past:`) — you need them for both dedup and the past-event sweep.
    - You do not need to read `kb.md`, `assumptions.yaml`, or any other workspace file — calendar dates are not graded against them.
 
-3. **Source selection by mode.** All fetching goes through `scripts/fetch_calendar.py`. One Bash invocation per mode covers all sources for that mode (the helper internally batches across yfinance/Screener for position mode, and across all hardcoded URLs for global mode).
+3. **Source selection by mode.** All fetching goes through `scripts/fetch_calendar.py`. One Bash invocation per mode covers all sources for that mode (the helper internally batches across yfinance/Screener/BSE for position mode, and across all hardcoded URLs for global mode).
 
    - **Mode `position`:**
 
@@ -201,6 +201,8 @@ calendar_tracker:
      ```
 
      The helper invokes yfinance for US tickers (`Ticker.calendar` for next earnings, ex-dividend, splits) and Screener.in for India tickers (HTML scrape of the company page for the next quarterly results date). For US tickers, the helper may also opportunistically scrape a known company IR page for AGM dates — see Rule 6.
+
+     For India tickers the helper additionally queries the BSE public corporate-actions JSON API (`api.bseindia.com/BseIndiaAPI/api/DefaultData/w`, with `Referer: https://www.bseindia.com/`) to surface upcoming ex-dividend, record-date, AGM, bonus, split, and buyback rows that yfinance silently drops from `Ticker.calendar` on Indian names. The BSE call is forward-window only (`[today, today + lookforward_days]`). If `--bse-code` was not supplied, the helper auto-extracts it from the BSE link embedded in the Screener company page (`bseindia.com/stock-share-price/<slug>/<symbol>/<scripcode>/`) — no extra input required from you. When yfinance and BSE both surface the same upcoming ex-dividend, the helper's intra-fetch dedup keeps the row with the richer `note` (typically BSE's, which carries the Purpose string and record date) and drops the duplicate before returning the JSON envelope.
 
    - **Mode `global`:**
 

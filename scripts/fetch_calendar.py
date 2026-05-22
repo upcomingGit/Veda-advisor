@@ -95,6 +95,26 @@ SCREENER_HEADERS = {
     "Accept-Encoding": "gzip, deflate",
 }
 
+# --- BSE corporate-actions JSON API (India) ---
+# Returns roughly the last ~35 corporate actions for a given scripcode:
+# ex-dividends, splits, bonus, rights, AGM, buybacks. Used to backfill
+# upcoming ex-dividend / AGM dates that yfinance silently drops from
+# `Ticker.calendar` and `Ticker.dividends` on Indian names. Forward-window
+# only here (Veda-advisor's calendar is forward-looking).
+BSE_CORP_ACTIONS_URL = (
+    "https://api.bseindia.com/BseIndiaAPI/api/DefaultData/w"
+    "?Fdate=&Tdate=&Purposecode=&strSearch=S&ddlcategorys=E&ddlindustrys="
+    "&scripcode={scripcode}&segment=Equity"
+)
+BSE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.bseindia.com/",
+    "Origin": "https://www.bseindia.com",
+}
+
 # --- federalreserve.gov FOMC schedule ---
 FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
 FED_HEADERS = {
@@ -286,22 +306,27 @@ def fetch_screener_calendar(
     nse_symbol: str,
     today: datetime,
     lookforward_days: int,
-) -> FetchResult:
+) -> Tuple[FetchResult, Optional[str]]:
     """Fetch the next quarterly results date for an Indian ticker via Screener.in.
 
     Screener publishes a `result_date` near the company's #quarters section
     (e.g., "Results: 24 May 2026"). We scrape the company page and look for
     that pattern. Best-effort — Screener does not always populate next-result
     dates ahead of the announcement.
+
+    Returns ``(result, resolved_bse_code)``. The page is also scanned for the
+    BSE link so callers can plug the BSE corporate-actions API even when the
+    user did not supply ``--bse-code`` explicitly.
     """
     result = FetchResult(source=f"screener_{ticker}")
+    resolved_bse_code: Optional[str] = bse_code.strip() if bse_code and bse_code.strip().isdigit() else None
 
     # Resolve company URL: try nse_symbol > bse_code > ticker
     candidates = [nse_symbol, bse_code, ticker]
     candidates = [c for c in candidates if c and c.strip()]
     if not candidates:
         result.errors.append("Screener: no symbol/code provided")
-        return result
+        return result, resolved_bse_code
 
     session = _build_session(SCREENER_HEADERS)
     page_url = None
@@ -323,7 +348,18 @@ def fetch_screener_calendar(
         result.errors.append(
             f"Screener: company page not resolvable for any of {candidates}"
         )
-        return result
+        return result, resolved_bse_code
+
+    # Extract BSE scrip code from the BSE link when not already known. The
+    # BSE link in Screener has the form
+    # ``bseindia.com/stock-share-price/<slug>/<symbol>/<scripcode>/``.
+    if not resolved_bse_code:
+        m_code = re.search(
+            r"bseindia\.com/stock-share-price/[^/]+/[^/]+/(\d{6})/",
+            page_text,
+        )
+        if m_code:
+            resolved_bse_code = m_code.group(1)
 
     # Look for upcoming-results text. Screener's pattern is usually:
     #   "Result Date: 24 May 2026" or "Quarterly results scheduled for ..."
@@ -368,7 +404,181 @@ def fetch_screener_calendar(
         # date yet. Caller should not treat as failure.
         pass
 
+    return result, resolved_bse_code
+
+
+# =============================================================================
+# Position mode — BSE corporate-actions fetcher (India, forward-window)
+# =============================================================================
+
+# Mapping from BSE `Purpose` prefix to a normalized event label. Matches are
+# case-insensitive on the leading tokens of the Purpose string. "Special
+# Dividend" / "Interim Dividend" / "Final Dividend" all collapse to
+# "Ex-dividend"; the original phrasing survives in `note`.
+_BSE_PURPOSE_MAP: List[Tuple[str, str]] = [
+    ("interim dividend", "Ex-dividend"),
+    ("final dividend", "Ex-dividend"),
+    ("special dividend", "Ex-dividend"),
+    ("dividend - rs", "Ex-dividend"),
+    ("dividend rs", "Ex-dividend"),
+    ("dividend", "Ex-dividend"),
+    ("stock split", "Stock split"),
+    ("bonus issue", "Bonus issue"),
+    ("right issue", "Rights issue"),
+    ("rights issue", "Rights issue"),
+    ("buy back", "Buyback"),
+    ("buyback", "Buyback"),
+    ("agm", "AGM"),
+    ("egm", "EGM"),
+]
+
+
+def _normalize_bse_purpose(purpose: str) -> Optional[str]:
+    p = (purpose or "").strip().lower()
+    if not p:
+        return None
+    for prefix, label in _BSE_PURPOSE_MAP:
+        if p.startswith(prefix):
+            return label
+    return None
+
+
+def fetch_bse_corp_actions(
+    bse_code: str,
+    today: datetime,
+    lookforward_days: int,
+) -> FetchResult:
+    """Fetch upcoming corporate actions for an Indian ticker via the BSE
+    ``DefaultData`` JSON API.
+
+    The endpoint returns roughly the last ~35 corporate actions for the scrip
+    (ex-dividends, splits, bonus, rights, AGMs, buybacks). We filter to the
+    forward window ``[today, today + lookforward_days]`` and skip any row
+    whose ``Purpose`` doesn't normalize to a known category.
+
+    This source backfills upcoming ex-dividend / AGM dates that yfinance
+    silently drops from ``Ticker.calendar`` on Indian names. Past actions are
+    out of scope (Veda-advisor's calendar is forward-looking).
+    """
+    result = FetchResult(source=f"bse_corp_actions_{bse_code}")
+
+    if not bse_code or not bse_code.strip().isdigit():
+        result.errors.append(f"BSE corp-actions: invalid scrip code {bse_code!r}")
+        return result
+
+    session = _build_session(BSE_HEADERS)
+    url = BSE_CORP_ACTIONS_URL.format(scripcode=bse_code.strip())
+    try:
+        r = session.get(url, timeout=DEFAULT_REQUEST_TIMEOUT_S)
+        r.raise_for_status()
+    except requests.exceptions.RequestException as exc:
+        result.errors.append(f"BSE corp-actions fetch failed: {exc}")
+        return result
+
+    try:
+        rows = r.json()
+    except ValueError as exc:
+        result.errors.append(f"BSE corp-actions JSON parse failed: {exc}")
+        return result
+
+    if not isinstance(rows, list):
+        result.errors.append(
+            f"BSE corp-actions: unexpected payload shape {type(rows).__name__}"
+        )
+        return result
+
+    today_date = today.date()
+    cutoff = (today + timedelta(days=lookforward_days)).date()
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        exdate_raw = (row.get("exdate") or "").strip()
+        if len(exdate_raw) != 8 or not exdate_raw.isdigit():
+            continue
+        try:
+            d_obj = date(int(exdate_raw[:4]), int(exdate_raw[4:6]), int(exdate_raw[6:8]))
+        except ValueError:
+            continue
+        # Forward-window only: skip past events (Veda-advisor's calendar is
+        # forward-looking; past corporate actions are not modelled).
+        if not (today_date <= d_obj <= cutoff):
+            continue
+        purpose = (row.get("Purpose") or "").strip()
+        label = _normalize_bse_purpose(purpose)
+        if not label:
+            continue
+        rd_date = (row.get("RD_Date") or "").strip()
+        note_bits = [purpose]
+        if rd_date and rd_date != "-":
+            note_bits.append(f"record date: {rd_date}")
+        result.raw_count += 1
+        result.events.append(CalendarEvent(
+            event=label,
+            date=d_obj.strftime("%Y-%m-%d"),
+            source="calendar-tracker (auto): bse_corp_actions",
+            note="; ".join(note_bits),
+        ))
+
     return result
+
+
+# =============================================================================
+# Intra-fetch dedup (collapse same-type events from different sources)
+# =============================================================================
+
+def _event_dedup_key(label: str) -> str:
+    """Coarse dedup key: lowercase, alphanumerics only, first 2 non-year tokens.
+
+    e.g. "Ex-dividend" -> "ex dividend"; "Q2 2026 earnings" -> "q2 earnings".
+    """
+    tokens = re.findall(r"[A-Za-z0-9]+", (label or "").lower())
+    keep: List[str] = []
+    for t in tokens:
+        if t.isdigit() and len(t) == 4:
+            continue
+        keep.append(t)
+        if len(keep) == 2:
+            break
+    return " ".join(keep)
+
+
+def _dedup_events(events: List[CalendarEvent]) -> List[CalendarEvent]:
+    """Collapse duplicate events emitted by different sources for the same
+    underlying corporate action.
+
+    Two events are duplicates when they share the dedup key (event type) and
+    fall within one calendar day of each other. When two sources collide we
+    keep the row with the longer ``note`` — that's typically the BSE row
+    (carries the actual Purpose string and record date) over the yfinance row
+    (carries only the per-share amount).
+    """
+    if not events:
+        return events
+    kept: List[CalendarEvent] = []
+    for ev in sorted(events, key=lambda e: e.date or ""):
+        key = _event_dedup_key(ev.event)
+        try:
+            ev_d = datetime.strptime(ev.date, "%Y-%m-%d").date() if ev.date else None
+        except ValueError:
+            ev_d = None
+        merged = False
+        for i, existing in enumerate(kept):
+            if _event_dedup_key(existing.event) != key:
+                continue
+            try:
+                ex_d = datetime.strptime(existing.date, "%Y-%m-%d").date() if existing.date else None
+            except ValueError:
+                ex_d = None
+            if not ev_d or not ex_d or abs((ev_d - ex_d).days) > 1:
+                continue
+            if len(ev.note or "") > len(existing.note or ""):
+                kept[i] = ev
+            merged = True
+            break
+        if not merged:
+            kept.append(ev)
+    return kept
 
 
 # =============================================================================
@@ -525,11 +735,23 @@ def main() -> int:
         ))
 
         if args.market == "India":
-            # Screener.in supplements (and is often the only earnings-date source for India)
-            all_results.append(fetch_screener_calendar(
+            # Screener.in supplements (and is often the only earnings-date source for India).
+            # The Screener fetcher also extracts the BSE scrip code from the company page
+            # when the caller did not supply --bse-code, so we can plug BSE corp-actions
+            # below without making the user manage that code explicitly.
+            screener_result, resolved_bse_code = fetch_screener_calendar(
                 args.ticker, args.bse_code, args.nse_symbol,
                 today_dt, args.lookforward_days,
-            ))
+            )
+            all_results.append(screener_result)
+
+            if resolved_bse_code:
+                # BSE corp-actions API surfaces upcoming ex-dividend / AGM /
+                # split / bonus dates that yfinance silently drops on Indian
+                # names. Forward-window only.
+                all_results.append(fetch_bse_corp_actions(
+                    resolved_bse_code, today_dt, args.lookforward_days,
+                ))
 
     else:  # global
         regions = [r.strip().upper() for r in args.regions.split(",") if r.strip()]
@@ -568,6 +790,10 @@ def main() -> int:
     all_events: List[CalendarEvent] = []
     for r in all_results:
         all_events.extend(r.events)
+
+    # Collapse same-type events emitted by different sources (e.g. an
+    # upcoming ex-dividend reported by both yfinance and BSE corp-actions).
+    all_events = _dedup_events(all_events)
 
     # Sort upcoming ascending by date
     all_events.sort(key=lambda e: e.date or "")

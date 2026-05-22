@@ -34,6 +34,33 @@ changelog on release.
 
 ### Added
 
+- **BSE corporate-actions source in `calendar-tracker`** ([scripts/fetch_calendar.py](scripts/fetch_calendar.py),
+  [internal/agents/calendar-tracker.md](internal/agents/calendar-tracker.md)).
+  Indian-ticker mode now chains a third source after yfinance and Screener.in:
+  a forward-window pull from the BSE public corporate-actions JSON endpoint
+  (`api.bseindia.com/.../DefaultData/w` with `Purposecode=` and
+  `scripcode=<6-digit BSE code>`, `Referer: bseindia.com`), filtered to today
+  through today + lookforward window. Backfills ex-dividend, record-date,
+  book-closure, and AGM rows that yfinance silently drops on Indian names.
+  Scrip code is auto-resolved from the Screener.in page URL via the
+  `bseindia.com/stock-share-price/<name>/<symbol>/<6-digit>/` pattern, so no
+  user input is required. Source tag `calendar-tracker (auto): bse_corp_actions`.
+  Intra-fetch dedup is case-insensitive across (date, type, security|symbol|N/A).
+- **Cross-agent calendar stitching from `disclosure-fetcher`**
+  ([scripts/fetch_disclosures.py](scripts/fetch_disclosures.py),
+  [internal/agents/disclosure-fetcher.md](internal/agents/disclosure-fetcher.md)).
+  The disclosures envelope now always includes a `proposed_calendar_entries`
+  list (empty when no future scheduled events are detected). Each entry is a
+  ready-to-append `calendar.yaml` row built from a deduped filing whose helper
+  attached a `future_event` block (board meeting, AGM, EGM, record date,
+  ex-dividend, rights issue), tagged `disclosure-fetcher (auto): <filing-id>`
+  with the headline truncated to 200 characters in the `note:` field. The
+  orchestrator (per Stage 3 in [SKILL.md](SKILL.md)) appends each entry verbatim
+  to `holdings/<instance_key>/calendar.yaml` under the `upcoming:` block,
+  creating the file with `as_of: <today>` if missing. So when a board-meeting
+  intimation drops, the dated future event flows into the position calendar on
+  the same run without a second manual fetch.
+
 - **Composite archetypes for multi-business-line equity positions.** `_meta.yaml`
   schema gains optional `archetype_secondary` and `segments` fields, capped at
   two archetypes per position. `valuation.yaml` adds a parallel `secondary:`

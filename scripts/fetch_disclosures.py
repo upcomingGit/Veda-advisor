@@ -340,6 +340,46 @@ def _extract_future_event(
     return None
 
 
+# Humanise the future_event.type slug into a calendar.yaml event label.
+# Mirrors the mapping documented in internal/agents/disclosure-fetcher.md.
+_FUTURE_EVENT_LABEL_MAP: Dict[str, str] = {
+    "board_meeting": "Board Meeting",
+    "agm": "Annual General Meeting",
+    "egm": "Extraordinary General Meeting",
+    "record_date": "Record Date",
+    "ex_dividend": "Ex-Dividend",
+    "rights_issue": "Rights Issue",
+}
+
+
+def _build_proposed_calendar_entries(items: "List[DisclosureItem]") -> List[Dict[str, str]]:
+    """Aggregate per-item ``future_event`` rows into envelope-level
+    ``proposed_calendar_entries`` shaped to match calendar.yaml's ``upcoming:``
+    schema. The disclosure-fetcher subagent surfaces these to the orchestrator,
+    which appends them to ``holdings/<slug>/calendar.yaml`` preserving rows
+    owned by other co-writers. See internal/agents/disclosure-fetcher.md
+    Rule 5.
+    """
+    entries: List[Dict[str, str]] = []
+    for it in items:
+        fe = it.future_event
+        if not fe or not fe.get("date") or not fe.get("type"):
+            continue
+        event_label = _FUTURE_EVENT_LABEL_MAP.get(fe["type"]) or fe["type"].replace("_", " ").title()
+        entry: Dict[str, str] = {
+            "event": event_label,
+            "date": fe["date"],
+            "source": f"disclosure-fetcher (auto): {it.id}",
+        }
+        headline = (fe.get("headline") or "").strip()
+        if headline:
+            entry["note"] = headline[:200]
+        entries.append(entry)
+    # Stable order: by date ascending, then by source id for determinism.
+    entries.sort(key=lambda e: (e["date"], e["source"]))
+    return entries
+
+
 # =============================================================================
 # Normalized disclosure record
 # =============================================================================
@@ -1032,6 +1072,7 @@ def main() -> int:
         "items_after_dedup": len(deduped),
         "items_dropped_in_cross_source_dedup": dropped_dedup,
         "items": [asdict(it) for it in deduped],
+        "proposed_calendar_entries": _build_proposed_calendar_entries(deduped),
         "resolved_cik": resolved_cik,
         "errors": [e for r in all_results for e in r.errors],
     }
