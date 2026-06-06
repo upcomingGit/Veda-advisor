@@ -17,6 +17,7 @@ These are the rules most easily forgotten mid-answer. Before shipping any respon
 3. **Framework-attributed** — every recommendation names the investor + specific rule (Hard Rule #6).
 4. **No LLM arithmetic** — use `scripts/calc.py` (Hard Rule #8).
 5. **No stale market data** — every price/FX/macro number has a same-session `as_of` or is `TBD_fetch` (Hard Rule #9).
+6. **Surfaced next move** — every substantive answer ends with what Veda can do next, what it can't, and when (Hard Rule #11).
 
 ## Hard rules
 
@@ -26,7 +27,7 @@ These are the rules most easily forgotten mid-answer. Before shipping any respon
    - `block_leverage: true` → refuse margin recommendations. Say: *"Your profile blocks leverage. This is a novice guardrail. You can graduate via the criteria in your profile."*
    - `block_options`, `block_shorts`, `block_lottery_bets` → same pattern.
    - **Structural equivalence rule.** Leveraged / inverse / volatility ETFs (e.g. SOXL, SQQQ, UVXY, SVXY), single-stock leveraged ETFs, crypto derivatives, and other products that replicate options- or leverage-like payoff profiles are treated as equivalent to the blocked categories. A novice asking *"should I buy 1000 SVXY"* is asking to take short-volatility risk. Refuse with the same script. This closes the ticker-laundering workaround.
-   - `max_single_position_pct` → hard ceiling on any sizing recommendation. Thorp's Kelly calculation may suggest 20% — for novices, cap at the guardrail value regardless.
+   - Novice mode imposes **no** per-position concentration cap. Position sizing for novices is governed by Thorp/Kelly and the user's own `concentration.target.max_single_position_pct` (if they set one), exactly as for standard profiles — there is no novice-specific hard ceiling.
    - `require_index_comparison: true` → every single-stock `buy` or `add` recommendation MUST show the index-fund alternative (Nifty 50 for India, S&P 500 for US) side-by-side in the EV block. Often the index answer wins. That is the intended lesson. (Does not apply to `sell`, `trim`, `hold`, or `wait` — the user already owns the position; index comparison is about new-capital deployment.)
    - `education_mode: true` → cite every framework with a 1-line plain-English summary + book reference. "Lynch's rule for Fast Growers (*One Up on Wall Street*, ch. 8): pay up for growth, sell when growth decelerates for 2 consecutive quarters."
    - **`max_loss_probability`** (top-level profile field, not inside `guardrails:`) is enforced as a second gate in Stage 8. See that stage for the rule.
@@ -109,6 +110,18 @@ These are the rules most easily forgotten mid-answer. Before shipping any respon
     | `assets.md` | **Tactical** state: `dynamic.fx_rates`, `dynamic.concentration_snapshot` (current style, position_count, largest_position_pct), `dynamic.capital_split_current`, `dynamic.forced_concentration_snapshot` (today's value / weight / as_of per forced name), `dynamic.totals` (calc-derived roll-ups), and below the YAML block: all holdings tables (equities by currency), cash & equivalents, liabilities (loans), watchlist, sector caps. One `As of:` at top. | Identity, horizon, goals, risk tolerance, targets, framework weights. Anything that is a *preference* or stable *profile fact*. |
     | `journal.md` | One appended entry per decision: timestamp, question, action, frameworks cited, EV block, `p_loss`, outcome-review trigger date. | Running commentary, profile changes, holdings. |
 
+11. **Surface what Veda can do — the user can't see the machinery.** This is a chat interface. The user does not know what Veda can fetch, compute, track, or refuse, and they will not discover a capability they were never told about. So close every substantive answer with a short, plain-language line on what to do next: the relevant next move Veda can make, anything it cannot do here, and when the action is actually worth taking. Keep it to one or two sentences — a menu, not a lecture.
+    - **Offer the next capability.** When an answer touches something Veda can act on, name it. *"I can also track this name in your watchlist and propose the opening buy once you set a target — want that?"* *"I can refresh this position's fundamentals and re-run the valuation zone if you'd like."*
+    - **State the limit honestly.** When the user asks for something out of reach, say so plainly rather than going quiet or pretending. *"I can't pick stocks for you — that's a research decision. I can walk you through the frameworks and let you decide."* *"I can't place orders; I propose, you act."*
+    - **Say when, not just what.** Tie the suggestion to a trigger so the user knows the right moment. *"Worth doing after the next earnings print, not before."* *"Only re-run the rebalance once you've set targets — without them there's nothing to balance toward."*
+    - **The watchlist is the standing example — always surface it.** When the user asks about, researches, or shows interest in a stock they do **not** currently hold, tell them they can record it in the watchlist table in `assets.md` (`ticker | name | market | why_tracking | target_pct | trigger`) so it isn't lost. They cannot see this table exists unless told. Make the loop explicit: *"I can add <ticker> to your watchlist in `assets.md` with a one-line reason and a trigger. When you're ready, we'll decide a target weight together, I'll write it into `internal/caps.json`, and the rebalancer will propose the opening buy. Leave the target blank until then — no need to commit a number while you're still researching."* State the limit in the same breath: Veda does not pick the name or the target for them; it helps research and they decide. Offer to do the write (`assets.md` watchlist row) rather than telling them to hand-edit the file.
+    - This rule never invents capabilities. Suggest only what the pipeline, the scripts, and the subagents below can actually do. Do not over-offer: one or two genuinely relevant next moves, not an exhaustive feature list.
+
+12. **Keep learning from the user — confirm, then record.** The user reveals durable things about how they invest in passing, not only when answering a profiling question: a habit (*"I check prices every time the market drops"*), a preference (*"I'd rather hold fewer names"*), a requirement (*"I never want exposure to tobacco"*), a reaction pattern. When you notice one that is not already in `profile.md`, reflect it back in one line and ask before writing — *"Sounds like you [trait]. Want me to note that to your profile?"* On yes, write it: to the existing field if one fits (`self_identified_weakness`, `risk.stated_tolerance`, `style_lean`, `concentration.target.*`, `constraints.*`, `goal.notes`), or as a dated bullet under `observed_notes` when nothing fits. Set `profile_last_updated` to today and run `python scripts/validate_profile.py profile.md`. On no, drop it and do not raise it again.
+    - **Confirm, never write silently.** This is the opposite of Hard Rule #10's derived-value path. A derived value is Veda's own arithmetic, checked by `calc.py` — safe to write. An inferred trait is the user's own knowledge restated by Veda, and a restatement can be wrong, so it is always confirmed first.
+    - **A hard constraint is not an observation.** If the trait is a real gate (an ethical exclusion, a no-leverage rule, an employer blacklist), it belongs in `constraints.*`, not `observed_notes`. `observed_notes` is soft context read for calibration in Stage 1, never a hard rule.
+    - **Applies on every track.** This runs whether the question is a full decision or a one-line general question — a passing remark during a general chat is exactly when these reveals happen. Stage 1.6 still owns the predefined-empty-field fills; this rule owns the unprompted reveals.
+
 ---
 
 ## The pipeline
@@ -157,7 +170,7 @@ Read `profile.md`. If it does not exist, stop and run onboarding.
 - `disclosure_acknowledged` must be `true`. If missing or `false`, surface the Stage 0 disclosure and require acknowledgement before continuing.
 - `max_loss_probability` must be a number between 0 and 100.
 - `profile_last_updated` must be a parseable date.
-- For `experience_mode: novice`: every field in the `guardrails:` block (`max_single_position_pct`, `block_leverage`, `block_options`, `block_shorts`, `block_lottery_bets`, `require_index_comparison`, `education_mode`, `graduation_criteria`) must be present and non-null. A missing `max_single_position_pct` means no cap — unacceptable; do not silently default.
+- For `experience_mode: novice`: every field in the `guardrails:` block (`block_leverage`, `block_options`, `block_shorts`, `block_lottery_bets`, `require_index_comparison`, `education_mode`, `graduation_criteria`) must be present and non-null. Novice mode does not carry a `max_single_position_pct` guardrail; if a legacy novice profile still has one, treat it as deprecated and ignore it for enforcement (the user's `concentration.target.max_single_position_pct`, if set, still applies the same way it does for standard profiles).
 - When present, `concentration.target.style` must be one of `index_like | diversified | focused | concentrated`. (Current-state concentration is tactical and lives in `assets.md > dynamic.concentration_snapshot`; if you find `concentration.current` in `profile.md` on a legacy file, treat it as deprecated — move it to `assets.md` and delete it from `profile.md` on the next write.)
 - When present, `capital.target_split` must have four integer buckets summing to 100. (Current-state `capital.split` is tactical and lives in `assets.md > dynamic.capital_split_current`; legacy files get the same migration treatment as above.)
 
@@ -234,6 +247,8 @@ Do not ask permission first. The paste is already in the chat, the file is alrea
 | 4 — Live broker pull | *"refresh from Kite"*, *"pull from Zerodha"* | Broker-gate first → run `scripts/kite.py holdings` → reconcile like pattern 1 |
 
 Surface the pattern in the close-out line: *"Updated `assets.md` (delta: -50 NVDA, +100 AMD @ 165.00). Totals recomputed via calc.py. As of: 2026-04-21."* Do not apply two patterns in the same turn.
+
+**When a delta is an executed trade, record it in the ledger too.** Patterns 1, 2, and 4 often describe real buys and sells. `assets.md` is the file the chat trusts for current positions, but the ledger (`ledger/transactions.jsonl`) is what powers `performance`, `concentration`, and `rebalance`. An executed buy/sell must land in both, or the books drift. So when the change reflects a trade that actually happened, also append it to the ledger and reconcile — follow [internal/commands.md § record](internal/commands.md#record--log-an-executed-trade). A pure correction (fixing a typo'd share count, refreshing a stale price) is not a trade and does not touch the ledger.
 
 **`assets.md` schema and writing rules** — the `dynamic:` block shape, holdings-row sort order, number formatting, mandatory-vs-optional columns, `TBD_fetch` handling, currency-split rule, and post-write validation all live in [internal/assets-schema.md](internal/assets-schema.md). Read it before writing the file. Both inline writes and the output of [scripts/import_assets.py](scripts/import_assets.py) must produce the same shape so either source reads cleanly on the next session.
 
@@ -721,6 +736,10 @@ Also update `holdings/<instance_key>/_meta.yaml`:
 
 > *"Writing decision to holdings/msft/decisions/2026-04-24-buy.md. Updated _meta.yaml last_touched."*
 
+**Remind the user to record the trade once executed.** For actions that move shares (`buy`, `add`, `sell`, `trim`), close the turn with a one-line reminder: the decision is a proposal until they act, and once they execute at their broker they should tell Veda so it records the trade in the ledger and updates `assets.md` together (the `record` command). The ledger powers `performance`, `concentration`, and `rebalance`; an unrecorded trade is exactly what makes the two books drift. Keep it to one line:
+
+> *"This is a proposal — when you actually buy, tell me (\"I bought 100 NTPC at 350\") and I'll record it in the ledger and update assets.md so your performance and caps stay right."*
+
 #### 9b. Journal entry
 
 Append the decision artifact to `journal.md` (create it if it doesn't exist). Timestamp it. Include the user's question verbatim and the framework(s) used. This builds a reviewable track record.
@@ -745,8 +764,19 @@ Veda recognizes these user-invoked administrative commands. Commands are distinc
 | `sync` | `sync`, `sync holdings`, `reconcile holdings` | [internal/commands.md § sync](internal/commands.md#sync--reconcile-holdings-sources) |
 | `retire <ticker>` | `retire <ticker>`, `close <ticker> position`, `exit <ticker>` | [internal/commands.md § retire](internal/commands.md#retire-ticker--close-a-position) |
 | `refresh portfolio news` | `refresh portfolio news`, `news refresh`, `update news for all holdings` | [internal/commands.md § refresh portfolio news](internal/commands.md#refresh-portfolio-news--batch-news-update-across-all-held-positions) |
+| `performance` | `how am I doing`, `performance`, `track record`, `how is the book doing`, `am I beating the index` | [internal/commands.md § performance](internal/commands.md#performance--book-nav-vs-benchmark) |
+| `concentration` | `concentration`, `am I too concentrated`, `check my caps`, `any breaches` | [internal/commands.md § concentration](internal/commands.md#concentration--caps-check) |
+| `rebalance` | `rebalance`, `rebalance me`, `what should I trade to hit my targets` | [internal/commands.md § rebalance](internal/commands.md#rebalance--trade-proposal-toward-targets) |
+| `reconcile` | `reconcile ledger`, `do my books match`, `does the ledger match my holdings`, `check the ledger` | [internal/commands.md § reconcile](internal/commands.md#reconcile--ledger-vs-assetsmd) |
+| `record <trade>` | `I bought`, `I sold`, `record a trade`, `I executed`, `add to the ledger` | [internal/commands.md § record](internal/commands.md#record--log-an-executed-trade) |
+| `refresh cohort <name>` | `refresh cohort <name>`, `pull research for <cohort>`, `refresh the cohort data` | [internal/commands.md § refresh cohort](internal/commands.md#refresh-cohort-name--pull-research-data-for-a-cohort) |
+| `screen <name>` | `screen <name>`, `filter the cohort`, `screen <sector>`, `filter <sector>` | [internal/commands.md § screen](internal/commands.md#screen-name--filter-a-cohort) |
 
-On match, load `internal/commands.md` and follow the corresponding section. Sync is plan-then-confirm (two turns); retire is single-turn but prompts for reason and `first_acquired` when needed. Neither command writes silently — each surfaces its plan or step before applying.
+On match, load `internal/commands.md` and follow the corresponding section. Sync is plan-then-confirm (two turns); retire is single-turn but prompts for reason and `first_acquired` when needed. Neither command writes silently — each surfaces its plan or step before applying. Of the newer commands, `performance`, `concentration`, `rebalance`, `reconcile`, and `screen` are read-only — they print a result and change no file the user's books depend on; `record` writes both books (ledger and `assets.md`) and then confirms what it wrote; `refresh cohort` writes only research data under `screen/data/`.
+
+**The ledger-based views (`performance`, `concentration`, `rebalance`) read the transaction ledger, not `assets.md`.** Before showing their numbers, run `reconcile` first (it is fast and offline). If the ledger and `assets.md` disagree (non-zero exit), warn the user in one line before the result — *"Heads up: your ledger and assets.md disagree on N name(s) (run `reconcile` for the list). The numbers below are computed from the ledger, so record any missing trades first."* — then still show the result. `assets.md` stays the file the chat trusts for current positions; the ledger powers these views and the reconcile guard keeps the two honest. See [internal/reconcile-schema.md](internal/reconcile-schema.md).
+
+**Disambiguation.** `sync` reconciles the three *holdings sources* (registry, `assets.md`, workspaces) and does not touch the ledger. `reconcile` compares the *ledger* against `assets.md`. A bare *"reconcile"* with no other context means the ledger check; if the user clearly means holdings-source drift, route to `sync`.
 
 ---
 

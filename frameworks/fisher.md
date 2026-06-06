@@ -89,7 +89,7 @@ Veda's Stage 6 requires each framework to declare where it stops. If the questio
 - **Position-sizing math.** The Kelly calculation, correlation adjustments, portfolio-heat checks are Thorp and Dalio. Fisher supplies the *ceiling spirit*, not the number.
 - **Tail risk, options, leverage.** Taleb's department; refuse under novice guardrails per SKILL.md Hard Rule #2.
 - **Single-point intrinsic-value estimates.** Fisher does not produce a DCF; Buffett and Klarman do. If the user asks "what is NVDA worth", route Buffett's range-or-relative-multiple rule, not Fisher.
-- **Novice-mode interaction.** Fisher's framework is safe for novices on the `buy` side for **Stalwart and Fast-Grower categories only** (after Lynch has classified). It is not a license to concentrate beyond `guardrails.max_single_position_pct` — the ceiling stays. The *"almost never sell"* rule is particularly valuable for novices prone to panic-selling; surface it explicitly in the `education_note` field.
+- **Novice-mode interaction.** Fisher's framework is safe for novices on the `buy` side for **Stalwart and Fast-Grower categories only** (after Lynch has classified). Novice mode no longer imposes a special per-position cap; the user's own `concentration.target.max_single_position_pct` (if set) still applies the same way it does for standard profiles. The *"almost never sell"* rule is particularly valuable for novices prone to panic-selling; surface it explicitly in the `education_note` field.
 
 ## Interaction with other frameworks
 

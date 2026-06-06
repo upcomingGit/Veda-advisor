@@ -54,7 +54,7 @@ Druckenmiller's explicit framing is that the market is a pricing machine for whe
 
 ### On `size` / `how-much` questions
 
-1. **High-conviction calls deserve concentrated sizing.** When a named regime, a named 18–24-month thesis, and a named kill criterion all align, the size should be large enough to matter to the portfolio — Druckenmiller's *"go for the jugular"*. Route Thorp / Kelly for the math. Cap at `concentration.target.max_single_position_pct` and at novice `guardrails.max_single_position_pct` where applicable.
+1. **High-conviction calls deserve concentrated sizing.** When a named regime, a named 18–24-month thesis, and a named kill criterion all align, the size should be large enough to matter to the portfolio — Druckenmiller's *"go for the jugular"*. Route Thorp / Kelly for the math. Cap at `concentration.target.max_single_position_pct` where the user has set one (applies to novice and standard alike).
 2. **Low-conviction calls should not be sized at all.** A *"mild bullish lean, can't cite the regime"* trade is a Druckenmiller *pass*, not a small position. Small positions on low-conviction macro calls are how accounts bleed out quietly.
 3. **No averaging down on broken theses.** If the thesis is broken, additional capital at a lower price is not *"averaging down"* — it is doubling a losing bet, and the first-loss-is-best-loss rule governs. Route Munger's commitment-consistency check inline.
 

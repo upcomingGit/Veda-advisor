@@ -1,0 +1,7 @@
+{
+  "sector": "airlines-india",
+  "names": [
+    { "ticker": "INDIGO", "market": "india", "primary": "GROWTH", "secondary": "CYCLICAL" },
+    { "ticker": "SPICEJET", "market": "india", "primary": "TURNAROUND" }
+  ]
+}

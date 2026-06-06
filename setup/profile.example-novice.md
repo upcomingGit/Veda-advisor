@@ -51,7 +51,7 @@ concentration:
   target:
     style: diversified
     position_count: 20
-    max_single_position_pct: 8   # tight cap — novice guardrail (matches guardrails.max_single_position_pct below)
+    max_single_position_pct: 10   # user's own target ceiling (diversified default); not a novice hard cap
 
 markets:
   - india
@@ -95,7 +95,6 @@ notes: "Starting out. Wants to learn. Primary question right now is 'should I bu
 
 # Novice guardrails — hard constraints Veda enforces automatically for novice profiles.
 guardrails:
-  max_single_position_pct: 8        # no concentrated bets until graduated
   block_leverage: true
   block_options: true
   block_shorts: true

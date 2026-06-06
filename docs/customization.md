@@ -139,7 +139,6 @@ Tune weights only after months of use, when one framework keeps pulling you in a
 ```yaml
 experience_mode: novice
 guardrails:
-  max_single_position_pct: 8
   block_leverage: true
   block_options: true
   block_shorts: true

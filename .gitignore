@@ -232,3 +232,13 @@ ROADMAP-PLAIN.md
 holdings/
 holdings_registry.csv
 holdings_registry.csv.bak.*
+# The transaction ledger — the dated record of every buy, sell, and cash move.
+ledger/
+# The NAV series — the track record, derived from the ledger.
+nav/
+# The concentration snapshot — derived from the ledger; reveals live positions.
+concentration/
+# The rebalance proposal — target-weight trades, derived from the ledger and caps.
+rebalance/
+# The cohort screen results — ranked research candidates, derived from saved fundamentals.
+screen/

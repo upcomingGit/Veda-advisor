@@ -1,0 +1,15 @@
+{
+  "max_per_stock": 0.10,
+  "max_per_country": {
+    "india": 0.70,
+    "us": 0.50
+  },
+  "max_per_sector": {
+    "default": 0.30
+  },
+  "ignore_drift_below": 0.02,
+  "target_weights": {
+    "india": {},
+    "us": {}
+  }
+}

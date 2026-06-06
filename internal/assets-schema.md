@@ -39,7 +39,12 @@ dynamic:
 ...
 
 ## Watchlist / open orders
-...
+
+Columns: `ticker | name | market | why_tracking | target_pct | trigger`. Names
+you're tracking but don't own yet. `target_pct` stays blank until you decide a
+size (with Veda's help); once set, mirror it into `internal/caps.json` so the
+rebalancer proposes the opening buy. `trigger` is the price or event that would
+make you act.
 
 ## Sector caps (optional)
 ...

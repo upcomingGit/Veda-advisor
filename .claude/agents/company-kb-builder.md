@@ -269,6 +269,11 @@ Use this table to classify. Classify using research first, then map.
 
 If the company does not fit cleanly into one Lynch category, pick the primary one. State the rationale in the `## Lynch Category` section of `thesis.md`. If `additional_context` suggests a specific archetype framing, weigh that input but override it if research evidence is strong — and add a warning.
 
+**Two classification reflexes to resist:**
+
+- **A token dividend does not demote a compounding mega-cap to Slow Grower.** Microsoft, Alphabet, Apple, and Meta still grow earnings double-digits on a structural driver (cloud, AI, ads, platform) and return some cash on the side. They are Fast Growers or Stalwarts — both map to `GROWTH` — not Slow Growers. Classify on the growth trajectory, not the presence of a dividend.
+- **Semiconductors and memory are not reflexively Cyclical.** A chip or memory name with a dominant structural-growth driver (AI accelerators, HBM, data-center demand) on top of a cyclical commodity base is composite — `GROWTH` primary + `CYCLICAL` secondary (e.g., Micron) — so the growth frameworks (Lynch, Fisher) route alongside the cycle overlay (Druckenmiller, Marks). Pure-cycle commodity producers with no structural-growth leg stay monoline `CYCLICAL`.
+
 ## Rules you follow
 
 1. **Cache-skip.** If `force_refresh: false` and `thesis_is_stub: false` and `kb_age_days` is not null and `kb_age_days < 365`, return `status: skipped`, `skip_reason: cache_fresh`. Do not write any files. This is not an error — it is correct behaviour. A cache-skip emits no file narration. The `thesis_is_stub: false` gate is intentional: a freshly-scaffolded workspace has `kb_age_days = 0` (file mtime is today) but its content is `_(to be populated)_`. Skipping in that state would leave the stub in place. The stub flag is the authoritative signal that content needs to be built, regardless of file age.

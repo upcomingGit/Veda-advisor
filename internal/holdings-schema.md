@@ -111,10 +111,16 @@ Archetype determines which investor frameworks are routed to the position. Infer
 | Company profile | Inferred archetype | Confidence |
 |---|---|---|
 | High earnings/revenue growth (>15% YoY), reinvesting profits, tech/biotech/SaaS | `GROWTH` | high |
-| Stable earnings, regular dividends, mature business, utility/REIT/consumer staple | `INCOME_VALUE` | high |
-| Commodity producer, industrial, bank, interest-rate or cycle sensitive | `CYCLICAL` | high |
+| Mega-cap tech still compounding earnings double-digits on a structural driver (cloud, AI, ads, platform), even if it pays a token dividend or buys back stock (e.g., MSFT, GOOGL, AAPL, META) | `GROWTH` | high |
+| **Low**-growth (<~8% YoY) mature business with steady dividends as the main return — utility, REIT, consumer staple, regulated infra | `INCOME_VALUE` | high |
+| Commodity producer, bank, or pure-cycle industrial whose earnings rise and fall with the economic/commodity cycle and that has **no** dominant structural-growth driver | `CYCLICAL` | high |
+| Semiconductor / memory / cyclical-industrial name where a structural-growth driver (e.g., AI/HBM demand) is the active equity story on top of a cyclical base (e.g., MU) | `GROWTH` primary + `CYCLICAL` secondary (composite) | high |
 | Distressed, restructuring, post-bankruptcy, management turnaround | `TURNAROUND` | high |
-| Mixed signals (mature tech with dividends, diversified conglomerate) | ask user | — |
+| Mixed signals (diversified conglomerate, two genuinely different business lines) | composite or ask user | — |
+
+**A dividend alone does not make a company `INCOME_VALUE`.** Growth rate dominates the classification. A mega-cap that still grows earnings double-digits and reinvests heavily is `GROWTH` (Lynch *Fast Grower* or *Stalwart* — both map to `GROWTH`) even if it returns some cash. `INCOME_VALUE` is for businesses where the dividend/asset value, not earnings growth, is the return thesis.
+
+**Semiconductors and memory are not automatically `CYCLICAL`.** The old reflex of tagging every chip name `CYCLICAL` understates the structural-demand leg (AI accelerators, HBM, data-center buildout). When a cyclical base coexists with a dominant structural-growth driver, classify it composite — `GROWTH` primary + `CYCLICAL` secondary — so growth frameworks (Lynch, Fisher) route alongside the cycle-aware overlay (Druckenmiller, Marks), rather than routing the cycle frameworks alone.
 
 **When inference is high-confidence**, set the archetype and narrate:
 
@@ -134,12 +140,12 @@ Archetype determines which investor frameworks are routed to the position. Infer
 
 #### Composite archetype rules
 
-Some companies have two materially different business archetypes — Micron (cyclical DRAM + growth HBM), HBL Engineering (industrial-battery cyclicality + Kavach defence-electronics growth), Reliance (cyclical refining + growth retail/telecom). For these, set both `archetype` (primary) and `archetype_secondary` in `_meta.yaml`, and document the segment composition in `segments`. Monoline (single-archetype) is the default and stays untouched.
+Some companies have two materially different business archetypes — Micron (growth HBM/AI memory + cyclical commodity DRAM), HBL Engineering (industrial-battery cyclicality + Kavach defence-electronics growth), Reliance (cyclical refining + growth retail/telecom). For these, set both `archetype` (primary) and `archetype_secondary` in `_meta.yaml`, and document the segment composition in `segments`. Monoline (single-archetype) is the default and stays untouched.
 
 **When to use composite (`company-kb-builder` decision rule).** A position is composite when **both** of the following are true:
 
 1. Two distinct business segments exist (per filings, investor letters, or annual-report segment reporting).
-2. The two segments resolve to different archetypes per the standard Lynch-mapping table, AND the secondary archetype represents either ≥ 25% of revenue OR is the active thesis driver (e.g., HBM at Micron is < 25% of revenue today but is the equity story).
+2. The two segments resolve to different archetypes per the standard Lynch-mapping table, AND the secondary archetype represents either ≥ 25% of revenue OR is the active thesis driver (e.g., the AI/HBM growth leg is the active equity story at Micron and routes the growth frameworks, while the commodity-DRAM cyclical base routes the cycle overlay).
 
 If only one of the two is true, the position is monoline. Pick the dominant-segment archetype and document the secondary character in `kb.md § Business Model` and `thesis.md § Lynch Category` rationale per `company-kb-builder.md` Rule 3.
 

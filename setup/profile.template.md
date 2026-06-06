@@ -142,10 +142,15 @@ data_access:
 notes: <string>
 # anything else — family obligations, liquidity events, religious views, etc.
 
+observed_notes: []
+# Durable traits Veda learns from passing remarks, each confirmed by the user
+# before writing (Hard Rule #12). Soft context for Stage 1 calibration, not hard
+# rules — hard gates belong in constraints.*. One dated bullet per entry, e.g.:
+#   - "2026-06-04: checks prices daily during drawdowns; prone to anxious selling."
+
 # Novice-only block. Present when experience_mode: novice.
 # These are hard constraints Veda enforces before any recommendation.
 guardrails:
-  max_single_position_pct: 8        # typical novice ceiling; tightens Thorp/Buffett sizing
   block_leverage: true              # no margin recommendations
   block_options: true               # no options (hedging or speculation)
   block_shorts: true                # no short positions

@@ -80,7 +80,7 @@ On acknowledgement, set `disclosure_acknowledged: true` in the profile at save t
 - **Novice** — new to investing. Under 2 years, or have only bought a few things on tips, or have never lived through a market crash in your own portfolio.
 - **Intermediate / Advanced / Professional** — 2+ years, have held through at least one drawdown, have some idea of your style.
 
-*(Why: novices get hard guardrails — no leverage, no options, no concentrated positions — because their stated preferences aren't yet validated by behavior.)*
+*(Why: novices get hard guardrails — no leverage, no options, no lottery bets — because their stated preferences aren't yet validated by behavior.)*
 
 **If Novice → go to Step 3N (novice path).**
 **Otherwise → go to Step 3S (standard path).**
@@ -113,9 +113,9 @@ The novice path is already a "preset" — most fields have safe defaults. Ask on
 | `goal.primary` | `balanced_growth` | Safer than aggressive; adjustable once they know what they want |
 | `risk.stated_tolerance` | `medium` | Novice stated tolerance is unreliable |
 | `risk.calibrated_tolerance` | `medium` | Until they live through a drawdown, treat as medium |
-| `concentration.target.style` | `diversified` | No concentrated bets until earned |
+| `concentration.target.style` | `diversified` | Diversified default until the user states a preference |
 | `concentration.target.position_count` | `20` | Diversified-end default |
-| `concentration.target.max_single_position_pct` | `8` | Hard cap (matches `guardrails.max_single_position_pct`) |
+| `concentration.target.max_single_position_pct` | `10` | User's own target ceiling (diversified default); not a novice hard cap |
 | `concentration.current.*` (written to `assets.md > dynamic.concentration_snapshot`, not to `profile.md`) | Captured during Q7 of Step 3N, or progressively on first portfolio question | Current state may differ from target; Veda won't assume they match |
 | `style_lean.primary` | `passive_plus` | Matches reality: most novices should be mostly indexed |
 | `instruments.long_only_cash` | `true` | All others blocked |
@@ -126,7 +126,7 @@ The novice path is already a "preset" — most fields have safe defaults. Ask on
 | `max_loss_probability` | `15` | Novice ruin-aversion default |
 | `framework_weights` | Novice-weighted | Buffett + Munger + Taleb dominate |
 
-After gathering N1–N6, confirm: *"I'm setting you up in Novice mode. Veda will block leverage, options, and concentrated bets until you graduate. You can see what graduation looks like in your profile under `guardrails.graduation_criteria`. Proceed?"*
+After gathering N1–N6, confirm: *"I'm setting you up in Novice mode. Veda will block leverage, options, and lottery bets until you graduate. You can see what graduation looks like in your profile under `guardrails.graduation_criteria`. Proceed?"*
 
 On confirmation, jump to the "After the interview" section below.
 
