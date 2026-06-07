@@ -1,12 +1,14 @@
 """
 Veda - cohort screen.
 
-Takes a list of companies in one sector (the cohort) and turns it into a ranked
-shortlist. It answers one question: of all the names in this sector, which ones
-clear my rules, and in what order do they look most worth a closer read.
+Takes a list of companies in one sector (the cohort) and keeps the ones that
+clear your rules. It answers one question: of all the names in this sector,
+which ones pass every filter I set, such as a minimum return on capital and a
+maximum debt level?
 
-This is research support, not a buy list. It never proposes a trade. It orders
-names for a person to read.
+This is research support, not a buy list. It never proposes a trade, and it
+does not rank or score the names: the ones that pass are listed alphabetically
+for a person to read.
 
 See internal/screen-schema.md for the full contract.
 
@@ -40,8 +42,8 @@ from typing import Optional
 
 # Repo root is the parent of scripts/.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_SCREEN = REPO_ROOT / "internal" / "screen.json"
-DEFAULT_COHORTS = REPO_ROOT / "internal" / "cohorts"
+DEFAULT_SCREEN = REPO_ROOT / "user-config" / "screen.json"
+DEFAULT_COHORTS = REPO_ROOT / "user-config" / "cohorts"
 DEFAULT_DATA_DIR = REPO_ROOT / "screen" / "data"
 DEFAULT_OUT_DIR = REPO_ROOT / "screen"
 
@@ -59,7 +61,7 @@ DEFAULT_FILTERS = {
 # --- reading the rules file ------------------------------------------------
 
 def load_screen(path: Path) -> dict:
-    """Read internal/screen.json and fill in defaults for anything missing.
+    """Read user-config/screen.json and fill in defaults for anything missing.
 
     The screen is filter-only: a name either clears the filters or it does not.
     Any older `weights` block in the file is ignored.

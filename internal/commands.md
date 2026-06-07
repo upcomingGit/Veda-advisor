@@ -196,13 +196,13 @@ the book is well-run — it reports the number. It does not change the ledger.
 ## `concentration` — caps check
 
 Shows where the book is concentrated today and whether any single name, sector,
-or market is over the limits you set in `internal/caps.json`.
+or market is over the limits you set in `user-config/caps.json`.
 
 **Procedure:**
 
 1. Run `reconcile` (shared note above). Warn on disagreement.
 2. Run `python scripts/concentration.py`. It reads the ledger, each holding's
-   `_meta.yaml` for its sector, and `internal/caps.json` for the limits, fetches
+   `_meta.yaml` for its sector, and `user-config/caps.json` for the limits, fetches
    prices and the exchange rate, writes `concentration/snapshot.json`, and prints
    a table.
 3. Surface the breaches first, then the clean lines. For each breach, state how
@@ -225,12 +225,12 @@ them, within a no-trade band, staying inside your caps.
 **Procedure:**
 
 1. Run `reconcile` (shared note above). Warn on disagreement.
-2. Check `internal/caps.json` has `targets`. If it has none, there is nothing to
+2. Check `user-config/caps.json` has `targets`. If it has none, there is nothing to
    balance toward — offer first-time setup: *"You have no target weights set yet.
    Run `python scripts/rebalance.py --setup` for the plain-language setup, then
    set a target weight per name you want to hold."* Do not invent targets.
 3. Run `python scripts/rebalance.py`. It reads the ledger, `_meta.yaml`, and
-   `internal/caps.json` (targets, caps, band), fetches prices and the exchange
+   `user-config/caps.json` (targets, caps, band), fetches prices and the exchange
    rate, writes `rebalance/proposal.json`, and prints a table.
 4. Surface the proposed buys and sells, the no-trade band that filtered small
    differences, cash shown as its own target line, and any cap that constrained a
@@ -244,7 +244,7 @@ here places or stages a trade. A person reads it, edits it, and only then acts.
 > *"Proposal (toward your targets, 2% band): buy 30 NTPC, sell 5 MSFT. Two names inside the band — no trade. This is a proposal, not an order; nothing is placed. When you act, tell me and I will record it. Source: yfinance, <date>."*
 
 **What it does NOT do.** It never trades. It does not decide your targets — you
-set those in `internal/caps.json`, including the cash target. It does not change
+set those in `user-config/caps.json`, including the cash target. It does not change
 the ledger.
 
 ---
@@ -322,12 +322,12 @@ filter or judge. Research gathers; the Advisor filters.
 
 **Procedure:**
 
-1. Confirm the cohort file exists at `internal/cohorts/<name>.json`. If not, tell
+1. Confirm the cohort file exists at `user-config/cohorts/<name>.json`. If not, tell
    the user to create it (a sector name and the list of tickers, each with the
    archetype label research assigned it). Do not invent the names.
 2. Run `python scripts/research_bridge.py --cohort <name>`. It reads the cohort,
    asks Veda-research for each name (the research repository's location is in
-   `internal/research.json`), maps each answer into `screen/data/<TICKER>.json`,
+   `user-config/research.json`), maps each answer into `screen/data/<TICKER>.json`,
    and prints a summary of what it wrote, which names came back with no valuation
    zone, and which failed.
 3. Surface that summary in plain language: how many names were refreshed, any
@@ -353,7 +353,7 @@ not rank the survivors; it lists names for you to read.
 
 1. Run `python scripts/screen.py --cohort <name>`. It reads the cohort and each
    name's saved research data under `screen/data/`, applies your filters from
-   `internal/screen.json`, writes `screen/<name>.json`, and prints the names that
+   `user-config/screen.json`, writes `screen/<name>.json`, and prints the names that
    cleared the filters.
 2. If names come back as data gaps ("no research data"), tell the user to run
    `refresh cohort <name>` first — the screen does not fetch, gathering is the

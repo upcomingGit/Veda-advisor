@@ -1,0 +1,9 @@
+{
+  "_about": {
+    "what": "Where the Veda-research project sits on your computer, so a cohort refresh can ask it for each company's numbers.",
+    "read_by": "the 'refresh cohort' command (the research bridge).",
+    "written_by": "you, by hand."
+  },
+  "research_repo_path": "../veda-ai-research-team",
+  "python": null
+}

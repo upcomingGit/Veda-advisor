@@ -16,15 +16,15 @@ names in Veda, and only then decides anything.
 
 ## The two files you own
 
-- `internal/cohorts/<sector>.json` — the cohort: the list of names in one
+- `user-config/cohorts/<sector>.json` — the cohort: the list of names in one
   sector, each with the archetype labels research assigned it. You create one of
   these per sector you want to screen. The names and labels come from a sector
   dossier in the research work; the bridge can fill the per-name data for you
   (see "Where the numbers come from" below).
-- `internal/screen.json` — your rules: the hard filters that exclude a name. You
-  edit this file directly. It is your screen, the same way `internal/caps.json`
+- `user-config/screen.json` — your rules: the hard filters that exclude a name. You
+  edit this file directly. It is your screen, the same way `user-config/caps.json`
   is your mandate.
-- `internal/research.json` — where the Veda-research repository lives, so the
+- `user-config/research.json` — where the Veda-research repository lives, so the
   bridge can ask it for each name's fundamentals. A path and an optional Python
   command; the default assumes the two repositories sit side by side.
 
@@ -188,7 +188,7 @@ shown beneath the row, and a `stale` flag. Each excluded row carries the
   sector or build the cohort. That is upstream research work.
 - No buy or sell call. It orders names to read; it never proposes a trade, sizes
   a position, or sets a target. To act on a name, research it in Veda and, if you
-  decide to hold it, set a target in `internal/caps.json`.
+  decide to hold it, set a target in `user-config/caps.json`.
 - No absolute verdict. The score ranks within the cohort, not against the whole
   market. A high score means "best of this list," not "cheap" or "good" on its
   own.

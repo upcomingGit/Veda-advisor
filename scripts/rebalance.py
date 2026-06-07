@@ -54,7 +54,7 @@ from concentration import (
 
 # Repo root is the parent of scripts/.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CAPS = REPO_ROOT / "internal" / "caps.json"
+DEFAULT_CAPS = REPO_ROOT / "user-config" / "caps.json"
 DEFAULT_HOLDINGS = REPO_ROOT / "holdings"
 DEFAULT_OUT = REPO_ROOT / "rebalance" / "proposal.json"
 
@@ -106,7 +106,7 @@ def run_setup(caps_path: Path) -> int:
 
     Every question shows a default in brackets; pressing Enter keeps it. The
     user can also accept all defaults at once. Any target weights already in the
-    file are preserved untouched. Writes internal/caps.json and returns 0.
+    file are preserved untouched. Writes user-config/caps.json and returns 0.
     """
     existing = json.loads(caps_path.read_text(encoding="utf-8")) if caps_path.exists() else {}
 
@@ -162,13 +162,17 @@ def run_setup(caps_path: Path) -> int:
     # Keep any target weights the user already set; start empty otherwise.
     targets = existing.get("target_weights", existing.get("targets", {"india": {}, "us": {}}))
 
-    caps = {
+    caps = {}
+    # Keep the _about header at the top of the file if it is already there.
+    if existing.get("_about") is not None:
+        caps["_about"] = existing["_about"]
+    caps.update({
         "max_per_stock": rules["max_per_stock"],
         "max_per_country": rules["max_per_country"],
         "max_per_sector": rules["max_per_sector"],
         "ignore_drift_below": rules["ignore_drift_below"],
         "target_weights": targets,
-    }
+    })
 
     caps_path.parent.mkdir(parents=True, exist_ok=True)
     caps_path.write_text(json.dumps(caps, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -193,7 +197,7 @@ def run_setup(caps_path: Path) -> int:
 # --- reading targets and the band from the caps file -----------------------
 
 def load_caps_with_targets(path: Path) -> dict:
-    """Read internal/caps.json and fill in the rebalancing defaults if absent."""
+    """Read user-config/caps.json and fill in the rebalancing defaults if absent."""
     caps = load_caps(path)
     caps.setdefault("target_weights", {})
     caps.setdefault("ignore_drift_below", 0.0)
@@ -341,7 +345,7 @@ def build_proposal(
             item.update(target=None, target_weight=None, action="hold",
                         trade_shares=0.0, trade_inr=0.0, reason="not set in plan file")
             data_gaps.append(
-                f"{item['ticker']} ({item['market']}): missing target weight in internal/caps.json"
+                f"{item['ticker']} ({item['market']}): missing target weight in user-config/caps.json"
             )
             continue
 
@@ -455,7 +459,7 @@ def build_proposal(
         "untracked_targets": untracked_targets,
         "scope_note": (
             "This rebalance covers the stocks you hold, plus any stock you have set a "
-            "target for in internal/caps.json (including watchlist names you want to "
+            "target for in user-config/caps.json (including watchlist names you want to "
             "start buying). It does not pick stocks for you - decide what to track and "
             "what the target should be with Veda first."
         ),
@@ -575,7 +579,7 @@ def format_report(report: dict) -> str:
 
     if report["data_gaps"]:
         lines.append("")
-        lines.append("These stocks are in your portfolio but missing from internal/caps.json:")
+        lines.append("These stocks are in your portfolio but missing from user-config/caps.json:")
         lines.append("  add a target weight for each one")
         for gap in report["data_gaps"]:
             lines.append(f"  {gap}")
@@ -588,7 +592,7 @@ def format_report(report: dict) -> str:
 
     lines.append("")
     lines.append("Scope: we rebalance the stocks you hold, plus any stock you've set a target")
-    lines.append("  for in internal/caps.json - including watchlist names you want to start")
+    lines.append("  for in user-config/caps.json - including watchlist names you want to start")
     lines.append("  buying. We don't pick stocks for you. To add a new name, ask Veda to help")
     lines.append("  research it and decide a target, then set that target here.")
 

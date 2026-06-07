@@ -6,7 +6,7 @@ set. It answers one question: is any single name, sector, or market larger than
 the mandate allows, and if so, by how much.
 
 This is Module 3. It reads Module 1 (the ledger) for what is held, reads each
-holding's `_meta.yaml` for its sector, reads `internal/caps.json` for the
+holding's `_meta.yaml` for its sector, reads `user-config/caps.json` for the
 limits, and fetches current prices and the exchange rate from yfinance. It
 writes one snapshot file and prints a readable table.
 
@@ -45,11 +45,11 @@ the same convention the NAV pipeline uses.
   ledger holds but the map does not cover gets the sector `unknown` and is
   listed as a data gap. The sector is never guessed from a folder name or from
   prose.
-- **Caps.** Read from `internal/caps.json`. See the schema below.
+- **Caps.** Read from `user-config/caps.json`. See the schema below.
 
 ## The caps file
 
-`internal/caps.json` holds the limits, as fractions of the total book value
+`user-config/caps.json` holds the limits, as fractions of the total book value
 (0.10 means ten percent). You fill in the numbers; they are your mandate, not a
 suggestion from the tool.
 

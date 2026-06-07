@@ -15,7 +15,7 @@ zones research worked out and the thresholds behind each one, so you can see
 exactly how a zone was reached.
 
 How it asks: it runs Veda-research's fundamentals command once per name, in the
-research folder you point it at (internal/research.json, or --research-path).
+research folder you point it at (user-config/research.json, or --research-path).
 Each name in the cohort names its market plainly - "india" or "us" - next to a
 bare ticker (INDIGO, not INDIGO.NS), the same way holdings do; the bridge
 forwards that market so research fetches from the right place. When a cohort
@@ -50,11 +50,11 @@ from typing import Optional
 
 # Repo root is the parent of scripts/.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_COHORTS = REPO_ROOT / "internal" / "cohorts"
+DEFAULT_COHORTS = REPO_ROOT / "user-config" / "cohorts"
 DEFAULT_DATA_DIR = REPO_ROOT / "screen" / "data"
-DEFAULT_RESEARCH_CONFIG = REPO_ROOT / "internal" / "research.json"
+DEFAULT_RESEARCH_CONFIG = REPO_ROOT / "user-config" / "research.json"
 
-# Where the Veda-research repo sits if internal/research.json does not say.
+# Where the Veda-research repo sits if user-config/research.json does not say.
 # The two repos are kept side by side, so the sibling folder is the default.
 DEFAULT_RESEARCH_PATH = "../veda-ai-research-team"
 
@@ -286,7 +286,7 @@ def _zone_gap_note(data: dict) -> Optional[str]:
 # --- config (where the research folder is) ---------------------------------
 
 def load_research_config(path: Path) -> dict:
-    """Read internal/research.json, falling back to the sibling folder default."""
+    """Read user-config/research.json, falling back to the sibling folder default."""
     config = {}
     if path.exists():
         config = json.loads(path.read_text(encoding="utf-8"))
@@ -348,7 +348,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     python_cmd = config["python"]
     if not (repo_path / FETCH_SCRIPT).exists():
         print(f"research fetch not found at {repo_path / FETCH_SCRIPT}", file=sys.stderr)
-        print("set the research folder in internal/research.json or pass --research-path",
+        print("set the research folder in user-config/research.json or pass --research-path",
               file=sys.stderr)
         return 1
 

@@ -6,12 +6,12 @@ one question: to reach the weights I want, what should I buy and sell, and how
 much.
 
 This is Module 4. It reads Module 1 (the ledger) for what is held, reads each
-holding's `_meta.yaml` for its sector, reads `internal/caps.json` for the
+holding's `_meta.yaml` for its sector, reads `user-config/caps.json` for the
 targets, the caps, and the no-trade band, and fetches current prices and the
 exchange rate from yfinance. It writes one proposal file and prints a readable
 table.
 
-`internal/caps.json` is your rebalance plan file. You edit this file directly.
+`user-config/caps.json` is your rebalance plan file. You edit this file directly.
 It stores three things: your target weights (`target_weights`), your limits
 (`max_per_stock`, `max_per_sector`, `max_per_country`), and your
 ignore-small-difference setting (`ignore_drift_below`).
@@ -28,7 +28,7 @@ It asks a few plain-language questions (most in one stock, most in Indian
 stocks, most in US stocks, most in one sector, and the ignore-small-differences
 band). Every question shows a sensible default in brackets — press Enter to keep
 it, or type a number like `10`. You can also accept all the defaults at once
-without answering anything. The setup writes `internal/caps.json` for you and
+without answering anything. The setup writes `user-config/caps.json` for you and
 keeps any target weights you have already set. You can run it again any time to
 change the rules.
 
@@ -64,7 +64,7 @@ assuming the leftover was intended.
 
 ## The targets and band in the caps file
 
-`internal/caps.json` carries the targets and the no-trade band alongside the
+`user-config/caps.json` carries the targets and the no-trade band alongside the
 caps:
 
 ```json
@@ -106,7 +106,7 @@ names automatically, so an existing file keeps working unchanged.
   bonuses rescale, cash flows move cash. Shares of a name are aggregated across
   lots. The split and bonus factors are the same functions the NAV pipeline
   uses, so the modules cannot drift apart on that math.
-- **Targets, caps, band.** Read from `internal/caps.json`.
+- **Targets, caps, band.** Read from `user-config/caps.json`.
 - **Sector.** Read from each holding's `_meta.yaml`, the same scan the
   concentration view uses, so the proposal can check each target against the
   sector cap. A holding whose `_meta.yaml` gives no sector is listed as a data
@@ -195,7 +195,7 @@ not sum to 100%.
 
 - No name picking. It does not search the wider market for ideas. It rebalances
   what you already hold, plus any stock you have set a target for in
-  `internal/caps.json` - including watchlist names you do not own yet. A target
+  `user-config/caps.json` - including watchlist names you do not own yet. A target
   set for a watchlist name shows up as a proposed new-position buy. Deciding
   what to track and what the target should be is a research question: ask Veda
   to help, then set the target here.

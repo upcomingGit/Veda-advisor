@@ -2,7 +2,7 @@
 Veda - concentration and caps view.
 
 Turns the transaction ledger into a snapshot of where the book is concentrated
-today and checks each position against the limits in internal/caps.json.
+today and checks each position against the limits in user-config/caps.json.
 
 See internal/concentration-schema.md for the full contract.
 
@@ -48,7 +48,7 @@ from nav import (
 
 # Repo root is the parent of scripts/.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CAPS = REPO_ROOT / "internal" / "caps.json"
+DEFAULT_CAPS = REPO_ROOT / "user-config" / "caps.json"
 DEFAULT_HOLDINGS = REPO_ROOT / "holdings"
 DEFAULT_OUT = REPO_ROOT / "concentration" / "snapshot.json"
 
@@ -123,7 +123,7 @@ _LEGACY_CAP_KEYS = {
 
 
 def load_caps(path: Path) -> dict:
-    """Read internal/caps.json. Missing countries / sectors mean no cap there.
+    """Read user-config/caps.json. Missing countries / sectors mean no cap there.
 
     The field names are plain-language: max_per_stock, max_per_country,
     max_per_sector, ignore_drift_below, target_weights. Older files that used the

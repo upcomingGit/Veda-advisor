@@ -1,0 +1,12 @@
+{
+  "_about": {
+    "what": "One sector's list of companies to screen, each with the market it trades in and the archetype label research gave it.",
+    "read_by": "the 'refresh cohort' and 'screen' commands.",
+    "written_by": "you, by hand. The names come from a Veda-research sector dossier, but you have to manually input there here."
+  },
+  "sector": "airlines-india",
+  "names": [
+    { "ticker": "INDIGO", "market": "india", "primary": "GROWTH", "secondary": "CYCLICAL" },
+    { "ticker": "SPICEJET", "market": "india", "primary": "TURNAROUND" }
+  ]
+}
