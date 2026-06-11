@@ -1,6 +1,6 @@
 # John Templeton — Maximum Pessimism; Buy When No One Else Will; Go Global
 
-> *"The time of maximum pessimism is the best time to buy, and the time of maximum optimism is the best time to sell."* — Sir John Templeton, widely quoted; attributed to him across his interviews and in *Investing the Templeton Way* (Lauren C. Templeton and Scott Phillips, 2008), his authorized primer.
+> Templeton's core rule: buy when pessimism is extreme and sell when optimism is extreme (summarized in *Investing the Templeton Way*, 2008, and Templeton interviews).
 
 ## When this framework applies
 
@@ -10,7 +10,7 @@ Templeton is the first framework Veda reaches for on **`crisis` questions**, on 
 
 ### 1. Buy at the point of maximum pessimism
 
-The canonical rule, stated and restated across sixty years of Templeton interviews. *"People are always asking me where the outlook is good, but that's the wrong question. The right question is: Where is the outlook most miserable?"* (Templeton, attributed in *Investing the Templeton Way*.) The operational logic: at the point of maximum pessimism, forced sellers dominate price-setting and the asset class or country trades below *any* reasonable intrinsic-value estimate — not because the businesses have failed, but because the marginal holder is compelled to sell. The investor with capital and discipline at that moment is buying from forced sellers, which is where outsized long-horizon returns are made. The rule is not *"buy falling knives"* — it is *"buy when valuation has decoupled from fundamentals because of forced selling, and hold through the normalization"*.
+The canonical rule, repeated through Templeton's interviews and later summaries, is to look where outlook is most miserable rather than where headlines feel most comfortable. The operational logic: at the point of maximum pessimism, forced sellers dominate price-setting and the asset class or country trades below *any* reasonable intrinsic-value estimate — not because the businesses have failed, but because the marginal holder is compelled to sell. The investor with capital and discipline at that moment is buying from forced sellers, which is where outsized long-horizon returns are made. The rule is not *"buy falling knives"* — it is *"buy when valuation has decoupled from fundamentals because of forced selling, and hold through the normalization"*.
 
 ### 2. Maximum pessimism must be *identifiable* — not a feel
 
@@ -28,7 +28,7 @@ Templeton did not buy *everything* at the point of maximum pessimism — he boug
 
 ### 4. Global mandate — home-country bias is a cost, not a preference
 
-> *"If you want to have a better performance than the crowd, you must do things differently from the crowd."* — Templeton, widely quoted.
+Templeton's contrarian point is straightforward: better-than-crowd results usually require behavior that differs from the crowd.
 
 Templeton's 1954 Templeton Growth Fund was one of the earliest explicitly-global mutual funds. His argument: the home-country bias most investors carry is an uncompensated risk — they accept the same risk as a global investor but miss the diversification benefit and the occasional opportunity to buy a country at maximum pessimism while their own market is expensive. The operational rule for Veda: on `portfolio` questions where the user's `markets` field is narrow (e.g., India-only or US-only), surface the home-country-bias cost explicitly — not as a prescription to go global, but as a named cost so the user's decision is informed. For `buy` decisions, the opportunity set under consideration is global; rejecting a globally-cheaper-on-fundamentals name in favor of a locally-familiar-but-expensive name is a Templeton-flagged error.
 
@@ -140,5 +140,5 @@ frameworks_applied:
 - Lauren C. Templeton and Scott Phillips. *Investing the Templeton Way: The Market-Beating Strategies of Value Investing's Legendary Bargain Hunter*. McGraw-Hill, 2008 — the authorized primer, primary source for the rules in documented form.
 - John M. Templeton and James Ellison. *The Templeton Plan: 21 Steps to Personal Success and Real Happiness*. Templeton Foundation Press, 1987 (rev. 2004) — general principles.
 - William Proctor. *The Templeton Touch*. Doubleday, 1983 — contemporary biography with documented trade examples (post-WWII Europe, Japan, etc.).
-- *Forbes*, *BusinessWeek*, and *Wall Street Journal* profiles and interviews with Templeton, 1960s–2000s — secondary sources for specific contrarian calls; cite individually when used.
+- *Forbes*, *BusinessWeek*, and *Wall Street Journal* profiles/interviews with Templeton, 1960s–2000s — secondary sources; cite exact article/date when used.
 - Templeton Growth Fund prospectuses and annual reports, 1954 onward — primary source for the documented global-mandate implementation.

@@ -1,6 +1,6 @@
 # Edward Thorp — Size Positions to the Edge; Avoid Ruin at All Costs
 
-> *"The Kelly criterion gives the fraction of your bankroll to bet that maximizes the long-term growth rate, subject to the constraint that you never go broke."* — Edward O. Thorp, *A Man for All Markets* (2017), ch. on the Kelly criterion; restated across his 1969 and 2006 Kelly-criterion papers.
+> Thorp's core sizing rule: use Kelly-style sizing to maximize long-run growth while avoiding ruin (*A Man for All Markets*, 2017; see also Thorp 1969 and 2006 papers).
 
 ## When this framework applies
 
@@ -28,7 +28,7 @@ Before Kelly runs at all, the user must never stake an amount that, lost, would 
 
 ### 4. Probability × odds, not narrative
 
-> *"A mathematical edge, however small, is all that matters. Without it, you're just gambling no matter how you dress it up."* — Thorp, paraphrased throughout *A Man for All Markets* and his Wilmott Magazine columns.
+Thorp's repeated point is that position sizing only makes sense when a real edge exists; without edge, the activity is speculation rather than disciplined investing.
 
 A Kelly fraction built on narrative-derived probabilities is not Kelly — it is Kelly's *form* with retail *inputs*. The discipline is to anchor *p* to Stage 4's base rate (turnarounds ~25%, not 60%) and to anchor *b* to the scenario ratios produced in Stage 8 (upside/downside return ratios, computed by `scripts/calc.py ev`). Veda's operational rule: **Kelly inputs must be traceable.** If the user insists on *p* = 0.70 for a turnaround against a 25% base rate, the `probability_justification` must document the *specific* reason the reference class does not apply — and absent that, the base rate stands and Kelly is recomputed with it. Narrative-inflated probabilities systematically produce over-sized positions; this is the single most common Kelly misuse.
 

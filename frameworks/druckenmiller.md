@@ -22,7 +22,7 @@ When conviction is highest — regime, fundamentals, and price-action aligned �
 
 ### 3. First loss is the best loss — cut fast when wrong
 
-> *"Never, ever invest in the present... your job is to imagine the world as it's going to be in 18-24 months from now. ... If you are wrong, admit it quickly and move on."* — Druckenmiller, various interviews (Lost Tree 2015; Bloomberg Market Makers 2013; Real Vision).
+Druckenmiller's repeated message is consistent: invest based on where the world is likely to be in 18–24 months, and cut quickly when new facts break the thesis (Lost Tree 2015; Bloomberg *Market Makers* 2013; later interviews).
 
 The flip side of *"courage to be a pig"* is that the big position is only tolerable because Druckenmiller cuts fast when the thesis is broken. He does not ladder out; he does not hedge around; he does not wait for the position to prove him wrong in the final, most painful increment. The rule is *first loss is the best loss*: when new information invalidates the thesis, the exit is today, in full, and the regret of a bounce back is preferable to the regret of a larger drawdown that the user rationalizes through. This is the discipline that lets Druckenmiller run concentrated exposure: the known short tail on the downside is what makes the long upside tolerable.
 
@@ -120,6 +120,6 @@ frameworks_applied:
 
 - Jack D. Schwager. *The New Market Wizards: Conversations with America's Top Traders*. HarperBusiness, 1992 — Druckenmiller chapter, primary source for *"courage to be a pig"* and the Soros-influenced risk-management rules.
 - Stanley Druckenmiller. Lost Tree Club speech, Palm Beach, Florida, January 18, 2015 — canonical statement on liquidity and central banks driving markets.
-- Stanley Druckenmiller. Bloomberg *Market Makers* interviews (2013–); *Real Vision* interviews (2018–); *Sohn Investment Conference* presentations (multiple years) — documented contemporary applications of the framework.
+- Stanley Druckenmiller. Bloomberg *Market Makers* (2013), later interviews and conference talks — use exact interview/date when citing a specific sentence.
 - Stanley Druckenmiller. Norges Bank Investment Management "In Good Company" podcast, 2024 — recent statement of the macro / liquidity / 18–24-month-horizon discipline.
 - George Soros. *The Alchemy of Finance*. Simon & Schuster, 1987 — foundational reflexivity text that informs Druckenmiller's approach to price action as information.

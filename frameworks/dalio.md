@@ -1,6 +1,6 @@
 # Ray Dalio — Understand the Machine, Diversify Across Uncorrelated Return Streams
 
-> *"The Holy Grail of investing is to find 15 or 20 good, uncorrelated return streams. If you can do that, you can reduce your risk by about 80% without reducing your expected return."* — Ray Dalio, *Principles* (2017), and restated across Bridgewater Associates investor communications and his *Big Debt Crises* book.
+> *"The Holy Grail of investing is to find 15 or 20 good, uncorrelated return streams. If you can do that, you can reduce your risk by about 80% without reducing your expected return."* — Ray Dalio, *Principles* (2017).
 
 ## When this framework applies
 
@@ -141,5 +141,5 @@ frameworks_applied:
 - Ray Dalio. *Principles for Dealing with the Changing World Order*. Avid Reader Press, 2021 — long-arc debt, currency, and empire cycles.
 - Ray Dalio. "How the Economic Machine Works" (30-minute video), 2013; companion essay at principles.com — compressed cause-and-effect of the machine.
 - Bridgewater Associates. "Engineering Targeted Returns and Risks." Bridgewater white paper, 2011 — mathematical foundations of risk parity and the Holy Grail argument.
-- Bridgewater Associates. "The All Weather Story." Internal/external publication, dated from 1996 launch of the strategy, variously reprinted.
-- Bridgewater *Daily Observations* (internal client letters, 1970s–present) — the operational record; excerpts periodically appear in public writing.
+- Bridgewater Associates. "The All Weather Story." Bridgewater firm note on the strategy's design and history.
+- Bridgewater *Daily Observations* (internal client letters, 1970s–present) — operational context; cite specific dated letters when used.

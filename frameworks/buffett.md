@@ -26,7 +26,7 @@ Graham's parable, restated by Buffett in the 1987 and 1997 Letters: the market i
 
 ### 5. Concentrated conviction — the fat pitch
 
-When circle-of-competence, moat, and margin-of-safety all line up, **size up**. "Diversification is protection against ignorance. It makes little sense for those who know what they are doing." (Widely documented in interviews; echoed in the 1993 Letter on focus investing.) Buffett's own record is concentrated — at times 40%+ of Berkshire's equity portfolio has been in 1–2 names (Coca-Cola post-1988, Apple post-2016). The corollary is that **if the three gates do not all pass, the answer is cash or pass — not a small speculative position**. Buffett's "20 punches on a lifetime punchcard" metaphor (repeated across Berkshire annual meetings and letters; see *Essays of Warren Buffett* for compiled references) is the sizing discipline: act only on the rare pitches that clear every gate.
+When circle-of-competence, moat, and margin-of-safety all line up, **size up**. Across Berkshire letters and annual meetings, Buffett consistently defends focused portfolios for investors with real edge and discipline. Buffett's own record is concentrated — at times 40%+ of Berkshire's equity portfolio has been in 1–2 names (Coca-Cola post-1988, Apple post-2016). The corollary is that **if the three gates do not all pass, the answer is cash or pass — not a small speculative position**. Buffett's "20 punches on a lifetime punchcard" metaphor (repeated across Berkshire annual meetings and letters; see *Essays of Warren Buffett* for compiled references) is the sizing discipline: act only on the rare pitches that clear every gate.
 
 ## Decision rules Veda applies
 
@@ -57,7 +57,7 @@ When circle-of-competence, moat, and margin-of-safety all line up, **size up**. 
 
 1. **Concentrated-conviction allowance.** When Buffett's three gates (competence + moat + MoS) all pass, 10–25% single-position sizes are coherent. Above 25%, even Buffett's record shows pressure to manage the concentration (Berkshire trimmed its Apple stake materially in 2024; Buffett publicly cited tax considerations, and position-size management is a second plausible factor the filings are consistent with). Use this as the outside boundary, not the target.
 2. **Defer the actual math to Thorp.** Buffett informs *how much conviction justifies how large a position* (via the fat-pitch gate); Thorp / Kelly produces the number. Route `python scripts/calc.py kelly --p-win <x> --odds <y>` for the sizing math. Do not size by feel.
-3. **No leverage.** "If you're smart you don't need it; if you're dumb you've no business using it." (Buffett, widely documented across interviews and Berkshire annual meetings; Berkshire's ten-year Protégé Partners bet, settled in 2017, is the long-form illustration that leverage- and fee-dependent strategies underperformed the index.) Veda enforces this for any profile; for novices it is already a guardrail.
+3. **No leverage.** Buffett repeatedly warns that leverage can destroy otherwise sound investors, and Berkshire's ten-year Protégé Partners bet (settled in 2017) reinforces his long-run preference for simple, low-cost compounding over leverage- and fee-heavy structures. Veda enforces this for any profile; for novices it is already a guardrail.
 
 ## What Buffett does NOT cover (explicit boundary)
 

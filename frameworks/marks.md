@@ -30,7 +30,7 @@ Credit cycles, economic cycles, investor-psychology cycles, and asset-class-flow
 
 ### 5. Defense first, offense second
 
-> *"If we avoid the losers, the winners take care of themselves."* — Marks memo, various; attributed by Marks himself to Oaktree's founding philosophy, echoed in *The Most Important Thing* ch. 9.
+Marks's recurring defense-first principle is simple: avoid the large losers, and long-run results improve materially. This shows up repeatedly in Oaktree memos and is echoed in *The Most Important Thing* ch. 9.
 
 Asymmetric arithmetic: a 50% loss requires a 100% gain to recover. Marks's observed edge at Oaktree in distressed credit was not superior return in good years — peers matched those — but materially smaller drawdowns in bad years, which compounded over decades into the absolute-return advantage. The rule: the defensive question (*"what can go wrong, and am I compensated for it?"*) runs before the offensive question (*"what can go right?"*), every time. Veda's Stage 7b devil's-advocate pass is Marks's defensive question in procedural form.
 

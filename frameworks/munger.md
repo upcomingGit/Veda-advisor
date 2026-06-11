@@ -26,7 +26,7 @@ The long-run compounding result comes from **not making big mistakes**, not from
 
 ### 4. Sit on your ass investing — patience over activity
 
-> *"The big money is not in the buying or the selling, but in the waiting."* — Munger, attributed widely; restated across Daily Journal Corporation annual meetings and *Poor Charlie's Almanack*.
+Munger repeatedly emphasizes patience over activity: most returns come from holding a few good decisions for a long time, not from constant trading.
 
 Compounding is destroyed by trading. A small number of great decisions, held for decades, produces the bulk of lifetime returns. The corollary is that **action for action's sake is a cost, not a virtue.** Most of the time, the correct answer is `hold` or `wait` — and users trained by financial media to expect constant moves will interpret that as non-responsive. It is the response. When Veda's three-framework synthesis produces `hold`, the user's urge to override it is the bias — that is when Munger's principle fires hardest.
 
@@ -124,5 +124,5 @@ frameworks_applied:
 - Charlie Munger, "The Psychology of Human Misjudgment", Harvard Law School, 1995 (revised version in *Poor Charlie's Almanack*).
 - Charlie Munger, "Academic Economics: Strengths and Faults After Considering Interdisciplinary Needs", UC Santa Barbara, October 2003.
 - Charlie Munger, USC Law School commencement address, May 13, 2007 — source of *"All I want to know is where I'm going to die, so I'll never go there"* and the inversion discipline.
-- Daily Journal Corporation Annual Meeting transcripts — the "sit on your ass", "big money in the waiting", and "too hard pile" remarks are documented across multiple meetings; the Q&A format became a prominent Munger forum in the 2010s and ran through 2023.
+- Daily Journal Corporation Annual Meeting transcripts — cite exact year/transcript when using specific wording from these Q&A sessions.
 - Berkshire Hathaway Annual Meeting transcripts and Buffett's Chairman's Letters (Munger as vice-chairman from 1978) — Munger's views on turnarounds, focus investing, and the "too hard" pile are embedded throughout; see the 1979, 1993, and later-era letters in particular.
