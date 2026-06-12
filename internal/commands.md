@@ -148,10 +148,10 @@ If any individual subagent invocation returns `status: insufficient_input` or fa
 
 ## The ledger-based views — a shared note
 
-`performance`, `concentration`, and `rebalance` all read the transaction ledger
-(`ledger/transactions.jsonl`), not `assets.md`. `assets.md` stays the file the
-chat trusts for current positions; these three views are the ledger's job
-because they need the dated history (`performance`) or the same replay math
+`performance`, `concentration`, `rebalance`, and `tax` all read the transaction
+ledger (`ledger/transactions.jsonl`), not `assets.md`. `assets.md` stays the file
+the chat trusts for current positions; these views are the ledger's job because
+they need the dated history (`performance`, `tax`) or the same replay math
 (`concentration`, `rebalance`).
 
 **Run `reconcile` first, every time.** It is fast and offline. If it exits
@@ -163,7 +163,7 @@ showing the result, then still show it:
 **If the ledger is missing or empty,** these views have nothing to compute. Say
 so plainly and point to recording trades:
 
-> *"Your ledger is empty, so there is no performance/concentration/proposal to show yet. Tell me your trades as they happen (I bought / I sold ...) and I will record them, or run `python scripts/ledger.py add ...` yourself. See internal/ledger-schema.md."*
+> *"Your ledger is empty, so there is no performance/concentration/proposal/tax position to show yet. Tell me your trades as they happen (I bought / I sold ...) and I will record them, or run `python scripts/ledger.py add ...` yourself. See internal/ledger-schema.md."*
 
 **Code execution.** These commands run a Python script. Where you can execute
 code, run it and paste the readable output. Where you cannot, emit the exact
@@ -272,6 +272,81 @@ This is also the guard the three ledger-based views run before showing a number.
 **What it does NOT do.** It does not fix anything — it reports. It does not
 compare values or weights, only share counts. Cash is not reconciled — it is a
 line-item in `assets.md`, shown as a position by `concentration` and `performance`.
+
+---
+
+## `tax` — capital-gains position and optimization
+
+Shows the book's Indian capital-gains tax three ways: what is realized this
+financial year and the tax on it, what is unrealized in each open lot with how
+many days until it turns long-term, and the moves that would lower the tax
+out-go. The user is an Indian resident, so both the India and US sleeves are
+taxed under Indian rules.
+
+This is the one ledger-based view that also advises on the user's own book —
+which loss to harvest, which lot to hold for the long-term rate — with the rupee
+saving shown. It still files nothing and places no trade, and every answer
+carries the "not a chartered accountant — verify before acting or filing" line.
+The scope carve-out is recorded in [SKILL.md](../SKILL.md) Hard Rule #7 and Stage 0.
+
+**Procedure:**
+
+1. Run `reconcile` (shared note above). Warn on disagreement.
+2. Run `python scripts/tax.py`. It reads the ledger and the dated rates in
+   `internal/tax-rules.yaml`, fetches prices and the exchange rate, writes
+   `tax/tax-report.json`, and prints a summary. Add `--fy 2025-2026` to pick a
+   financial year (default: the year that contains today), and `--slab-rate 0.30`
+   to tax US short-term gains (see below).
+3. Surface, in plain language: the realized tax for the year and what set-off
+   saved; any loss carried forward (a short-term loss carries against later
+   short-term or long-term gains, a long-term loss against long-term gains only,
+   for up to 8 years if the return is filed on time); the harvest suggestions
+   ranked by rupees saved; and any lot a few days from the long-term rate. Name
+   the headline basis as FIFO (oldest lot first); if the named-lot cross-check
+   disagrees, say so. Full contract in [tax-schema.md](tax-schema.md).
+
+> *"FY 2026-2027 realized tax: ₹1,46,875 (long-term, after the ₹1.25 lakh exemption). One harvest worth ₹2,500: booking your ABC loss (₹20,000) offsets that gain. NTPC turns long-term in 52 days — selling after that saves ₹X. This is awareness, not a CA's filing — verify before acting. Source: yfinance, <date>."*
+
+**A US short-term gain needs your slab rate.** US short-term gains are taxed at
+the user's income-tax slab, which the book does not hold. Without `--slab-rate`,
+the report shows the gain but leaves its tax out and says so. Ask the user for
+their marginal rate when a US short-term gain is present.
+
+**What it does NOT do.** It does not file returns, place trades, or replace a
+chartered accountant — the rates are sourced but not CA-signed-off. It does not
+change the ledger or `assets.md`.
+
+---
+
+## review decisions — past calls vs today's prices
+
+Reads the decision logs the pipeline writes and prints a plain scoreboard of how
+each past call has aged: the date, ticker, action, the price recorded when the
+decision was made, the price today, the percent change since, and how many days
+have passed. Journal entries that did not write a per-ticker file (portfolio-wide
+reviews, sell screens) are listed by date and headline, without a price check.
+
+This is facts only. It does not say whether a thesis played out or whether a kill
+criterion fired — that reading is the framework judgment the chat pipeline already
+does, and the planned `decision-reviewer` subagent will formalise. The command
+lays out the scoreboard; you (or the chat) make the call.
+
+**Procedure:**
+
+1. Run `python scripts/review_decisions.py`. It reads each per-ticker call from
+   `holdings/<slug>/decisions/*.md` (and the holding's `_meta.yaml` for the ticker
+   and market), reads `journal.md` for the rest, fetches the latest price per
+   ticker from yfinance, and prints the report. Add `--as-of YYYY-MM-DD` to count
+   days held against a fixed date instead of today.
+2. Show the table as-is. If the user wants a judgment on any line, read that
+   decision and apply the frameworks in chat — do not bake a verdict into the
+   command.
+
+> *"NTPC: hold on 2026-04-27 at 456.00 → 351.45 today (-22.9%, 45 days). WONDERLA: hold on 2026-05-04 at 527.40 → 470.55 (-10.8%, 38 days). Plus 11 journal entries (portfolio reviews, sell screens) listed without a price check. Want me to judge any of these against its thesis?"*
+
+**What it does NOT do.** It does not grade a thesis, fire a kill criterion, place
+a trade, or change any file. A price it cannot fetch shows as `n/a`; a decision
+file with no recorded price still lists, with `n/a` in the price-then column.
 
 ---
 

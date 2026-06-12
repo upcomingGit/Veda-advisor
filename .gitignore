@@ -240,5 +240,7 @@ nav/
 concentration/
 # The rebalance proposal — target-weight trades, derived from the ledger and caps.
 rebalance/
+# The capital-gains tax report — realized/unrealized gains and the tax position, derived from the ledger.
+tax/
 # The cohort screen results — ranked research candidates, derived from saved fundamentals.
 screen/

@@ -1,0 +1,54 @@
+# Indian capital-gains rules used by scripts/tax.py.
+#
+# The user is an Indian resident, so BOTH the India sleeve and the US sleeve
+# are taxed under Indian rules. There is one tax law to encode.
+#
+# Sourced from current CA-authored material (ClearTax, 2026) reflecting the
+# post-23-July-2024 regime. These are the working numbers. They are NOT
+# CA-signed-off: verify against a current source and a CA before relying on
+# them to file. No grandfathering and no indexation are encoded here -- both
+# are out of scope by design (see internal/tax-schema.md).
+#
+# This file is read by scripts/tax.py with a small stdlib parser (no PyYAML),
+# matching the portability discipline of scripts/validate_assumptions.py. Keep
+# the shape flat: one block per regime, then a `general` block. One row per
+# regime, dated by `effective_from`. The engine refuses to rate a sale dated
+# before a regime's `effective_from` rather than guess an older rate.
+#
+# Field meanings (per regime):
+#   effective_from          date this row's rates start applying (YYYY-MM-DD)
+#   long_term_months        held strictly MORE than this many months => long-term
+#   short_term_rate         flat short-term rate as a fraction, or null if at slab
+#   short_term_at_slab      true if short-term gains are taxed at the income slab
+#   long_term_rate          flat long-term rate as a fraction
+#   long_term_exemption_inr long-term gain free of tax each financial year (INR)
+#   source                  where the numbers came from
+
+india_listed_equity:
+  effective_from: 2024-07-23
+  long_term_months: 12
+  short_term_rate: 0.20
+  short_term_at_slab: false
+  long_term_rate: 0.125
+  long_term_exemption_inr: 125000
+  source: "ClearTax 2026, Sections 111A / 112A (post-23-Jul-2024); STT-paid listed equity"
+
+foreign_equity_resident:
+  effective_from: 2024-07-23
+  long_term_months: 24
+  short_term_rate: null
+  short_term_at_slab: true
+  long_term_rate: 0.125
+  long_term_exemption_inr: 0
+  source: "ClearTax 2026, Section 112 (post-23-Jul-2024); short-term at slab - VERIFY with CA"
+
+# Rules shared across both regimes.
+#   carry_forward_years      capital losses may be carried this many assessment years
+#   carry_forward_on_time    true if carry-forward needs the return filed by the due date
+# Set-off matrix (Section 74) is fixed law and lives in scripts/tax.py, not here:
+#   a short-term loss offsets short-term AND long-term gains;
+#   a long-term loss offsets long-term gains only.
+general:
+  carry_forward_years: 8
+  carry_forward_on_time: true
+  source: "ClearTax 2026, Section 74"
