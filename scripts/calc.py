@@ -210,6 +210,85 @@ def pct_of(part: float, whole: float) -> float:
     return (part / whole) * 100.0
 
 
+def iron_condor(
+    short_put: float,
+    long_put: float,
+    short_call: float,
+    long_call: float,
+    put_credit: float,
+    put_debit: float,
+    call_credit: float,
+    call_debit: float,
+    lot_size: int,
+    num_lots: int = 1,
+) -> dict[str, float]:
+    """Defined-risk iron-condor economics (per-unit points in, rupees out).
+
+    Plain-English version
+    ---------------------
+    An iron condor SELLS one out-of-the-money put and one OTM call to collect
+    premium, and BUYS a further-OTM put and call as "wings" that cap the loss.
+    You keep the whole net premium if the underlying finishes between the two
+    strikes you sold. Your loss is capped no matter how far it gaps, because the
+    wings you bought pay you back beyond them:
+
+        loss if it crashes = (put_wing  - net_credit) x lot   (capped)
+        loss if it moons   = (call_wing - net_credit) x lot   (capped)
+        keep the credit     if short_put < settlement < short_call
+
+    All premium and strike inputs are index POINTS (per unit); rupee figures are
+    points x lot_size x num_lots. Premiums must be user- or source-supplied from
+    a live option chain per SKILL.md Hard Rule #5/#9 -- this function fetches
+    nothing and invents no premium.
+
+    Sign convention: credits are amounts RECEIVED (positive), debits are amounts
+    PAID (positive); net_credit = (credits) - (debits).
+
+    Raises ValueError on malformed structures (bad strike order, or a net credit
+    that meets or exceeds the wider wing, which implies a risk-free arbitrage and
+    is almost always a misread chain).
+    """
+    if not (long_put < short_put < short_call < long_call):
+        raise ValueError(
+            "strikes must satisfy long_put < short_put < short_call < long_call "
+            f"(got {long_put}, {short_put}, {short_call}, {long_call})"
+        )
+    for name, v in (
+        ("put_credit", put_credit),
+        ("put_debit", put_debit),
+        ("call_credit", call_credit),
+        ("call_debit", call_debit),
+    ):
+        if v < 0:
+            raise ValueError(f"{name} must be >= 0 (got {v})")
+    if lot_size <= 0 or num_lots <= 0:
+        raise ValueError("lot_size and num_lots must be positive integers")
+
+    net_credit = (put_credit + call_credit) - (put_debit + call_debit)
+    put_wing = short_put - long_put
+    call_wing = long_call - short_call
+    max_wing = max(put_wing, call_wing)
+    if net_credit >= max_wing:
+        raise ValueError(
+            f"net_credit {net_credit} >= wider wing {max_wing}: implies a risk-free "
+            "position, almost certainly a misread option chain -- re-check premiums"
+        )
+
+    contracts = lot_size * num_lots
+    max_loss_per_unit = max_wing - net_credit
+    return {
+        "net_credit_per_unit": net_credit,
+        "put_wing": put_wing,
+        "call_wing": call_wing,
+        "profit_zone_width": short_call - short_put,
+        "lower_breakeven": short_put - net_credit,
+        "upper_breakeven": short_call + net_credit,
+        "max_profit_total": net_credit * contracts,
+        "max_loss_total": max_loss_per_unit * contracts,
+        "return_on_risk_pct": net_credit / max_loss_per_unit * 100.0,
+    }
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -267,6 +346,29 @@ def _cmd_sum(args: argparse.Namespace) -> int:
 
 def _cmd_pct(args: argparse.Namespace) -> int:
     print(f"pct: {pct_of(args.part, args.whole):.4f}")
+    return 0
+
+
+def _cmd_iron_condor(args: argparse.Namespace) -> int:
+    r = iron_condor(
+        short_put=args.short_put,
+        long_put=args.long_put,
+        short_call=args.short_call,
+        long_call=args.long_call,
+        put_credit=args.put_credit,
+        put_debit=args.put_debit,
+        call_credit=args.call_credit,
+        call_debit=args.call_debit,
+        lot_size=args.lot_size,
+        num_lots=args.num_lots,
+    )
+    print(f"net_credit_per_unit: {r['net_credit_per_unit']:.2f}")
+    print(f"profit_zone:         {args.short_put:.0f} - {args.short_call:.0f} (width {r['profit_zone_width']:.0f})")
+    print(f"lower_breakeven:     {r['lower_breakeven']:.2f}")
+    print(f"upper_breakeven:     {r['upper_breakeven']:.2f}")
+    print(f"max_profit_total:    {r['max_profit_total']:.2f}")
+    print(f"max_loss_total:      {r['max_loss_total']:.2f}")
+    print(f"return_on_risk_pct:  {r['return_on_risk_pct']:.2f}")
     return 0
 
 
@@ -345,6 +447,27 @@ def main(argv: list[str] | None = None) -> int:
     p_pct.add_argument("--part", type=float, required=True)
     p_pct.add_argument("--whole", type=float, required=True)
     p_pct.set_defaults(func=_cmd_pct)
+
+    p_ic = sub.add_parser(
+        "iron-condor",
+        help="defined-risk iron condor economics (index points in, rupees out)",
+    )
+    p_ic.add_argument("--short-put", dest="short_put", type=float, required=True)
+    p_ic.add_argument("--long-put", dest="long_put", type=float, required=True)
+    p_ic.add_argument("--short-call", dest="short_call", type=float, required=True)
+    p_ic.add_argument("--long-call", dest="long_call", type=float, required=True)
+    p_ic.add_argument("--put-credit", dest="put_credit", type=float, required=True,
+                      help="premium RECEIVED for the short put (points)")
+    p_ic.add_argument("--put-debit", dest="put_debit", type=float, required=True,
+                      help="premium PAID for the long put wing (points)")
+    p_ic.add_argument("--call-credit", dest="call_credit", type=float, required=True,
+                      help="premium RECEIVED for the short call (points)")
+    p_ic.add_argument("--call-debit", dest="call_debit", type=float, required=True,
+                      help="premium PAID for the long call wing (points)")
+    p_ic.add_argument("--lot-size", dest="lot_size", type=int, required=True,
+                      help="index-option lot size (verify current NSE spec)")
+    p_ic.add_argument("--num-lots", dest="num_lots", type=int, default=1)
+    p_ic.set_defaults(func=_cmd_iron_condor)
 
     args = parser.parse_args(argv)
     return args.func(args)
