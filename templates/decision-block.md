@@ -91,22 +91,6 @@ pre_commit:
   max_acceptable_loss_on_position: <X%>
   # If the position drops by this much, forced exit. No exceptions.
 
-# Novice-only fields. Present when profile.experience_mode is novice.
-# Required by guardrails.require_index_comparison and guardrails.education_mode.
-index_comparison:
-  benchmark: <Nifty 50 | S&P 500 | other — match the user's market>
-  benchmark_expected_return_pct: <+X% over same horizon as the single-stock EV>
-  single_stock_expected_return_pct: <+Y% — the base-case return from the expected_value block above>
-  verdict: <index_wins | single_stock_wins | too_close_to_call>
-  note: <string — one line explaining why>
-
-education_note: |
-  <1–2 sentences: what principle does this decision illustrate, and which book
-  references it? e.g., "This is Lynch's rule for Fast Growers (One Up on Wall Street,
-  ch. 8): pay up for growth, sell when growth decelerates for 2 consecutive quarters.">
-```
-
----
 
 ## Usage notes for Veda
 
@@ -114,10 +98,7 @@ education_note: |
 2. **Currency discipline.** Every number carries its currency. `fx_reference` is required whenever cross-market figures appear in the same block. No silent FX mixing.
 3. **Source tiers.** Every factual number cites its source and tier (T1–T5). Tier 4–5 sources imply LOW-CONFIDENCE and must be called out in `synthesis_note`.
 4. **Unit convention.** Probabilities in `expected_value.*` fields are 0.0–1.0 and must sum to 1.00 (validated by `scripts/calc.py`). `p_loss` mirrors that scale. `p_loss_pct` is `p_loss × 100` and is what the Stage-8 second gate compares against `profile.max_loss_probability` (which is 0–100).
-5. **Arithmetic is Python, never LLM.** Per SKILL.md Hard Rule #8, every numeric field in this block — `ev_contribution`, `p_loss`, `p_loss_pct`, any PEG, Kelly, or FX figure elsewhere in the block — is produced by [../scripts/calc.py](../scripts/calc.py). Record the exact invocation in `calc_command`. If the computation isn't in calc.py yet, add it before filling the field.
-6. **Novice-only fields:**
-   - `index_comparison` is mandatory when `profile.experience_mode: novice` AND `recommendation.action` is `buy` or `add` (i.e., any decision that deploys new capital into a single stock). It is omitted for `sell`, `trim`, `hold`, and `wait` — the user already owns the position and the question is thesis-level, not allocation-level.
-   - `education_note` is mandatory for every novice decision block regardless of action. It is omitted for non-novice profiles.
+6. **Arithmetic is Python, never LLM.** Per SKILL.md Hard Rule #8, every numeric field in this block — `ev_contribution`, `p_loss`, `p_loss_pct`, any PEG, Kelly, or FX figure elsewhere in the block — is produced by [../scripts/calc.py](../scripts/calc.py). Record the exact invocation in `calc_command`. If the computation isn't in calc.py yet, add it before filling the field.
 7. **Both EV gates are binding.**
    - First gate: if `verdict: negative`, recommendation must be `wait` or `sell`.
    - Second gate: if `p_loss_check: fail`, recommendation must be `wait` or `pass`, or size must be reduced until `p_loss_pct <= profile.max_loss_probability`.

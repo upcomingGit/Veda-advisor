@@ -19,11 +19,11 @@ body:
     id: profile
     attributes:
       label: Relevant profile fields (anonymize numbers if you want)
-      description: Horizon, goal, experience_mode, markets, any hard constraints. Redact anything you don't want public.
+      description: Horizon, goal, experience level, markets, any hard constraints. Redact anything you don't want public.
       placeholder: |
         horizon: 25y
         goal: balanced_growth
-        experience_mode: standard
+        experience: intermediate
         markets: [india, us]
     validations:
       required: true

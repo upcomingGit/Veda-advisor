@@ -37,11 +37,12 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable, Optional
 
-from ledger import DEFAULT_LEDGER, load
+from ledger import load
+from _common import client_root
 
-# Repo root is the parent of scripts/.
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_OUT = REPO_ROOT / "nav" / "nav-series.jsonl"
+# Default output for the default client (clients/default/nav/...). A specific
+# client's files are resolved from --client in main().
+DEFAULT_OUT = client_root() / "nav" / "nav-series.jsonl"
 
 STARTING_NAV = 100.0      # NAV per unit at inception (rupees).
 STALENESS_DAYS = 7        # A price older than this, for the date asked, is stale.
@@ -323,16 +324,21 @@ def _closes_for_holding(market: str, ticker: str) -> list[tuple[str, float]]:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Build the Veda NAV series.")
-    parser.add_argument("--file", type=Path, default=DEFAULT_LEDGER, help="ledger file")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="series output file")
+    parser.add_argument("--client", default="default", help="which client's book (default: default)")
+    parser.add_argument("--file", type=Path, default=None, help="ledger file")
+    parser.add_argument("--out", type=Path, default=None, help="series output file")
     args = parser.parse_args(argv)
 
-    if not args.file.exists():
-        print(f"ledger file not found: {args.file}", file=sys.stderr)
+    root = client_root(args.client)
+    ledger_file = args.file or (root / "ledger" / "transactions.jsonl")
+    out_file = args.out or (root / "nav" / "nav-series.jsonl")
+
+    if not ledger_file.exists():
+        print(f"ledger file not found: {ledger_file}", file=sys.stderr)
         return 2
 
     try:
-        transactions = load(args.file)
+        transactions = load(ledger_file)
         if not transactions:
             print("ledger is empty; nothing to value", file=sys.stderr)
             return 1
@@ -350,13 +356,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(str(error), file=sys.stderr)
         return 1
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    with args.out.open("w", encoding="utf-8") as handle:
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    with out_file.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     latest = rows[-1]
-    print(f"wrote {len(rows)} rows to {args.out}")
+    print(f"wrote {len(rows)} rows to {out_file}")
     print(
         f"latest {latest['date']}: NAV/unit {latest['nav_per_unit']} "
         f"vs benchmark {latest['benchmark_indexed']} (both started at 100)"

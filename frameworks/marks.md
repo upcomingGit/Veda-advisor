@@ -69,7 +69,6 @@ Veda's Stage 6 requires each framework to declare where it stops.
 - **Macro regime calls driven by central-bank liquidity.** Druckenmiller is more specific on *"what does the Fed doing X do to asset Y over 18 months"*. Marks is more specific on *"where is the pendulum in the credit cycle across asset classes"*. Both can be right at the same time; route them to complementary questions, not overlapping ones.
 - **Tail risk and options.** Taleb supplies the barbell / convex-payoff framework. Marks's defensive orientation is philosophically aligned but the operational tool kit is different.
 - **Individual turnaround / distressed credit picks.** Oaktree's operational business is distressed credit, but Marks's *memos* are a cycle and risk philosophy, not a stock-level distressed playbook. For retail users on distressed-credit-adjacent equities, route Klarman.
-- **Novice-mode interaction.** Marks's framing — risk = permanent loss, not volatility — is one of the most valuable concepts for novices to internalize. Always surface it in the `education_note` field for novice decision blocks during drawdowns. His cycle-positioning reads are *less* accessible to novices without market history; use them as ballast rather than as primary signals in novice decisions.
 
 ## Interaction with other frameworks
 

@@ -48,7 +48,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable, Optional
 
-from ledger import DEFAULT_LEDGER, load
+from ledger import load
 from nav import (
     FX_TICKER,
     Series,
@@ -57,10 +57,12 @@ from nav import (
     bonus_factor,
     split_factor,
 )
+from _common import client_root
 
 # Repo root is the parent of scripts/.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_OUT = REPO_ROOT / "tax" / "tax-report.json"
+# tax-rules.yaml is firm-level (shared by every client); the report is per-client.
+DEFAULT_OUT = client_root() / "tax" / "tax-report.json"
 DEFAULT_RULES = REPO_ROOT / "internal" / "tax-rules.yaml"
 
 STALENESS_DAYS = 7        # A price older than this, for the date asked, is stale.
@@ -716,21 +718,26 @@ def _build_price_book(transactions: list[dict]) -> dict[tuple[str, str], Series]
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Build the Veda capital-gains tax report.")
-    parser.add_argument("--file", type=Path, default=DEFAULT_LEDGER, help="ledger file")
+    parser.add_argument("--client", default="default", help="which client's book (default: default)")
+    parser.add_argument("--file", type=Path, default=None, help="ledger file")
     parser.add_argument("--rules", type=Path, default=DEFAULT_RULES, help="tax-rules.yaml")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="report output file")
+    parser.add_argument("--out", type=Path, default=None, help="report output file")
     parser.add_argument("--as-of", dest="as_of", default=date.today().isoformat(), help="valuation date YYYY-MM-DD")
     parser.add_argument("--fy", dest="fy", default=None, help="financial year to report, like 2026-2027")
     parser.add_argument("--slab-rate", dest="slab_rate", type=float, default=None,
                         help="your marginal income-tax rate as a fraction (e.g. 0.30), to tax US short-term gains")
     args = parser.parse_args(argv)
 
-    if not args.file.exists():
-        print(f"ledger file not found: {args.file}", file=sys.stderr)
+    root = client_root(args.client)
+    ledger_file = args.file or (root / "ledger" / "transactions.jsonl")
+    out_file = args.out or (root / "tax" / "tax-report.json")
+
+    if not ledger_file.exists():
+        print(f"ledger file not found: {ledger_file}", file=sys.stderr)
         return 2
 
     try:
-        transactions = load(args.file)
+        transactions = load(ledger_file)
         if not transactions:
             print("ledger is empty; there is no tax position to show yet", file=sys.stderr)
             return 1
@@ -742,13 +749,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(str(error), file=sys.stderr)
         return 1
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    with args.out.open("w", encoding="utf-8") as handle:
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    with out_file.open("w", encoding="utf-8") as handle:
         json.dump(report, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
 
     realized = report["realized"]
-    print(f"wrote tax report for FY {report['financial_year']} to {args.out}")
+    print(f"wrote tax report for FY {report['financial_year']} to {out_file}")
     print(
         f"realized tax (FIFO): Rs {realized['tax_inr']:.2f}; "
         f"set-off saved Rs {realized['tax_saved_by_set_off_inr']:.2f}; "

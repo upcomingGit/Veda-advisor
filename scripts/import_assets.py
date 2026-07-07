@@ -40,6 +40,10 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+# Allow importing the shared helper when run directly from scripts/.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import client_root  # noqa: E402
+
 
 @dataclass
 class Position:
@@ -309,10 +313,13 @@ def main() -> int:
     )
     parser.add_argument("csv_path", type=Path, help="Path to the broker CSV export.")
     parser.add_argument(
+        "--client", default="default", help="which client's book (default: default)"
+    )
+    parser.add_argument(
         "--out",
         type=Path,
-        default=Path("assets.md"),
-        help="Output markdown path. Default: assets.md in the current directory.",
+        default=None,
+        help="Output markdown path. Default: the client's assets.md.",
     )
     parser.add_argument(
         "--as-of",
@@ -321,6 +328,8 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+
+    out_file = args.out or (client_root(args.client) / "assets.md")
 
     if not args.csv_path.exists():
         print(f"Error: CSV file not found: {args.csv_path}", file=sys.stderr)
@@ -345,8 +354,9 @@ def main() -> int:
         return 1
 
     content = render_markdown(positions, as_of=args.as_of)
-    args.out.write_text(content, encoding="utf-8")
-    print(f"Wrote {len(positions)} position(s) to {args.out}")
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    out_file.write_text(content, encoding="utf-8")
+    print(f"Wrote {len(positions)} position(s) to {out_file}")
     print(
         "\nNext steps:\n"
         "  1. Add your cash balance and any sector caps at the bottom of the file.\n"

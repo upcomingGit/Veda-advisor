@@ -74,7 +74,6 @@ Klarman supplies the *idea-count and cash-tolerance* overlay:
 - **Macro cycle calls.** Marks and Druckenmiller. Klarman's patience is compatible with a cycle overlay but does not produce one.
 - **Position-sizing math.** Thorp's Kelly formula; Dalio's correlation math.
 - **Aggressive growth / speculation.** Klarman's framework is explicitly absolute-return, capital-preservation-first. Users with `goal: speculation` are mis-routing if they land here for a growth-stock thesis.
-- **Novice-mode interaction.** Klarman's rules — strict MoS, hold cash, screen value traps, name catalysts — are exceptionally well-suited to novices precisely because they enforce discipline the novice most needs. The value-trap screen should be surfaced in `education_note` whenever a novice asks about a cheap-looking single name. The *"hold cash when nothing clears"* discipline should be explicit in novice decision blocks to counter the *"put the cash to work"* pressure.
 
 ## Interaction with other frameworks
 

@@ -446,3 +446,35 @@ does not rank, score, propose a trade, size a position, or set a target. It list
 the names in this cohort that clear your filters, nothing wider. Valuation never
 filters; it is shown for you to weigh.
 
+---
+
+## `research` — research house feed vs book
+
+Reads what the research house has published and lines it up against this client's
+holdings and watchlist, so a name the research side has picked up does not sit
+unnoticed. The session-load check (Stage 1.5) already surfaces new and changed
+entries once per session and marks them seen; this command re-runs the same read
+on demand and shows the full picture — new, changed, and already-seen — and marks
+nothing.
+
+**Procedure:**
+
+1. Run `python scripts/research_feed.py --client <active>`. It reads the research
+   house manifest (`../veda-ai-research-team/published/manifest.yaml`, path set in
+   `research.json`), the client's held names and watchlist from `assets.md`, then
+   prints each published name tagged by how it relates to the book — held,
+   watchlisted, a new idea, or a private / pre-listing name — and whether it is
+   new, updated, or already seen.
+2. Surface the report as-is. For a name the user wants to act on, route by tag: a
+   held or watchlisted name to a hold-check (Stage 9a); a new idea to a watchlist
+   add (plan-then-confirm, `why_tracking` ← the research `why`). The research
+   `recommendation.value` is opaque evidence — it never skips the pipeline.
+
+> *"Research house feed for this client: 2 names, both new ideas not in your book or watchlist. ASTRAMICRO (Astra Microwave, IN) — a tactical defence up-cycle hold. BABA (Alibaba, US) — cheap cloud-and-AI at about 15x earnings. Add either to your watchlist to start tracking it?"*
+
+**What it does NOT do.** It reads only — it changes no file. Adding `--mark-seen`
+(as the session hook does) records what was shown in
+`clients/<active>/research-seen.json`, and even that never touches the user's
+book. It does not place a trade, size a position, or act on the research house's
+Buy / Invest label; any decision runs the full pipeline.
+

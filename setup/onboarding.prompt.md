@@ -6,10 +6,9 @@ This is a **one-time setup**. The profile is what makes Veda's advice calibrated
 
 ## Design principles (read before running)
 
-1. **Minimum upfront, maximum lazy.** The profile has ~25 fields. Only six of them must be filled before Veda can give safe advice: disclosure, experience mode, goal, horizon, markets, hard constraints. Everything else is captured *during* the first few real investment questions, at the moment each field starts to matter. This is called **progressive profiling**; it is not optional — it is the default.
+1. **Minimum upfront, maximum lazy.** The profile has ~25 fields. Only six of them must be filled before Veda can give safe advice: disclosure, experience level, goal, horizon, markets, hard constraints. Everything else is captured *during* the first few real investment questions, at the moment each field starts to matter. This is called **progressive profiling**; it is not optional — it is the default.
 2. **Offer a preset before interviewing.** Most users fit one of three patterns. Offer the presets first. A picked-and-tweaked preset beats an abandoned 15-question interview every time.
 3. **Never block on non-essential fields.** If the user skips or gets impatient, write what you have, mark `incomplete: true`, and proceed. Veda will warn on outputs and fill the gaps progressively. Losing a user to abandonment is worse than losing calibration on output #1.
-4. **Novice mode is non-negotiable.** Novices get guardrails whether they like it or not. The novice path below is already fast (six questions, all with defaults). Do not speed-run past it.
 
 ## How the mapping works (for you, not the user)
 
@@ -17,7 +16,7 @@ The user's free-text answers become structured YAML in `profile.md`. You — the
 
 There are two safety nets:
 
-1. **`scripts/validate_profile.py`** — run after writing the profile, before closing the session. It hard-fails on enum typos, missing required fields, bad booleans, bad dates, wrong capital-split sum, and a missing novice guardrails block. Mandatory in the After-the-interview checklist.
+1. **`scripts/validate_profile.py`** — run after writing the profile, before closing the session. It hard-fails on enum typos, missing required fields, bad booleans, bad dates, and a wrong capital-split sum. Mandatory in the After-the-interview checklist.
 2. **SKILL.md Stage 1** — the same schema validation runs at the start of every future session.
 
 Two places to be especially careful:
@@ -46,7 +45,7 @@ Before the disclosure, before any question, check whether `profile.md` already e
 
 **If it exists** → do **not** silently overwrite. Read it and tell the user:
 
-> *"I found an existing profile (generated YYYY-MM-DD, experience_mode: <value>, goal: <value>). Pick one:*
+> *"I found an existing profile (generated YYYY-MM-DD, goal: <value>). Pick one:*
 > *(a) **update** — targeted edits to specific fields, keeps everything else intact. Default.*
 > *(b) **redo** — full re-interview. Your existing profile will be backed up to `profile.md.bak-YYYY-MM-DD` before I start.*
 > *(c) **cancel** — stop, don't touch the file."*
@@ -73,68 +72,22 @@ On acknowledgement, set `disclosure_acknowledged: true` in the profile at save t
 
 ---
 
-## Step 2 — Experience gate (one question)
+## Step 2 — Experience level (one question)
 
-### Q0. Which of these describes you best?
+### Q0. How much investing experience do you have?
 
-- **Novice** — new to investing. Under 2 years, or have only bought a few things on tips, or have never lived through a market crash in your own portfolio.
+- **Beginner** — under 2 years, or have only bought a few things on tips, or have never lived through a market crash in your own portfolio.
 - **Intermediate / Advanced / Professional** — 2+ years, have held through at least one drawdown, have some idea of your style.
 
-*(Why: novices get hard guardrails — no leverage, no options, no lottery bets — because their stated preferences aren't yet validated by behavior.)*
+*(Why: this sets how much Veda explains — beginners get full context and definitions; experienced users get conclusions first. It does not change the frameworks or the hard blocks — those come from each user's own `instruments` and `constraints`.)*
 
-**If Novice → go to Step 3N (novice path).**
-**Otherwise → go to Step 3S (standard path).**
-
----
-
-## Step 3N — Novice path (six questions, defaults fill the rest)
-
-The novice path is already a "preset" — most fields have safe defaults. Ask only these:
-
-### N1. What's your name, and what should Veda call you?
-
-### N2. Age, and target retirement age?
-*(Sets horizon. Novices usually have long horizons, which is an advantage — their defaults should reflect that.)*
-
-### N3. Roughly what fraction of your monthly savings goes into the market?
-*(Not "net worth in market" — a novice probably doesn't have a net-worth answer yet.)*
-
-### N4. Which market do you invest in primarily? (India / US / Both / Other)
-
-### N5. Any hard constraints? (Religious, ethical, employer blacklist, tax accounts like PPF / 401k / ISA)
-*(Non-negotiable even for novices.)*
-
-### N6. What made you try Veda? What decision are you stuck on or confused about?
-
-### Defaults applied to novice profiles
-
-| Field | Default | Why |
-|---|---|---|
-| `goal.primary` | `balanced_growth` | Safer than aggressive; adjustable once they know what they want |
-| `risk.stated_tolerance` | `medium` | Novice stated tolerance is unreliable |
-| `risk.calibrated_tolerance` | `medium` | Until they live through a drawdown, treat as medium |
-| `concentration.target.style` | `diversified` | Diversified default until the user states a preference |
-| `concentration.target.position_count` | `20` | Diversified-end default |
-| `concentration.target.max_single_position_pct` | `10` | User's own target ceiling (diversified default); not a novice hard cap |
-| `concentration.current.*` (written to `assets.md > dynamic.concentration_snapshot`, not to `profile.md`) | Captured during Q7 of Step 3N, or progressively on first portfolio question | Current state may differ from target; Veda won't assume they match |
-| `style_lean.primary` | `passive_plus` | Matches reality: most novices should be mostly indexed |
-| `instruments.long_only_cash` | `true` | All others blocked |
-| `instruments.*` (margin, options, shorts) | `false` | Guardrails |
-| `experience.level` | `beginner` | From Q0 |
-| `experience.explanation_depth` | `educational` | Full context, definitions, book references |
-| `guardrails.*` | see [profile.template.md](profile.template.md) | Leverage/options/shorts/lottery bets blocked; index-fund comparison required on every buy |
-| `max_loss_probability` | `15` | Novice ruin-aversion default |
-| `framework_weights` | Novice-weighted | Buffett + Munger + Taleb dominate |
-
-After gathering N1–N6, confirm: *"I'm setting you up in Novice mode. Veda will block leverage, options, and lottery bets until you graduate. You can see what graduation looks like in your profile under `guardrails.graduation_criteria`. Proceed?"*
-
-On confirmation, jump to the "After the interview" section below.
+Record the answer as `experience.level` and set `experience.explanation_depth` to match (`educational` for beginners, `minimal` or `standard` otherwise — confirm with the user). Then continue to Step 3.
 
 ---
 
-## Step 3S — Standard path (offer preset first)
+## Step 3 — Offer a preset first
 
-For Intermediate / Advanced / Professional users, **do not launch into 15 questions.** Offer this instead:
+**Do not launch into 15 questions.** Offer this instead:
 
 > *"I can get you to advice in 60 seconds instead of 10 minutes. Three common investor profiles are below — pick the closest and I'll tweak it with you. Or say 'interview me' if none fit."*
 
@@ -246,7 +199,7 @@ The rest will be captured on later turns as they keep firing.
 
 The profile graduates from `incomplete: true` to `incomplete: false` when **all** of the following are filled:
 
-- The 6 upfront fields (disclosure, experience_mode, goal, horizon, markets, hard_constraints — completed in Step 3S or 3N).
+- The 6 upfront fields (disclosure, experience level, goal, horizon, markets, hard_constraints — completed in Step 3).
 - `capital.pct_net_worth_in_market`
 - `dynamic.concentration_snapshot.style` and `dynamic.concentration_snapshot.position_count` (both in `assets.md`), and at least one `concentration.target.*` field (style or position_count) in `profile.md`
 - `style_lean.primary`
@@ -264,51 +217,36 @@ If the user asks *"interview me fully"*, *"ask me everything"*, or *"complete my
 ## Step 5 — After the interview (both paths)
 
 1. If any preset defaults or progressive-profiling fills were applied, list them for the user so they know what's provisional vs what they stated.
-2. If `experience_mode: novice`, list the active guardrails explicitly.
-3. **Derive `max_loss_probability`** from `experience_mode` and `goal.primary`. Rules:
-   - `experience_mode: novice` → `15` (always, regardless of goal).
-   - `experience_mode: standard` AND `goal.primary` in {`capital_preservation`, `income`} → `25`.
-   - `experience_mode: standard` AND `goal.primary: balanced_growth` → `35`.
-   - `experience_mode: standard` AND `goal.primary` in {`aggressive_growth`, `speculation`} AND `risk.calibrated_tolerance` is `high` or `very_high` AND `risk.behavioral_history` documents at least one lived drawdown → up to `60`.
-   - `experience_mode: standard` AND `goal.primary` in {`aggressive_growth`, `speculation`} but behavioral history does NOT document a lived drawdown → cap at `35` regardless of stated tolerance. State this to the user: *"You asked for aggressive; your behavioral history isn't there yet. Capping max_loss_probability at 35 until you document a real-drawdown reaction in risk.behavioral_history."*
+2. **Derive `max_loss_probability`** from `goal.primary` and behavioral history. Rules:
+   - `goal.primary` in {`capital_preservation`, `income`} → `25`.
+   - `goal.primary: balanced_growth` → `35`.
+   - `goal.primary` in {`aggressive_growth`, `speculation`} AND `risk.calibrated_tolerance` is `high` or `very_high` AND `risk.behavioral_history` documents at least one lived drawdown → up to `60`.
+   - `goal.primary` in {`aggressive_growth`, `speculation`} but behavioral history does NOT document a lived drawdown → cap at `35` regardless of stated tolerance. State this to the user: *"You asked for aggressive; your behavioral history isn't there yet. Capping max_loss_probability at 35 until you document a real-drawdown reaction in risk.behavioral_history."*
    - The user may request a lower value. They cannot request a value above the derived ceiling.
 4. Ask: *"Anything to correct before I save this?"*
 5. On confirmation, write the profile to `profile.md` in the workspace root using the schema in [profile.template.md](profile.template.md). **Omit any field you do not have a real value for — do not copy template placeholders like `<int>`, `<string>`, `TBD`, or `null` into the saved file.** The absence of a field is how Stage 1.6 (SKILL.md) knows to capture it progressively later. Set:
    - `generated:` = today's date
    - `profile_last_updated:` = today's date
    - `disclosure_acknowledged:` = `true`
-   - `max_loss_probability:` = derived value from step 3
+   - `max_loss_probability:` = derived value from step 2
    - `incomplete:` = `true` unless the completion-threshold fields are all filled
-   - For novices, also emit the `guardrails:` block.
    - **If the user has mentioned any cross-currency exposure** (e.g., Indian tax resident with USD holdings), write a top-level `fx_rates:` block. Each pair uses the shape `<from_ccy>_<to_ccy>:` with `rate: <float>`, `as_of: YYYY-MM-DD`, and (recommended) `source: "<Tier 1–2 source name>"`. Ask the user for today's rate or fetch it with a citation. **Never carry a rate from memory or a previous session.** If you cannot get a live rate, **do not write the `fx_rates:` block at all** — leave it absent and split the portfolio summary into per-currency totals rather than a single converted number. This is Hard Rule #9 (SKILL.md).
 6. **Validate before declaring onboarding complete.** Run `python scripts/validate_profile.py profile.md` and paste the output.
    - If it prints `OK: ... is valid.` — proceed.
    - If it prints validation errors — do not continue. Fix the profile for each error (usually an enum paraphrase, a missing required field, or a capital-split that doesn't sum to 100), re-run the validator, and only continue once it passes. Do not ask the user to manually fix YAML; you made the profile, you fix it.
    - If you do not have terminal access, tell the user: *"Please run `python scripts/validate_profile.py profile.md` in your terminal and paste the output. I won't mark onboarding complete until this passes."*
 7. Tell the user: *"Profile saved and validated. Re-run any time with 'Veda: redo onboarding'. If you edit profile.md directly, update `profile_last_updated` and re-run the validator."*
-8. **Novice next step:** Suggest *"Ask me 'should I buy a specific stock or just an index fund?' — that's usually where novices start, and the answer is more useful than you think."*
-9. **Standard next step:** Suggest *"Ask a real question now. I'll fill in the rest of your profile as we go."*
+8. **Next step:** Suggest *"Ask a real question now. I'll fill in the rest of your profile as we go. A good first question: 'should I buy a specific stock or just an index fund?'"*
 
 ---
 
 ## If the user resists onboarding entirely
 
-Hold firm — but the bar is lower now, because the six-question standard path is already short:
+Hold firm — but the bar is lower now, because the six-question path is already short:
 
 > *"I can't give calibrated advice without knowing whether you're a 35-year-old retiring in 25 years or a 62-year-old retiring next year. The answer is different. It's six quick questions (two minutes) and you can pick a preset instead of answering individually. Want to do it now?"*
 
-If the user still insists on skipping, offer a **minimal profile** — ask only Q0 (experience gate), #2 (age/retirement), #3 (goal), #5 (hard constraints) — and mark `incomplete: true`. The pre-interview disclosure is still mandatory; no profile is written (complete or minimal) without `disclosure_acknowledged: true`. Veda will warn on every recommendation: "This recommendation is based on an incomplete profile. Run 'Veda: complete my profile' when you're ready."
-
----
-
-## Graduating from novice mode
-
-When a novice-mode user asks *"Veda: review my experience mode"* or *"Can I graduate from novice mode?"*, check the `guardrails.graduation_criteria` list in their profile:
-
-- **All criteria met** → propose graduating to `experience_mode: standard`. Re-ask every field the novice path defaulted rather than elicited, because safety-defaults are not the user's preferences. At minimum re-run the 6 upfront questions for standard mode; capture the rest progressively. Update the profile, regenerate `framework_weights` from the standard derivation table, recompute `max_loss_probability` using the step-3 rules above, set `profile_last_updated:` to today's date, remove the `guardrails:` block, and re-run the validator.
-- **Some criteria unmet** → list exactly what's missing. Do not graduate partially. Example: *"Close — you've been investing 2.5 years and have read 2 books. But you haven't lived through a 20%+ drawdown yet. When that happens (and it will), record your actual reaction in `risk.behavioral_history`. Then we can graduate."*
-
-Never auto-graduate. The user must request it explicitly and meet the criteria.
+If the user still insists on skipping, offer a **minimal profile** — ask only Q0 (experience level), #2 (age/retirement), #3 (goal), #5 (hard constraints) — and mark `incomplete: true`. The pre-interview disclosure is still mandatory; no profile is written (complete or minimal) without `disclosure_acknowledged: true`. Veda will warn on every recommendation: "This recommendation is based on an incomplete profile. Run 'Veda: complete my profile' when you're ready."
 
 ---
 

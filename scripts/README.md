@@ -72,14 +72,13 @@ Path argument defaults to `./profile.md`. Exit codes: `0` valid, `1` validation 
 
 ### What it checks
 
-- Required top-level fields: `schema_version`, `generated`, `profile_last_updated`, `disclosure_acknowledged`, `experience_mode`, `max_loss_probability`.
+- Required top-level fields: `schema_version`, `generated`, `profile_last_updated`, `disclosure_acknowledged`, `max_loss_probability`.
 - `disclosure_acknowledged` is literally `true`.
 - Date fields (`generated`, `profile_last_updated`) match `YYYY-MM-DD`.
 - `max_loss_probability` is an int in `[0, 100]`.
-- All enum fields are one of the exact allowed strings (see the `ENUM_VALUES` table in the script source): `experience_mode`, `goal.primary`, `risk.stated_tolerance`, `risk.calibrated_tolerance`, `concentration.target.style`, `style_lean.primary`, `experience.level`, `experience.explanation_depth`. (`concentration.current.style` is still accepted for backward compat with legacy profiles, but new profiles should put current-state concentration in `assets.md > dynamic.concentration_snapshot` per SKILL.md Hard Rule #10.)
-- Boolean fields (`instruments.*`, `guardrails.block_*`, etc.) are literally `true` or `false`.
+- All enum fields are one of the exact allowed strings (see the `ENUM_VALUES` table in the script source): `goal.primary`, `risk.stated_tolerance`, `risk.calibrated_tolerance`, `concentration.target.style`, `style_lean.primary`, `experience.level`, `experience.explanation_depth`. (`concentration.current.style` is still accepted for backward compat with legacy profiles, but new profiles should put current-state concentration in `assets.md > dynamic.concentration_snapshot` per SKILL.md Hard Rule #10.)
+- Boolean fields (`instruments.*`) are literally `true` or `false`.
 - `capital.target_split` components sum to exactly 100 when the block is present (all four buckets written). Partial blocks are tolerated. (`capital.split` — current state — is still accepted for backward compat but new profiles should put it in `assets.md > dynamic.capital_split_current`.)
-- When `experience_mode: novice`, the `guardrails` block is present and every required guardrail field is filled.
 - FX rate validation moved to `assets.md > dynamic.fx_rates.<pair>` per SKILL.md Hard Rule #9. This validator does not check `fx_rates` in `profile.md` — the field no longer belongs there. Staleness is enforced at runtime by the orchestrator against the assets-side copy.
 - If present, `framework_weights` contains all 11 investors and the sum lies in the loose band `[0.9, 1.1]`. (Weights are ordinal tie-breakers, not probabilities — the band is deliberate.)
 

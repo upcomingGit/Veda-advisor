@@ -134,7 +134,7 @@ Router cap: 4 frameworks per question. If your row exceeds 4, justify why — us
 
 Edit [setup/profile.template.md](../../setup/profile.template.md). Default weight 0.05–0.10 for new frameworks (established ones sit at 0.15–0.18).
 
-Also add to [setup/profile.example-novice.md](../../setup/profile.example-novice.md) and [setup/profile.example-aggressive.md](../../setup/profile.example-aggressive.md).
+Also add to [setup/profile.example-aggressive.md](../../setup/profile.example-aggressive.md).
 
 The validator loads the framework list dynamically; no script change needed.
 
@@ -156,7 +156,7 @@ No worked example, no merge.
 2. Run the validator on edited example profiles:
 
    ```powershell
-   python scripts/validate_profile.py setup/profile.example-novice.md
+   python scripts/validate_profile.py setup/profile.example-aggressive.md
    python scripts/validate_profile.py setup/profile.example-aggressive.md
    ```
 3. PR description: question types your framework answers, the two existing frameworks it is closest to and why it is not redundant, and a link to your worked example.

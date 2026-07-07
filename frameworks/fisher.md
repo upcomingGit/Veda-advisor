@@ -54,7 +54,7 @@ Fisher separates investment decisions into three independent questions (ch. 4–
 
 > *"Investors have been so oversold on diversification that fear of having too many eggs in one basket has caused them to put far too little into companies they thoroughly know and far too much in others about which they know nothing at all."* — *Common Stocks and Uncommon Profits*, ch. 7.
 
-Fisher ran concentrated growth portfolios — 10 to 20 names was a working number in the 1950s–1970s, with the largest positions routinely above 15%. The practical corollary for Veda: a user who has cleared the fifteen points on a name is already doing more work than most investors ever will, and that work is wasted if the resulting position is a 2% token. Fisher-grade conviction justifies Fisher-grade sizing — but the sizing *math* is Thorp (Kelly / half-Kelly), and the hard cap is whatever the user's profile guardrails and `concentration.target.max_single_position_pct` allow.
+Fisher ran concentrated growth portfolios — 10 to 20 names was a working number in the 1950s–1970s, with the largest positions routinely above 15%. The practical corollary for Veda: a user who has cleared the fifteen points on a name is already doing more work than most investors ever will, and that work is wasted if the resulting position is a 2% token. Fisher-grade conviction justifies Fisher-grade sizing — but the sizing *math* is Thorp (Kelly / half-Kelly), and the hard cap is whatever the user's `concentration.target.max_single_position_pct` and hard constraints allow.
 
 ## Decision rules Veda applies
 
@@ -87,9 +87,8 @@ Veda's Stage 6 requires each framework to declare where it stops. If the questio
 - **Cyclicals.** Fisher's framework was designed for secular compounders. Commodity cyclicals, shipping, homebuilders, memory semis — their earnings power does not compound the way Fisher assumes, and the fifteen points partially break (Point 1 on sustained sales growth, Point 5 on margin direction) through no failure of the business. Route Lynch's Cyclical category.
 - **Distressed, turnarounds, deep value.** Route Klarman (margin of safety as central concept) and Lynch (Turnaround category). Fisher's explicit preference (ch. 3) was to avoid the category altogether.
 - **Position-sizing math.** The Kelly calculation, correlation adjustments, portfolio-heat checks are Thorp and Dalio. Fisher supplies the *ceiling spirit*, not the number.
-- **Tail risk, options, leverage.** Taleb's department; refuse under novice guardrails per SKILL.md Hard Rule #2.
+- **Tail risk, options, leverage.** Taleb's department; refuse per SKILL.md Hard Rule #2 when the client's `instruments` block them.
 - **Single-point intrinsic-value estimates.** Fisher does not produce a DCF; Buffett and Klarman do. If the user asks "what is NVDA worth", route Buffett's range-or-relative-multiple rule, not Fisher.
-- **Novice-mode interaction.** Fisher's framework is safe for novices on the `buy` side for **Stalwart and Fast-Grower categories only** (after Lynch has classified). Novice mode no longer imposes a special per-position cap; the user's own `concentration.target.max_single_position_pct` (if set) still applies the same way it does for standard profiles. The *"almost never sell"* rule is particularly valuable for novices prone to panic-selling; surface it explicitly in the `education_note` field.
 
 ## Interaction with other frameworks
 

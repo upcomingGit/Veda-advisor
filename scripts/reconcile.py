@@ -35,12 +35,10 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from ledger import DEFAULT_LEDGER, load
+from ledger import load
 from concentration import current_positions
+from _common import client_root
 
-
-# Default assets file, relative to the repo root (the parent of scripts/).
-DEFAULT_ASSETS = Path(__file__).resolve().parent.parent / "assets.md"
 
 # Share counts equal within this are treated as the same (mutual-fund units can
 # be fractional, so an exact-equality test would be too strict).
@@ -220,16 +218,21 @@ def main(argv: list[str] | None = None) -> int:
         description="Reconcile the ledger against assets.md (share counts only)."
     )
     parser.add_argument(
+        "--client",
+        default="default",
+        help="which client's book to reconcile (default: default)",
+    )
+    parser.add_argument(
         "--file",
         type=Path,
-        default=DEFAULT_LEDGER,
-        help="ledger file (default: ledger/transactions.jsonl)",
+        default=None,
+        help="ledger file (default: the client's ledger/transactions.jsonl)",
     )
     parser.add_argument(
         "--assets",
         type=Path,
-        default=DEFAULT_ASSETS,
-        help="assets.md file (default: assets.md)",
+        default=None,
+        help="assets.md file (default: the client's assets.md)",
     )
     parser.add_argument(
         "--as-of",
@@ -238,17 +241,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if not args.file.exists():
-        print(f"Ledger file not found: {args.file}", file=sys.stderr)
+    root = client_root(args.client)
+    ledger_file = args.file or (root / "ledger" / "transactions.jsonl")
+    assets_file = args.assets or (root / "assets.md")
+
+    if not ledger_file.exists():
+        print(f"Ledger file not found: {ledger_file}", file=sys.stderr)
         return 2
-    if not args.assets.exists():
-        print(f"Assets file not found: {args.assets}", file=sys.stderr)
+    if not assets_file.exists():
+        print(f"Assets file not found: {assets_file}", file=sys.stderr)
         return 2
 
-    transactions = load(args.file)
+    transactions = load(ledger_file)
     ledger_raw, _cash = current_positions(transactions, args.as_of)
     ledger_positions = _rekey(ledger_raw)
-    assets_positions = read_assets_positions(args.assets)
+    assets_positions = read_assets_positions(assets_file)
 
     rows = compare_positions(ledger_positions, assets_positions)
     print(format_report(rows))

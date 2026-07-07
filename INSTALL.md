@@ -229,7 +229,7 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 9. `internal/base-rates.md` (Stage 4 reference)
 10. `setup/profile.template.md`
 
-Files omitted in the 10-file budget: `internal/assets-schema.md`, `internal/subagents.md`, `setup/profile.example-aggressive.md`, `setup/profile.example-novice.md`, `frameworks/_template.md`. The examples are nice-to-have; the orchestrator will work without them.
+Files omitted in the 10-file budget: `internal/assets-schema.md`, `internal/subagents.md`, `setup/profile.example-aggressive.md`, `frameworks/_template.md`. The examples are nice-to-have; the orchestrator will work without them.
 
 Click **Save**.
 
@@ -297,11 +297,10 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 1. `SKILL.md` (required — the shim points here)
 2. `setup/onboarding.prompt.md`
 3. `setup/profile.template.md`
-4. `setup/profile.example-novice.md`
-5. `setup/profile.example-aggressive.md`
-6. `routing/framework-router.md`
-7. `templates/decision-block.md`
-8. `frameworks/lynch.md`
+4. `setup/profile.example-aggressive.md`
+5. `routing/framework-router.md`
+6. `templates/decision-block.md`
+7. `frameworks/lynch.md`
 9. `frameworks/buffett.md`
 10. `frameworks/munger.md`
 11. `frameworks/_template.md`

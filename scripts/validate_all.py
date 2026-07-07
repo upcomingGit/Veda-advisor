@@ -25,6 +25,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -33,12 +34,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import validate_assumptions  # noqa: E402
 import validate_profile      # noqa: E402
+from _common import client_root  # noqa: E402
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Run all Veda schema validators.")
+    parser.add_argument("--client", default="default", help="which client's book (default: default)")
+    args = parser.parse_args()
+
     repo_root = Path(__file__).resolve().parent.parent
-    profile_path = repo_root / "profile.md"
-    holdings_dir = repo_root / "holdings"
+    root = client_root(args.client)
+    profile_path = root / "profile.md"
+    holdings_dir = root / "holdings"
 
     fail_count = 0
     pass_count = 0

@@ -36,7 +36,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from ledger import DEFAULT_LEDGER, load
+from ledger import load
 from nav import (
     FX_TICKER,
     Series,
@@ -45,12 +45,13 @@ from nav import (
     bonus_factor,
     split_factor,
 )
+from _common import client_root
 
-# Repo root is the parent of scripts/.
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CAPS = REPO_ROOT / "user-config" / "caps.json"
-DEFAULT_HOLDINGS = REPO_ROOT / "holdings"
-DEFAULT_OUT = REPO_ROOT / "concentration" / "snapshot.json"
+# Default locations for the default client (clients/default/...). A specific
+# client's files are resolved from --client in main().
+DEFAULT_CAPS = client_root() / "caps.json"
+DEFAULT_HOLDINGS = client_root() / "holdings"
+DEFAULT_OUT = client_root() / "concentration" / "snapshot.json"
 
 STALENESS_DAYS = 7        # A price older than this, for the snapshot date, is stale.
 EPSILON = 1e-9            # Shares at or below this are treated as a closed position.
@@ -395,24 +396,31 @@ def build_price_book(
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Build the Veda concentration snapshot.")
-    parser.add_argument("--file", type=Path, default=DEFAULT_LEDGER, help="ledger file")
-    parser.add_argument("--caps", type=Path, default=DEFAULT_CAPS, help="caps config file")
-    parser.add_argument("--holdings", type=Path, default=DEFAULT_HOLDINGS, help="holdings folder")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="snapshot output file")
+    parser.add_argument("--client", default="default", help="which client's book (default: default)")
+    parser.add_argument("--file", type=Path, default=None, help="ledger file")
+    parser.add_argument("--caps", type=Path, default=None, help="caps config file")
+    parser.add_argument("--holdings", type=Path, default=None, help="holdings folder")
+    parser.add_argument("--out", type=Path, default=None, help="snapshot output file")
     parser.add_argument("--as-of", default=date.today().isoformat(), help="snapshot date YYYY-MM-DD")
     args = parser.parse_args(argv)
 
-    if not args.file.exists():
-        print(f"ledger file not found: {args.file}", file=sys.stderr)
+    root = client_root(args.client)
+    ledger_file = args.file or (root / "ledger" / "transactions.jsonl")
+    caps_file = args.caps or (root / "caps.json")
+    holdings_dir = args.holdings or (root / "holdings")
+    out_file = args.out or (root / "concentration" / "snapshot.json")
+
+    if not ledger_file.exists():
+        print(f"ledger file not found: {ledger_file}", file=sys.stderr)
         return 2
 
     try:
-        transactions = load(args.file)
+        transactions = load(ledger_file)
         if not transactions:
             print("ledger is empty; nothing to value", file=sys.stderr)
             return 1
-        caps = load_caps(args.caps)
-        sector_map = build_sector_map(args.holdings)
+        caps = load_caps(caps_file)
+        sector_map = build_sector_map(holdings_dir)
         positions, _ = current_positions(transactions, args.as_of)
         prices = build_price_book(positions)
         fx = Series(_fetch_closes(FX_TICKER))
@@ -424,11 +432,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(str(error), file=sys.stderr)
         return 1
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    out_file.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(format_report(report))
-    print(f"\nwrote snapshot to {args.out}")
+    print(f"\nwrote snapshot to {out_file}")
     return 0
 
 

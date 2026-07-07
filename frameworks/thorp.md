@@ -24,7 +24,7 @@ Before Kelly runs at all, the user must never stake an amount that, lost, would 
 
 - **Kelly fraction is applied to *at-risk capital*, not total net worth.** The user's emergency reserve, essential living expenses for a named horizon, and any capital promised to near-term obligations (school fees, a home down payment) are outside the bankroll. Kelly only sizes the portion the user can afford to lose without life-altering consequence.
 - **Concentration caps are floors on what sizing can do.** If Kelly returns 0.20 (20%) and the user's `concentration.target.max_single_position_pct` is 10, the recommendation is 10%, not 20%. The profile target ceiling is the binding constraint; Kelly's output is an *upper* bound within that constraint.
-- **Ruin-avoidance binds for everyone, novice included.** Novice mode carries no special per-position cap (it was removed); novice sizing is governed by the same ruin rule and the user's own `concentration.target.max_single_position_pct` if they set one. Kelly's number still answers to the bankroll definition above — *"Thorp says 15%"* is only a recommendation after the at-risk-capital and correlation checks have run.
+- **Ruin-avoidance binds for every client.** Sizing is governed by the ruin rule and the user's own `concentration.target.max_single_position_pct` if they set one. Kelly's number still answers to the bankroll definition above — *"Thorp says 15%"* is only a recommendation after the at-risk-capital and correlation checks have run.
 
 ### 4. Probability × odds, not narrative
 
@@ -45,7 +45,7 @@ A Kelly fraction built on narrative-derived probabilities is not Kelly — it is
 3. **Run `scripts/calc.py kelly`.** Per Hard Rule #8, do not compute in-head. Paste `kelly_full` and `kelly_half` verbatim.
 4. **Apply constraints in order: ruin, guardrail, concentration, correlation.**
    - If `kelly_fraction ≤ 0` → the bet has no positive-EV Kelly stake. Verdict: **`wait` or pass.**
-   - Cap at `concentration.target.max_single_position_pct` if the user has set one (applies to novice and standard alike).
+   - Cap at `concentration.target.max_single_position_pct` if the user has set one.
    - Scale down for correlation with existing positions (route Dalio for the correlation score; apply a rough *correlation-discount* — a new position correlated 0.8 with existing exposure takes ~20% of its solo-Kelly size).
 5. **Default to half-Kelly.** Report half-Kelly as the recommended size and full-Kelly as reference. A user asking *"why half?"* gets principle 2 above, cited.
 6. **Portfolio heat check.** Sum the downside probabilities × downside return percentages across all positions including the proposed new one; this is the portfolio's total at-risk percentage if all downsides realize at once. If total portfolio heat exceeds what the user can absorb (route `scripts/calc.py ev` per position), the size must be trimmed further regardless of what Kelly says about this single bet.
@@ -67,7 +67,6 @@ Thorp is rarely the primary thesis framework on a `buy`. When routed alongside B
 - **Tail-risk structuring.** Kelly assumes the distribution of outcomes is known. Taleb's domain — fat tails, black swans, convex payoffs — is where Kelly inputs are *unknown* and sizing must use a different tool (barbell, explicit tail-hedging). If the bet has a credible left tail not captured in the scenario set, Kelly is the wrong tool and Taleb routes.
 - **Macro regime.** Druckenmiller's 18–24-month regime thesis can be Kelly-sized, but the regime call itself is not Thorp's.
 - **Value-trap detection.** Klarman's category — if the user is pulling a cheap-looking name's *p* from backward-looking metrics, Thorp's Kelly gives the right answer to the wrong question. Klarman must screen first.
-- **Novice-mode interaction.** Thorp's weight in novice `framework_weights` is deliberately low (0.03) per [profile.template.md](../setup/profile.template.md), not because sizing doesn't matter for novices — it matters most — but because the novice frameworks lean on Buffett/Munger/Taleb for ruin-avoidance discipline. Novice mode no longer imposes a special per-position cap; Thorp's role for novices is to *explain why sizing discipline matters* (ruin avoidance) and to anchor any size to the user's own `concentration.target.max_single_position_pct` if set. Surface principle 3 in the `education_note` whenever a novice pushes for an over-sized position.
 
 ## Interaction with other frameworks
 
@@ -118,7 +117,6 @@ frameworks_applied:
       calc_command: <exact command>
     constraints_applied:
       ruin_check: <pass | fail>
-      novice_guardrail_cap: <int | n/a>
       concentration_target_cap: <int>
       correlation_discount_pct: <int — how much the solo-Kelly was scaled down>
     final_recommended_size_pct: <int — percentage of bankroll>

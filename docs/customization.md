@@ -2,16 +2,16 @@
 
 Veda is opinionated, but every opinion is applied **through your profile**. Edit the profile, change every decision Veda makes for you. Most users only edit 5–10 lines.
 
-Full schema: [setup/profile.template.md](../setup/profile.template.md). Worked examples: [aggressive](../setup/profile.example-aggressive.md), [novice](../setup/profile.example-novice.md).
+Full schema: [setup/profile.template.md](../setup/profile.template.md). Worked example: [aggressive](../setup/profile.example-aggressive.md).
 
 ## Start here — the three lines that matter most
 
 If you only ever change three things, change these. They drive most of Veda's behaviour:
 
-| Field | What it controls | Default by mode |
+| Field | What it controls | Typical default |
 |---|---|---|
 | `goal.primary` | Which investor frameworks get auto-loaded on every buy | Whatever you said at onboarding |
-| `max_loss_probability` | The hard ceiling on "how much can I lose on this trade?" | Novice 15, Standard 35, Aggressive up to 60 |
+| `max_loss_probability` | The hard ceiling on "how much can I lose on this trade?" | 25 (conservative) to 60 (aggressive, with track record) |
 | `self_identified_weakness` | The bias Veda will actively guard against | Empty until you fill it |
 
 Details on each below. Everything else is fine-tuning.
@@ -54,13 +54,13 @@ max_loss_probability: 35   # 0–100; the Stage 8 second gate
 
 `max_loss_probability` is the most important risk knob. Positive EV but p_loss above this number → trade refused.
 
-| Mode | Default `max_loss_probability` |
+| Goal | Default `max_loss_probability` |
 |---|---|
-| Novice | 15 |
-| Standard | 35 |
+| Capital preservation / income | 25 |
+| Balanced growth | 35 |
 | Aggressive growth / speculation | up to 60 (requires documented `behavioral_history`) |
 
-Lowering it: anytime. Raising above mode default: Veda asks you to confirm.
+Lowering it: anytime. Raising above the default: Veda asks you to confirm.
 
 **Not sure what to set?** Pick the mode default and adjust after a few months of journal entries. The honest version of `calibrated_tolerance` is one notch below `stated_tolerance` for most people — we say we are higher-risk than we actually behave when prices fall. If you have never sat through a 30%+ drawdown, set `calibrated_tolerance` to `low`.
 
@@ -134,33 +134,6 @@ Weights are ordinal — they break ties, they do not multiply outputs. Sum shoul
 
 Tune weights only after months of use, when one framework keeps pulling you in a direction you regret. The journal is your evidence. Do not tune weights to win a single argument with Veda.
 
-## Novice guardrails
-
-```yaml
-experience_mode: novice
-guardrails:
-  block_leverage: true
-  block_options: true
-  block_shorts: true
-  block_lottery_bets: true
-  require_index_comparison: true
-  education_mode: true
-  graduation_criteria:
-    - "Lived through one drawdown of 20% or more without panic-selling"
-    - "Two years invested with documented quarterly reviews"
-    - "Read at least two of the canon books"
-```
-
-Non-negotiable mid-session. Veda will not relax them on request.
-
-**Structural equivalence.** Leveraged ETFs (2x, 3x), single-stock leveraged funds, volatility products (UVXY, SVXY), crypto derivatives, and micro-cap lottery bets are refused with the same script as direct leverage — same payoff asymmetry, same ruin risk.
-
-**`require_index_comparison`.** Every novice buy decision shows the index alternative side by side. Often the index wins. That is the lesson.
-
-**`education_mode`.** Every framework citation includes a one-line summary and a book reference.
-
-**Graduating.** When you have met all three `graduation_criteria`, ask: *"I think I have met my graduation criteria — review and update."* Veda walks your `behavioral_history` and journal, then switches you to `standard`.
-
 ## Markets and instruments
 
 ```yaml
@@ -179,7 +152,7 @@ instruments:
   crypto: false
 ```
 
-An instrument set to `false` means Veda will never recommend an action that requires it (related frameworks still load for risk discussion).
+An instrument set to `false` means Veda will never recommend an action that requires it (related frameworks still load for risk discussion). **Structural equivalence:** products that replicate a blocked payoff — leveraged / inverse / volatility ETFs (SOXL, UVXY, SVXY), single-stock leveraged funds, crypto derivatives — are refused the same way, so `margin: false` or `shorts: false` cannot be laundered through a ticker.
 
 `markets.primary: IN` quotes prices in INR, uses NSE/BSE ticker conventions, and applies Indian tax rules. `US` switches to USD, S&P 500 benchmark, US tax wrappers (401(k), IRA, ESPP, ISO/NSO). Cross-market: every number labelled with currency and an FX rate stamped with `as_of`.
 
@@ -242,8 +215,8 @@ Failure (exit 1, prints the offending field):
 
 ```
 profile.md: ERROR
-  experience_mode: "Standard"
-    expected one of: novice | standard
+  goal.primary: "growth"
+    expected one of: capital_preservation | income | balanced_growth | aggressive_growth | speculation
   capital.target_split: sums to 95, must sum to 100
 ```
 

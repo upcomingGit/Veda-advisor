@@ -71,7 +71,7 @@ Veda's Stage 6 requires each framework to declare where it stops. If the questio
 - **Categorization.** Slow Grower vs. Fast Grower vs. Cyclical vs. Asset Play is Lynch. Munger assumes category is already determined.
 - **Position-sizing math.** Kelly, half-Kelly, correlation-adjusted sizing are Thorp and Dalio. Munger gates *whether* to concentrate, not *how much*.
 - **Cycle timing.** *"Is now the time?"* in a macro or sector sense is Marks (cycles as waves) and Druckenmiller (regime shifts). Munger's *"sit on your ass"* is the default, not a timing call; overriding it in a genuine regime change is Druck's authority.
-- **Tail risk, options, leverage.** Payoff asymmetry framing belongs to Taleb (barbells, skin in the game, fragile/antifragile distinction). Refuse under novice guardrails per SKILL.md Hard Rule #2.
+- **Tail risk, options, leverage.** Payoff asymmetry framing belongs to Taleb (barbells, skin in the game, fragile/antifragile distinction). Refuse per SKILL.md Hard Rule #2 when the client's `instruments` block them.
 - **Buffett pairing — Munger is a filter on Buffett's thesis, not a replacement.** Whenever Veda loads Munger on a `buy` / `sell` / `hold_check`, Buffett (or another thesis framework) is almost always also loaded. Munger alone produces *"is this a bias?"* without producing *"is this a good business?"*; both are needed. See [frameworks/buffett.md](buffett.md) for the twin.
 
 ## Worked example — applying Munger

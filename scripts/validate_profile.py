@@ -6,7 +6,6 @@ Validates profile.md against the schema in setup/profile.template.md. Enforces:
   - Required top-level fields are present.
   - Enum fields hold one of the allowed exact strings (no paraphrase).
   - Numeric gates (max_loss_probability, capital split) are in range and sum correctly.
-  - Novice profiles have a complete guardrails block.
   - Framework weights list is complete and sums to roughly 1.0 (band, not strict).
 
 This is the safety net named in setup/onboarding.prompt.md. Run it at the end of
@@ -38,7 +37,6 @@ from pathlib import Path
 # -------- Allowed enum values (must match setup/profile.template.md) --------
 
 ENUM_VALUES: dict[str, set[str]] = {
-    "experience_mode": {"novice", "standard"},
     "goal.primary": {
         "capital_preservation",
         "income",
@@ -77,12 +75,6 @@ BOOL_FIELDS = {
     "instruments.options_hedging",
     "instruments.options_speculation",
     "instruments.shorts",
-    "guardrails.block_leverage",
-    "guardrails.block_options",
-    "guardrails.block_shorts",
-    "guardrails.block_lottery_bets",
-    "guardrails.require_index_comparison",
-    "guardrails.education_mode",
 }
 
 REQUIRED_TOP_LEVEL = [
@@ -90,7 +82,6 @@ REQUIRED_TOP_LEVEL = [
     "generated",
     "profile_last_updated",
     "disclosure_acknowledged",
-    "experience_mode",
     "max_loss_probability",
 ]
 
@@ -106,17 +97,6 @@ FRAMEWORK_NAMES = [
     "munger",
     "fisher",
     "taleb",
-]
-
-NOVICE_GUARDRAIL_FIELDS = [
-    "max_single_position_pct",
-    "block_leverage",
-    "block_options",
-    "block_shorts",
-    "block_lottery_bets",
-    "require_index_comparison",
-    "education_mode",
-    "graduation_criteria",
 ]
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -289,7 +269,7 @@ def validate(profile_path: Path) -> list[str]:
     for field, allowed in ENUM_VALUES.items():
         v = find_scalar(yaml_text, field)
         if v is None:
-            # goal.primary, experience_mode etc are required; caught above
+            # goal.primary etc are required; caught above
             continue
         bare = strip_quotes(v)
         if bare not in allowed:
@@ -330,25 +310,6 @@ def validate(profile_path: Path) -> list[str]:
                 errors.append(
                     f"capital.{block_name}: non-integer component in {parts_by_bucket}"
                 )
-
-    # Novice: guardrails block required and complete
-    exp_mode = find_scalar(yaml_text, "experience_mode")
-    if exp_mode == "novice":
-        if not section_present(yaml_text, "guardrails"):
-            errors.append("experience_mode is novice but guardrails block is absent")
-        else:
-            for gf in NOVICE_GUARDRAIL_FIELDS:
-                if find_scalar(yaml_text, f"guardrails.{gf}") is None:
-                    # graduation_criteria is a list header, not a scalar
-                    if gf == "graduation_criteria":
-                        if not re.search(
-                            r"(?m)^\s+graduation_criteria:\s*$", yaml_text
-                        ):
-                            errors.append(
-                                "guardrails.graduation_criteria: list is missing"
-                            )
-                        continue
-                    errors.append(f"guardrails.{gf}: missing for novice profile")
 
     # framework_weights: all 11 present, sum in [0.9, 1.1]
     if section_present(yaml_text, "framework_weights"):

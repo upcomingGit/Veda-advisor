@@ -40,9 +40,12 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from _common import client_root
 
-# Default ledger file, relative to the repo root (the parent of scripts/).
-DEFAULT_LEDGER = Path(__file__).resolve().parent.parent / "ledger" / "transactions.jsonl"
+
+# Default ledger file for the default client (clients/default/ledger/...).
+# A specific client's ledger is resolved from --client in main().
+DEFAULT_LEDGER = client_root() / "ledger" / "transactions.jsonl"
 
 VALID_TYPES = {"buy", "sell", "cash_in", "cash_out", "dividend", "split", "bonus"}
 VALID_MARKETS = {"india", "us"}
@@ -217,10 +220,15 @@ def _build_from_args(args: argparse.Namespace) -> dict:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Veda transaction ledger.")
     parser.add_argument(
+        "--client",
+        default="default",
+        help="which client's ledger to use (default: default)",
+    )
+    parser.add_argument(
         "--file",
         type=Path,
-        default=DEFAULT_LEDGER,
-        help="ledger file path (default: ledger/transactions.jsonl)",
+        default=None,
+        help="ledger file path (default: the client's ledger/transactions.jsonl)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -241,10 +249,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sub.add_parser("list", help="print every transaction in the file")
 
     args = parser.parse_args(argv)
+    ledger_file = args.file or (client_root(args.client) / "ledger" / "transactions.jsonl")
 
     if args.command == "add":
         try:
-            stored = add(_build_from_args(args), args.file)
+            stored = add(_build_from_args(args), ledger_file)
         except ValueError as error:
             print(str(error), file=sys.stderr)
             return 1
@@ -253,7 +262,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.command == "list":
         try:
-            transactions = load(args.file)
+            transactions = load(ledger_file)
         except ValueError as error:
             print(str(error), file=sys.stderr)
             return 1

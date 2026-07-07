@@ -30,6 +30,7 @@ DEFAULT_THEME = "system"
 @dataclass(frozen=True)
 class Config:
     workspace: Path                 # path to the Veda-advisor repo root
+    client: str                     # which client's book to render (clients/<client>/)
     port: int                       # localhost bind port
     auto_open: bool                 # whether to open the browser on startup
     debug: bool                     # Flask debug + reloader
@@ -42,24 +43,29 @@ class Config:
         return f"http://{self.bind}:{self.port}/"
 
     @property
+    def client_root(self) -> Path:
+        """The active client's folder; all per-client files live under here."""
+        return self.workspace / "clients" / self.client
+
+    @property
     def holdings_dir(self) -> Path:
-        return self.workspace / "holdings"
+        return self.client_root / "holdings"
 
     @property
     def assets_path(self) -> Path:
-        return self.workspace / "assets.md"
+        return self.client_root / "assets.md"
 
     @property
     def journal_path(self) -> Path:
-        return self.workspace / "journal.md"
+        return self.client_root / "journal.md"
 
     @property
     def profile_path(self) -> Path:
-        return self.workspace / "profile.md"
+        return self.client_root / "profile.md"
 
     @property
     def registry_path(self) -> Path:
-        return self.workspace / "holdings_registry.csv"
+        return self.client_root / "holdings_registry.csv"
 
     @property
     def fetch_quote_script(self) -> Path:
@@ -81,7 +87,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path.cwd(),
         help=(
             "Path to the Veda-advisor repo root (the directory containing "
-            "assets.md, holdings/, profile.md). Default: current working directory."
+            "clients/ and scripts/). Default: current working directory."
+        ),
+    )
+    p.add_argument(
+        "--client",
+        default="default",
+        help=(
+            "Which client's book to render, under clients/<client>/. "
+            "Default: default."
         ),
     )
     p.add_argument(
@@ -130,8 +144,18 @@ def resolve_config(argv: list[str] | None = None) -> Config:
         raise SystemExit(
             f"--workspace must point to an existing directory; got {workspace}"
         )
+    client_root = workspace / "clients" / args.client
+    if not client_root.is_dir():
+        available = sorted(
+            p.name for p in (workspace / "clients").glob("*") if p.is_dir()
+        )
+        hint = f" Available clients: {', '.join(available)}." if available else ""
+        raise SystemExit(
+            f"--client '{args.client}' not found at {client_root}.{hint}"
+        )
     return Config(
         workspace=workspace,
+        client=args.client,
         port=args.port,
         auto_open=not args.no_open,
         debug=args.debug,

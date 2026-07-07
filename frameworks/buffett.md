@@ -4,7 +4,7 @@
 
 ## When this framework applies
 
-Buffett is the first framework Veda reaches for on any **single-name `buy` decision**, on **`hold_check` / `sell` questions where the thesis rests on business quality**, and on **`size` questions for high-conviction positions** (concentrated-conviction allowance). He is also loaded on `risk` and `crisis` questions — "rule #1: don't lose money" is the anchor against permanent impairment, and "be greedy when others are fearful" is the playbook for forced-selling markets. Buffett is **not** the first pick for short-horizon timing (route Druckenmiller), cycle inversion on commodity Cyclicals (route Lynch's inverted-P/E rule), or tail-risk / leverage / options questions (route Taleb or refuse under novice guardrails). His framework is for *businesses*, held for a long time, bought with a margin of safety, sized to conviction.
+Buffett is the first framework Veda reaches for on any **single-name `buy` decision**, on **`hold_check` / `sell` questions where the thesis rests on business quality**, and on **`size` questions for high-conviction positions** (concentrated-conviction allowance). He is also loaded on `risk` and `crisis` questions — "rule #1: don't lose money" is the anchor against permanent impairment, and "be greedy when others are fearful" is the playbook for forced-selling markets. Buffett is **not** the first pick for short-horizon timing (route Druckenmiller), cycle inversion on commodity Cyclicals (route Lynch's inverted-P/E rule), or tail-risk / leverage / options questions (route Taleb, or refuse when the client's `instruments` block them). His framework is for *businesses*, held for a long time, bought with a margin of safety, sized to conviction.
 
 ## Core principles
 
@@ -57,7 +57,7 @@ When circle-of-competence, moat, and margin-of-safety all line up, **size up**. 
 
 1. **Concentrated-conviction allowance.** When Buffett's three gates (competence + moat + MoS) all pass, 10–25% single-position sizes are coherent. Above 25%, even Buffett's record shows pressure to manage the concentration (Berkshire trimmed its Apple stake materially in 2024; Buffett publicly cited tax considerations, and position-size management is a second plausible factor the filings are consistent with). Use this as the outside boundary, not the target.
 2. **Defer the actual math to Thorp.** Buffett informs *how much conviction justifies how large a position* (via the fat-pitch gate); Thorp / Kelly produces the number. Route `python scripts/calc.py kelly --p-win <x> --odds <y>` for the sizing math. Do not size by feel.
-3. **No leverage.** Buffett repeatedly warns that leverage can destroy otherwise sound investors, and Berkshire's ten-year Protégé Partners bet (settled in 2017) reinforces his long-run preference for simple, low-cost compounding over leverage- and fee-heavy structures. Veda enforces this for any profile; for novices it is already a guardrail.
+3. **No leverage.** Buffett repeatedly warns that leverage can destroy otherwise sound investors, and Berkshire's ten-year Protégé Partners bet (settled in 2017) reinforces his long-run preference for simple, low-cost compounding over leverage- and fee-heavy structures. Veda enforces this for any profile whose `instruments.margin` is false.
 
 ## What Buffett does NOT cover (explicit boundary)
 
@@ -68,7 +68,7 @@ Veda's Stage 6 requires each framework to declare where it stops. If the questio
 - **Fast-growing businesses without established profitability.** PEG-style screens for early-stage compounders are Lynch's (Fast Grower category) and Fisher's (scuttlebutt / growth runway). Buffett's margin-of-safety framework assumes an intrinsic-value estimate *can* be made; when cash-flow shape is genuinely unknowable, the framework gives no signal, and the honest answer is "outside the circle".
 - **Turnarounds / distressed.** Buffett is skeptical as a rule (*"Turnarounds seldom turn"* — Berkshire 1979 Letter). When a user insists on a turnaround thesis, route Klarman (explicit on value-trap risk) and Lynch (Turnaround category has ~20–30% base-rate success per [internal/base-rates.md](../internal/base-rates.md)).
 - **Position-sizing math.** Buffett *gates* concentration via the fat-pitch test; the numeric size comes from Thorp/Kelly via `scripts/calc.py kelly`.
-- **Options, shorts, leverage, crypto-derivative exposure.** Reroute to Taleb for tail-risk framing; refuse under novice guardrails per SKILL.md Hard Rule #2 structural-equivalence.
+- **Options, shorts, leverage, crypto-derivative exposure.** Reroute to Taleb for tail-risk framing; refuse per SKILL.md Hard Rule #2 structural-equivalence when the client's `instruments` block them.
 - **Munger pairing — inversion is Munger's department, not Buffett's.** When Veda loads Buffett on a `sell` or `hold_check`, it should almost always also load Munger (*"would I buy this today?"*). Buffett composes the thesis; Munger tries to kill it. If Munger cannot, the thesis stands. This is how the two frameworks work together in the source material ([frameworks/munger.md](munger.md)).
 
 ## Worked example — applying Buffett

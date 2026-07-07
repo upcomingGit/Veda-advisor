@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from concentration import read_meta, _normalise_market
+from _common import client_root
 
 # Force UTF-8 stdout so non-Latin characters (e.g., ₹ in journal headlines)
 # don't crash the script on Windows consoles that default to cp1252.
@@ -48,9 +49,10 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_HOLDINGS = REPO_ROOT / "holdings"
-DEFAULT_JOURNAL = REPO_ROOT / "journal.md"
+# Default locations for the default client (clients/default/...). A specific
+# client's files are resolved from --client in main().
+DEFAULT_HOLDINGS = client_root() / "holdings"
+DEFAULT_JOURNAL = client_root() / "journal.md"
 
 # A decision file is named YYYY-MM-DD-<action>.md, with an optional numeric
 # suffix when two decisions share a day (e.g. 2026-04-23-hold-2.md).
@@ -320,10 +322,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         description="Review past decisions against today's prices."
     )
     parser.add_argument(
-        "--holdings", type=Path, default=DEFAULT_HOLDINGS, help="holdings folder"
+        "--client", default="default", help="which client's book (default: default)"
     )
     parser.add_argument(
-        "--journal", type=Path, default=DEFAULT_JOURNAL, help="journal.md file"
+        "--holdings", type=Path, default=None, help="holdings folder"
+    )
+    parser.add_argument(
+        "--journal", type=Path, default=None, help="journal.md file"
     )
     parser.add_argument(
         "--as-of",
@@ -332,8 +337,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if not args.holdings.exists():
-        print(f"holdings folder not found: {args.holdings}", file=sys.stderr)
+    root = client_root(args.client)
+    holdings_dir = args.holdings or (root / "holdings")
+    journal_file = args.journal or (root / "journal.md")
+
+    if not holdings_dir.exists():
+        print(f"holdings folder not found: {holdings_dir}", file=sys.stderr)
         return 2
 
     try:
@@ -343,10 +352,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 1
 
     try:
-        decisions = find_decisions(args.holdings)
+        decisions = find_decisions(holdings_dir)
         headings = (
-            read_journal_headings(args.journal.read_text(encoding="utf-8"))
-            if args.journal.exists()
+            read_journal_headings(journal_file.read_text(encoding="utf-8"))
+            if journal_file.exists()
             else []
         )
     except OSError as error:

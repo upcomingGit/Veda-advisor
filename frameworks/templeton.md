@@ -71,7 +71,8 @@ Templeton is rarely the primary framework on a routine `sell`, but he is routed 
 - **Position-sizing math.** Thorp.
 - **Tactical macro bets over 18–24 months.** Druckenmiller. Templeton's horizon is longer and more patient.
 - **Growth-at-any-price theses.** Templeton's discipline was global *value*; paying up for Fisher-grade compounders at full prices is outside his framework.
-- **Novice-mode interaction.** Templeton's maximum-pessimism rule is hazardous for novices *unsupervised* — it is the framework that most often sounds like *"buy falling knives"* if the three-markers discipline is not enforced. For novices, Templeton's role should be limited to (a) the **`crisis`** context where forced-selling mechanisms are externally obvious (2008-scale events), and (b) the **home-country-bias** surfacing, which is low-risk and high-value. Weight in novice `framework_weights` is 0.02 per [profile.template.md](../setup/profile.template.md) — *rarely relevant at novice stage* is correct. Surface the discipline in `education_note` when it does fire; do not encourage novices to call "maximum pessimism" on their own read.
+
+## Interaction with other frameworks
 
 ## Interaction with other frameworks
 

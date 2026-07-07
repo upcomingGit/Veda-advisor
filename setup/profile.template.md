@@ -12,15 +12,9 @@ generated: <YYYY-MM-DD>
 profile_last_updated: <YYYY-MM-DD>   # date of most recent edit or onboarding run; Veda re-interviews if this is > 6 months old
 disclosure_acknowledged: <bool>       # must be true before Veda produces any decision output; set during onboarding
 incomplete: false
-experience_mode: <novice | standard>
-# novice  = shorter onboarding, safe defaults, hard guardrails (see guardrails: below)
-# standard = full onboarding, user-specified preferences, no automatic guardrails beyond the user's own constraints
 
 # Top-level risk gate. Maximum P(loss) Veda will accept on any single trade regardless of positive EV.
-# Computed at onboarding from experience_mode; user may override downward but not above the mode default.
-#   novice   → 15  (ruin-aversion priority)
-#   standard → 35  (balanced)
-#   aggressive/speculation goal on standard → up to 60  (user has earned this only with documented behavioral history)
+# Typical range: 15 (ruin-averse) to 60 (aggressive, with documented behavioral history).
 max_loss_probability: <int>           # 0–100; enforced as Stage 8 second gate
 
 identity:
@@ -148,21 +142,6 @@ observed_notes: []
 # rules — hard gates belong in constraints.*. One dated bullet per entry, e.g.:
 #   - "2026-06-04: checks prices daily during drawdowns; prone to anxious selling."
 
-# Novice-only block. Present when experience_mode: novice.
-# These are hard constraints Veda enforces before any recommendation.
-guardrails:
-  block_leverage: true              # no margin recommendations
-  block_options: true               # no options (hedging or speculation)
-  block_shorts: true                # no short positions
-  block_lottery_bets: true          # no sub-1% speculative positions; novices don't know yet what's speculation vs investment
-  require_index_comparison: true    # every single-stock buy recommendation shows the index-fund alternative's expected return side-by-side
-  education_mode: true              # Veda cites frameworks with 1-line summaries + book references (see CREDITS.md)
-  graduation_criteria:
-    - "Lived through one 20%+ market drawdown with documented reaction in risk.behavioral_history"
-    - "At least 2 years of consistent investing"
-    - "Read at least 2 of: One Up on Wall Street, The Essays of Warren Buffett, The Most Important Thing"
-    - "User explicitly requests graduation via 'Veda: review my experience mode'"
-
 framework_weights:
   # Auto-derived from goal + style_lean + horizon. Veda uses these to break ties when frameworks disagree.
   buffett: <0.0 - 1.0>
@@ -204,23 +183,3 @@ When generating `framework_weights` from the user's answers:
 | Self-weakness = sells winners | Lynch (don't pull flowers) + Fisher (hold compounders) always surface |
 
 Weights should sum to roughly 1.0 but need not be exact. Veda uses them for tie-breaking, not for weighted averaging of recommendations.
-
-### Novice weights (override)
-
-When `experience_mode: novice`, ignore the derivation table above and use these fixed weights. Novice frameworks are ordered around ruin-avoidance and discipline, not return maximization.
-
-| Framework | Novice weight | Why |
-|---|---|---|
-| Buffett | 0.20 | Margin of safety, circle of competence, never lose money |
-| Munger | 0.18 | Inversion — avoiding losers matters more than finding winners at this stage |
-| Taleb | 0.12 | Ruin avoidance, skin-in-the-game discipline |
-| Lynch | 0.12 | Categorize first (the single most teachable idea in investing) |
-| Fisher | 0.10 | If buying individual stocks, at least buy quality |
-| Marks | 0.10 | Risk = permanent loss, not volatility |
-| Klarman | 0.08 | Value-trap detection |
-| Dalio | 0.05 | Diversification basics |
-| Thorp | 0.03 | Sizing, but deprioritized because novice sizing is capped by guardrail |
-| Templeton | 0.02 | Rarely relevant at novice stage |
-| Druckenmiller | 0.00 | Aggressive sizing / macro timing is not for novices |
-
-On graduation to `experience_mode: standard`, weights recompute from the full derivation table using the user's answers to the questions that were skipped or defaulted on the novice path (Q3, Q4, Q5, Q6, Q7, Q9, Q10, Q12, Q13, Q14, Q15 — re-interviewed at graduation time).

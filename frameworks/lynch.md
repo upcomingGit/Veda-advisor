@@ -90,7 +90,6 @@ Veda's Stage 6 requires each framework to declare where it stops. If the questio
 - **Lynch does not value.** PEG is a screen, not a valuation. Intrinsic-value estimates belong to Buffett / Klarman, not Lynch.
 - **Lynch does not time cycles.** Cyclical entries/exits are inverted-P/E signals; the macro timing layer is Marks / Druckenmiller.
 - **"Don't pull flowers" is not "never trim."** If a single position has grown to a portfolio-threatening weight (say 40%+), portfolio-level rules (Dalio, Thorp) override Lynch's "let winners run." Take some off the table for survival, not for return optimization.
-- **Novice-mode interaction.** If `experience_mode: novice`, the `block_lottery_bets: true` guardrail vetoes Lynch `buy` verdicts on **Turnarounds** (base rate ~25% success) and speculative **Asset Plays**. Stage 6 must refuse these via the structural-equivalence script even if Lynch's category rule would otherwise endorse them. Fast Growers and Stalwarts remain available to novices; Turnarounds become available only after graduation.
 
 ## Worked example — applying Lynch
 

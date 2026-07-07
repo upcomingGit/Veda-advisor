@@ -11,7 +11,6 @@ generated: 2026-04-15
 profile_last_updated: 2026-04-15
 disclosure_acknowledged: true
 incomplete: false
-experience_mode: standard
 max_loss_probability: 60    # aggressive_growth goal + high calibrated tolerance + documented behavior through two drawdowns
 
 identity:

@@ -12,6 +12,7 @@ different scripts. Keep one definition here; import everywhere else.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 
@@ -25,6 +26,22 @@ def detect_market(ticker: str) -> str:
     if upper.endswith(".NS") or upper.endswith(".BO"):
         return "IN"
     return "US"
+
+
+# ---------------------------------------------------------------------------
+# Client roots (multi-client layout)
+#
+# Every client's personal files — profile.md, assets.md, journal.md, holdings/,
+# holdings_registry.csv, ledger/, caps.json — live under clients/<client>/.
+# A single-client user never names one: the default client is "default".
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def client_root(client: str = "default") -> Path:
+    """Return the folder holding one client's personal files: clients/<client>/."""
+    return _REPO_ROOT / "clients" / client
 
 
 # ---------------------------------------------------------------------------

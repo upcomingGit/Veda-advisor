@@ -36,7 +36,6 @@ ev_block:
 sourced_facts:
   - <every number the orchestrator is relying on, with source + tier + as_of>
 profile_signals:
-  experience_mode: <novice | standard>
   self_identified_weakness: <verbatim from profile.md>
   max_loss_probability: <number 0-100>
   concentration:

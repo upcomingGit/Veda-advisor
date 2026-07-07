@@ -216,6 +216,23 @@ __marimo__/
 # ---------------------------------------------------------------------------
 # Veda — private user data. NEVER commit these.
 # ---------------------------------------------------------------------------
+# Per-client private data (multi-client layout): every file under a client's
+# clients/<client>/ folder is private. caps.json is intentionally NOT listed —
+# the rebalance plan stays tracked, as before; say the word to make it private too.
+clients/*/profile.md
+clients/*/journal.md
+clients/*/assets.md
+clients/*/holdings/
+clients/*/holdings_registry.csv
+clients/*/holdings_registry.csv.bak.*
+clients/*/ledger/
+clients/*/nav/
+clients/*/concentration/
+clients/*/rebalance/
+clients/*/tax/
+clients/*/research-seen.json
+
+# Legacy single-client layout (still ignored at the repo root if present):
 # Your personal profile — contains net worth %, goals, risk tolerance, etc.
 profile.md
 # Your decision journal — every investment recommendation you've logged.

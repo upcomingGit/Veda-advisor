@@ -27,7 +27,7 @@ The two-track switch. Picked from signal words (*"should I"* vs *"explain"*).
 
 Reads `profile.md`. Missing → onboarding runs instead. Older than 6 months → Veda asks what changed.
 
-Fields it reads: horizon, goal, risk tolerance, hard constraints, framework weights, your self-identified weakness, max acceptable probability of loss. Novice profiles also load the non-negotiable `guardrails:` block.
+Fields it reads: horizon, goal, risk tolerance, hard constraints, framework weights, your self-identified weakness, max acceptable probability of loss.
 
 ### Stage 1.5 — Load holdings (if needed)
 
@@ -127,8 +127,6 @@ For decision questions, Veda fills [templates/decision-block.md](../templates/de
 - Portfolio check (correlation, sector caps, heat before/after).
 - Pre-commit (one-sentence thesis, kill criteria, re-evaluate trigger, max acceptable loss).
 
-Novice mode adds two fields: **index comparison** (the same EV computed for buying the index instead) and **education note** (the principle this decision illustrates + book reference).
-
 Every number comes from `scripts/calc.py`. The exact command is recorded so you can reproduce it.
 
 ### Stage 9 — Journal and workspace write
@@ -160,7 +158,7 @@ Catch one failing? [Open an issue](../CONTRIBUTING.md#1-issues-highest-value) �
 |---|---|
 | Out of scope | Stage 0 decline. |
 | Profile missing or malformed | Stage 1 stops; onboarding runs. |
-| Novice asks for leverage / options / shorts / equivalent | Stage 6 refuses, points to `graduation_criteria`. |
+| Client asks for a blocked instrument class (leverage / options / shorts / equivalent) | Stage 6 refuses per Hard Rule #2. |
 | Negative EV | Stage 8 first gate. |
 | p_loss exceeds your `max_loss_probability` | Stage 8 second gate. |
 | Frameworks disagree, weights cannot resolve | Stage 7c hard conflict, you decide. |

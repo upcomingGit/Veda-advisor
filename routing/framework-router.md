@@ -63,7 +63,7 @@ Munger is a cross-cutting framework — inversion and bias-detection apply to al
 
 After primary routing, adjust based on profile. **Missing-field rule first:** if a field referenced below is absent from `profile.md` (progressive profiling hasn't captured it yet), **skip that adjustment silently** and do not trigger it. Empty ≠ match. Stage 1.6 will capture the field on a later turn; until then, the primary-routing row stands alone.
 
-- **If `experience_mode: novice`:** routing for options / shorts / margin questions does **not** happen — Stage 2 of SKILL.md blocks those via the structural-equivalence rule before the router runs. For novice `buy` / `hold_check` / `size` questions that do reach the router, elevate Buffett + Munger + Taleb (ruin avoidance) above routing defaults; this mirrors the novice-weighted `framework_weights` set at onboarding.
+- **If the client's `instruments` block options / shorts / margin:** routing for those questions does **not** happen — Stage 2 of SKILL.md blocks them via the structural-equivalence rule before the router runs.
 
 - **If `self_identified_weakness` matches the situation, always add the counter-framework.**
   - Weakness = "hold losers" → add Druckenmiller to any `hold_check` down situation.
