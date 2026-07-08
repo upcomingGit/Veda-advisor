@@ -11,9 +11,10 @@ Fetches forward-looking scheduled events for two scopes:
   (BLS blocks bots; RBI/MoSPI need brittle targeted parsing). Users supply v2
   events via the calendar-tracker subagent's `pasted_dates` channel.
 
-Called by the calendar-tracker subagent (see internal/agents/calendar-tracker.md)
-via the `Bash` tool. The subagent does NOT speak HTTP, scrape HTML, or call
-yfinance directly; those messy parts live here.
+Called by the advisor's calendar_feed.py (the live `company` / `events` calendar
+path) and, in the legacy fallback, by the quarantined calendar-tracker subagent
+(redundant/agents/calendar-tracker.md). Callers do NOT speak HTTP, scrape HTML, or
+call yfinance directly; those messy parts live here.
 
 Same pattern as scripts/fetch_news.py / fetch_disclosures.py / fetch_fundamentals.py:
 Bash-invoked, JSON to stdout, exit codes documented.
@@ -582,6 +583,41 @@ def _dedup_events(events: List[CalendarEvent]) -> List[CalendarEvent]:
 
 
 # =============================================================================
+# Position mode — one-name orchestration (importable by calendar_feed.py)
+# =============================================================================
+
+def fetch_position(
+    ticker: str,
+    market: str,
+    today: datetime,
+    lookforward_days: int,
+    bse_code: str = "",
+    nse_symbol: str = "",
+) -> List[FetchResult]:
+    """Run every position-mode source for one name; return the per-source results.
+
+    yfinance is primary for both markets; for India, Screener.in adds the next
+    results date (and resolves the BSE scrip code from the page), and the BSE
+    corporate-actions API backfills upcoming ex-dividend / AGM / split dates that
+    yfinance drops on Indian names. The advisor's calendar_feed.py imports this to
+    fan out over many names in parallel; main() calls it for the CLI.
+    """
+    results: List[FetchResult] = [
+        fetch_yfinance_calendar(ticker, market, today, lookforward_days)
+    ]
+    if market == "India":
+        screener_result, resolved_bse_code = fetch_screener_calendar(
+            ticker, bse_code, nse_symbol, today, lookforward_days,
+        )
+        results.append(screener_result)
+        if resolved_bse_code:
+            results.append(fetch_bse_corp_actions(
+                resolved_bse_code, today, lookforward_days,
+            ))
+    return results
+
+
+# =============================================================================
 # Global mode — FOMC schedule scraper (federalreserve.gov)
 # =============================================================================
 
@@ -729,29 +765,12 @@ def main() -> int:
             }), file=sys.stdout)
             return 2
 
-        # yfinance is the primary for both US and India
-        all_results.append(fetch_yfinance_calendar(
-            args.ticker, args.market, today_dt, args.lookforward_days
+        # One-name orchestration (yfinance + India supplements), shared with
+        # the advisor's calendar_feed.py fan-out.
+        all_results.extend(fetch_position(
+            args.ticker, args.market, today_dt, args.lookforward_days,
+            bse_code=args.bse_code, nse_symbol=args.nse_symbol,
         ))
-
-        if args.market == "India":
-            # Screener.in supplements (and is often the only earnings-date source for India).
-            # The Screener fetcher also extracts the BSE scrip code from the company page
-            # when the caller did not supply --bse-code, so we can plug BSE corp-actions
-            # below without making the user manage that code explicitly.
-            screener_result, resolved_bse_code = fetch_screener_calendar(
-                args.ticker, args.bse_code, args.nse_symbol,
-                today_dt, args.lookforward_days,
-            )
-            all_results.append(screener_result)
-
-            if resolved_bse_code:
-                # BSE corp-actions API surfaces upcoming ex-dividend / AGM /
-                # split / bonus dates that yfinance silently drops on Indian
-                # names. Forward-window only.
-                all_results.append(fetch_bse_corp_actions(
-                    resolved_bse_code, today_dt, args.lookforward_days,
-                ))
 
     else:  # global
         regions = [r.strip().upper() for r in args.regions.split(",") if r.strip()]

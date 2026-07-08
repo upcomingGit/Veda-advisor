@@ -1,13 +1,14 @@
 # Veda utility scripts
 
-Helper scripts for Veda. Six categories:
+Helper scripts for Veda. Seven categories:
 
 1. **`calc.py` — required.** Veda's Hard Rule #8 forbids LLM arithmetic. Every EV, p_loss, PEG, Kelly, FX, or weight-sum number comes from this script. See SKILL.md Hard Rule #8.
 2. **`validate_profile.py` — required at onboarding.** Deterministic schema check for `profile.md`. Run at the end of onboarding to catch enum typos and missing fields before they reach Stage 1.
 3. **`validate_assumptions.py` — required when writing `holdings/<slug>/assumptions.yaml`.** Enforces the rules in [internal/holdings-schema.md § "Writing assumptions and checkpoints — guardrails"](../internal/holdings-schema.md#writing-assumptions-and-checkpoints--guardrails-validator-enforced) (strict 4-category enum, slot allocation by archetype, metric whitelist by market, single-metric rule, checkpoint uniqueness, mandatory transcript anchors, inline grounding, coverage).
 4. **`validate_all.py` — batch wrapper.** Runs `validate_profile.py` on `profile.md` and `validate_assumptions.py` on every `holdings/<slug>/assumptions.yaml`. One command for a full sanity sweep before any commit / release.
-5. **Backup data fetchers (quarantined).** `fetch_fundamentals`, `fetch_news` + `news_spam_filter`, `fetch_disclosures`, `fetch_calendar`, `fetch_ownership` now live in [`redundant/scripts/`](../redundant/scripts/) — the per-name research fetchers for the uncovered-name fallback (the research house covers held names). `fetch_quote.py` (live prices + FX, used by NAV / rebalance) stays here as the one core fetcher.
+5. **Backup data fetchers (quarantined).** `fetch_fundamentals`, `fetch_news` + `news_spam_filter`, `fetch_disclosures`, `fetch_ownership` live in [`redundant/scripts/`](../redundant/scripts/) — the per-name research fetchers for the uncovered-name fallback (the research house covers held names). Two fetchers stay **core** here: `fetch_quote.py` (live prices + FX, used by NAV / rebalance) and `fetch_calendar.py` (scheduled events — earnings / ex-dividend / AGM — promoted out of quarantine; it drives `calendar_feed.py` and the `company` / `events` commands).
 6. **`import_assets.py` — optional persistence shortcut.** Only useful if you ask enough portfolio-level questions that re-pasting holdings becomes annoying.
+7. **Research handoff + reconciliation.** `research_feed.py` polls the research house's `published/manifest.yaml` and reconciles it against the client's book; `portfolio_formation.py` sizes the covered names into a proposed, book-aware target-weight book (Job 2); `company_view.py` assembles one name's dossier (the `company` command); `events_digest.py` builds the cross-book upcoming-events calendar (the `events` command); `calendar_feed.py` is the shared live-calendar layer both use.
 
 > **See also:** the local web dashboard lives outside `scripts/` in [`dashboard/`](../dashboard/) at the repo root. It is a read-only review surface for the workspace, not a script the chat-side pipeline calls. Start it with `python -m dashboard`. User docs: [INSTALL.md](../INSTALL.md#optional--local-workspace-dashboard) and [docs/customization.md](../docs/customization.md#local-workspace-dashboard). The dashboard reuses [`fetch_quote.py`](fetch_quote.py) for its (gated, optional) live-price refresh button — no other coupling.
 

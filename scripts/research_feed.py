@@ -296,6 +296,53 @@ def format_report(rows: list[dict], client: str, manifest_updated) -> str:
     return "\n".join(lines)
 
 
+# --- feed loader (shared by main + the detail-view / events digest) --------
+
+class FeedError(Exception):
+    """Raised when the research feed cannot be read. `code` is the process exit
+    code main() should return (missing manifest -> 2, unparseable -> 1)."""
+
+    def __init__(self, message: str, code: int = 1):
+        super().__init__(message)
+        self.code = code
+
+
+def load_feed(client: str, config_path: Path = DEFAULT_RESEARCH_CONFIG,
+              research_override: str | None = None):
+    """Resolve the research repo, load the manifest, reconcile it against one
+    client's book, and classify every covered name.
+
+    Returns (rows, held, watched, manifest_updated, research_path):
+      - rows: one classified entry per covered (manifest) name.
+      - held / watched: the client's own {(market, ticker)} sets, which may
+        include names the research house does NOT cover.
+      - research_path: the resolved Veda-research repo (for packet reads).
+    Raises FeedError on a missing (code 2) or unparseable (code 1) manifest.
+    """
+    research = resolve_research_path(config_path, research_override)
+    manifest_path = research / "published" / "manifest.yaml"
+    if not manifest_path.exists():
+        raise FeedError(f"research manifest not found: {manifest_path}", code=2)
+    try:
+        doc = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as error:
+        raise FeedError(f"could not parse manifest: {error}", code=1)
+    entries = [e for e in (doc.get("entries") or []) if isinstance(e, dict) and e.get("slug")]
+    manifest_updated = doc.get("updated")
+
+    root = client_root(client)
+    assets_path = root / "assets.md"
+    seen_path = root / "research-seen.json"
+
+    positions = read_assets_positions(assets_path) if assets_path.exists() else {}
+    held = {key for key, shares in positions.items() if abs(shares) > EPSILON}
+    watched = read_watchlist(assets_path)
+    seen = load_seen(seen_path)
+
+    rows = classify(entries, held, watched, seen)
+    return rows, held, watched, manifest_updated, research
+
+
 # --- command-line run ------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
@@ -311,33 +358,17 @@ def main(argv: list[str] | None = None) -> int:
                         help="record the current versions so they are not re-flagged next session")
     args = parser.parse_args(argv)
 
-    research = resolve_research_path(args.config, args.research_path)
-    manifest_path = research / "published" / "manifest.yaml"
-    if not manifest_path.exists():
-        print(f"research manifest not found: {manifest_path}", file=sys.stderr)
-        return 2
-
     try:
-        doc = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as error:
-        print(f"could not parse manifest: {error}", file=sys.stderr)
-        return 1
-    entries = [e for e in (doc.get("entries") or []) if isinstance(e, dict) and e.get("slug")]
-    manifest_updated = doc.get("updated")
+        rows, _held, _watched, manifest_updated, _research = load_feed(
+            args.client, args.config, args.research_path)
+    except FeedError as error:
+        print(str(error), file=sys.stderr)
+        return error.code
 
-    root = client_root(args.client)
-    assets_path = root / "assets.md"
-    seen_path = root / "research-seen.json"
-
-    positions = read_assets_positions(assets_path) if assets_path.exists() else {}
-    held = {key for key, shares in positions.items() if abs(shares) > EPSILON}
-    watched = read_watchlist(assets_path)
-    seen = load_seen(seen_path)
-
-    rows = classify(entries, held, watched, seen)
     print(format_report(rows, args.client, manifest_updated))
 
     if args.mark_seen:
+        seen_path = client_root(args.client) / "research-seen.json"
         cursor = {
             "manifest_updated": str(manifest_updated) if manifest_updated is not None else None,
             "seen": {row["slug"]: row["version"] for row in rows},

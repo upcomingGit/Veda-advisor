@@ -23,9 +23,12 @@ target weight, capped by your single-name limit (profile.md). The names to back
 now get proposed targets (which ADD to your existing targets); the ones to wait
 on are penciled onto the watchlist with a trigger.
 
-Formation is candidate-scoped: it sizes the research names, not your whole book.
-It does not read your current holdings, so the whole-book checks - sector and
-country caps, and the true cash - belong to the rebalancer, which sees them.
+Formation is book-aware: it reads your holdings and watchlist, tags each covered
+name by how it relates to your book (a new idea, a name you hold, a name you
+watch), flags a research Avoid on a name you hold as an exit to propose, and lists
+the legacy holdings research does not cover (frozen at their weight, with a nudge
+to commission research). The whole-book arithmetic - sector and country caps, and
+the true cash-vs-buys math - still belongs to the rebalancer, which sees the weights.
 
 This first read is a starting point, not the last word. The advisor reads the
 fuller thesis and report and can override any name's size with --set, or drop a
@@ -36,6 +39,7 @@ Examples (from a terminal in the Veda-advisor folder):
 
     python scripts/portfolio_formation.py --client default
     python scripts/portfolio_formation.py --client default --set BABA=8 --drop PARAS
+    python scripts/portfolio_formation.py --client default --write-requests
 
 Exit codes:
     0 - proposal printed
@@ -45,13 +49,16 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+from datetime import date
 from pathlib import Path
 
 import yaml
 
+from _common import client_root
 from concentration import load_limits
-from research_feed import DEFAULT_RESEARCH_CONFIG, _norm_market, resolve_research_path
+from research_feed import DEFAULT_RESEARCH_CONFIG, FeedError, _norm_market, load_feed
 
 # Force UTF-8 stdout so em-dashes / rupee signs in research text don't mangle on
 # Windows consoles that default to cp1252 (house idiom, see review_decisions.py).
@@ -78,13 +85,13 @@ def verdict_word(value) -> str:
     return head[0].capitalize() if head else ""
 
 
-def conviction_from_assumptions(entry: dict) -> tuple[str, str]:
+def conviction_from_assumptions(row: dict) -> tuple[str, str]:
     """A first-cut conviction (high/medium/low) from how the assumptions hold.
 
     Returns (conviction, reason). Two or more weak assumptions caps it at low; a
     mostly-on-track thesis reads high; the middle reads medium.
     """
-    assumptions = (entry.get("thesis") or {}).get("assumptions") or []
+    assumptions = row.get("assumptions") or []
     total = len(assumptions)
     on_track = sum(1 for a in assumptions
                    if isinstance(a, dict) and "on-track" in str(a.get("status") or "").lower())
@@ -102,26 +109,26 @@ def conviction_from_assumptions(entry: dict) -> tuple[str, str]:
         f", {weak} weak" if weak else "")
 
 
-def first_cut(entry: dict) -> tuple[str, str, str]:
-    """A mechanical read of one manifest entry: (outcome, conviction, reason).
+def first_cut(row: dict) -> tuple[str, str, str]:
+    """A mechanical read of one covered name: (outcome, conviction, reason).
 
     outcome: back_now | own_but_wait | watching | skip.
     conviction is set only for back_now / own_but_wait (the names worth backing).
     A starting point the advisor can override.
     """
-    if not entry.get("listed", True) or not entry.get("ticker"):
+    if not row.get("listed", True) or not row.get("ticker"):
         return "watching", "", "unlisted - watch for a listing"
-    verdict = verdict_word((entry.get("recommendation") or {}).get("value"))
+    verdict = verdict_word(row.get("value"))
     if verdict == "Avoid":
         return "skip", "", "research says avoid"
     if verdict != "Invest":
         return "watching", "", "research says watch, not buy yet"
 
-    conviction, reason = conviction_from_assumptions(entry)
-    zone = str((entry.get("valuation") or {}).get("zone") or "").upper()
+    conviction, reason = conviction_from_assumptions(row)
+    zone = str((row.get("valuation") or {}).get("zone") or "").upper()
     text = " ".join(filter(None, [
-        str((entry.get("recommendation") or {}).get("value") or ""),
-        str(entry.get("why") or ""),
+        str(row.get("value") or ""),
+        str(row.get("why") or ""),
     ])).lower()
     if zone == "EXPENSIVE" or any(w in text for w in _WAIT_WORDS):
         return "own_but_wait", conviction, "buy, but wait for a better price; " + reason
@@ -130,51 +137,130 @@ def first_cut(entry: dict) -> tuple[str, str, str]:
 
 # --- sizing (pure: entries + limits + overrides -> a proposal) --------------
 
-def _row(entry: dict, outcome: str, conviction: str, reason: str) -> dict:
-    val = entry.get("valuation") or {}
+def _row(row: dict, outcome: str, conviction: str, reason: str) -> dict:
+    val = row.get("valuation") or {}
     return {
-        "ticker": (entry.get("ticker") or "").upper(),
-        "market": _norm_market(entry.get("market")) or (entry.get("market") or "?"),
-        "name": entry.get("name") or entry.get("slug"),
+        "ticker": (row.get("ticker") or "").upper(),
+        "market": _norm_market(row.get("market")) or (row.get("market") or "?"),
+        "name": row.get("name") or row.get("slug"),
+        "relation": row.get("relation"),
         "outcome": outcome,
         "conviction": conviction,
         "reason": reason,
-        "verdict": (entry.get("recommendation") or {}).get("value"),
+        "verdict": row.get("value"),
         "zone": val.get("zone"),
-        "why": entry.get("why"),
+        "why": row.get("why"),
         "target_pct": None,
         "capped": False,
     }
 
 
-def build_proposal(entries: list[dict], limits: dict, overrides: dict,
+def build_proposal(rows: list[dict], limits: dict, overrides: dict,
                    drops: set) -> dict:
-    """One proposal: rows tagged with an outcome and (where backed) a target %.
+    """One proposal: covered names tagged with an outcome and (where backed) a
+    target %, routed by how each relates to the book.
 
-    Candidate-scoped: it sizes only the research names, not your existing book.
     Each backed name gets a conviction-based %, trimmed to the single-name cap
-    (--set overrides). The whole-book checks - sector and country caps, and the
-    true cash - belong to the rebalancer, which sees the current holdings.
+    (--set overrides). A research Avoid on a name you HOLD becomes an exit to
+    propose (never a silent skip). The whole-book arithmetic - sector and country
+    caps, and the true cash - stays with the rebalancer, which sees the holdings.
     """
     cap_pct = (limits.get("max_per_stock") or 1.0) * 100.0
 
-    rows: list[dict] = []
-    for entry in entries:
-        ticker = (entry.get("ticker") or "").upper()
+    out: list[dict] = []
+    for row in rows:
+        ticker = (row.get("ticker") or "").upper()
         if ticker and ticker in drops:
             continue
-        outcome, conviction, reason = first_cut(entry)
-        row = _row(entry, outcome, conviction, reason)
+        outcome, conviction, reason = first_cut(row)
+        if outcome == "skip" and row.get("relation") == "HELD":
+            outcome = "exit"
+            reason = ("research now rates Avoid a name you hold - propose an exit, "
+                      "tax-aware, never auto-sell")
+        pr = _row(row, outcome, conviction, reason)
         if outcome in ("back_now", "own_but_wait"):
             base = overrides.get(ticker, CONVICTION_WEIGHT.get(conviction, 0.0))
-            row["capped"] = base > cap_pct
-            row["target_pct"] = round(min(base, cap_pct), 1)
-        rows.append(row)
+            pr["capped"] = base > cap_pct
+            pr["target_pct"] = round(min(base, cap_pct), 1)
+        out.append(pr)
 
-    back = [r for r in rows if r["outcome"] == "back_now"]
+    back = [r for r in out if r["outcome"] == "back_now"]
     flags = [f"{r['ticker']} trimmed to the {cap_pct:.0f}% single-name cap"
-             for r in rows if r["capped"]]
-    return {"rows": rows, "back": back, "flags": flags, "cap_pct": cap_pct}
+             for r in out if r["capped"]]
+    return {"rows": out, "back": back, "flags": flags, "cap_pct": cap_pct}
+
+
+def legacy_holdings(rows: list[dict], held: set) -> list[tuple[str, str]]:
+    """Held names research does not cover: (market, ticker) in the book but absent
+    from the feed. Frozen at their current weight; each carries the research nudge."""
+    covered = {(r.get("market"), (r.get("ticker") or "").upper())
+               for r in rows if r.get("ticker")}
+    return sorted(k for k in held if k not in covered)
+
+
+def load_dry_powder_pct(client: str) -> float | None:
+    """The client's dry-powder reserve target (percent of the book), from profile.md
+    capital.dry_powder_pct. An AVERAGE target, not a hard floor -- spent on dip-triggers
+    and rebuilt after. None when unset."""
+    profile = client_root(client) / "profile.md"
+    if not profile.exists():
+        return None
+    text = profile.read_text(encoding="utf-8")
+    match = re.search(r"```yaml\n(.*?)```", text, re.DOTALL)
+    try:
+        data = yaml.safe_load(match.group(1) if match else text) or {}
+    except yaml.YAMLError:
+        return None
+    capital = data.get("capital") if isinstance(data, dict) else None
+    value = capital.get("dry_powder_pct") if isinstance(capital, dict) else None
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def coverage_requests(rows: list[dict], held: set, watched: set) -> tuple[list, list]:
+    """The uncovered names the client holds or watches - the coverage the advisor would
+    ask the research house to add. Returns (held_uncovered, watch_uncovered), each a
+    sorted list of (market, ticker)."""
+    covered = {(r.get("market"), (r.get("ticker") or "").upper())
+               for r in rows if r.get("ticker")}
+    held_unc = sorted(k for k in held if k not in covered)
+    watch_unc = sorted(k for k in watched if k not in covered)
+    return held_unc, watch_unc
+
+
+def write_coverage_requests(client: str, held_unc: list, watch_unc: list) -> Path:
+    """Write the plain-text coverage-request list to clients/<client>/research-requests.md -
+    a human-readable to-do the research house reads to prioritise what to cover next."""
+    path = client_root(client) / "research-requests.md"
+    lines = [f"# Coverage requests - client '{client}' ({date.today().isoformat()})", "",
+             "Names I hold or watch that research does not cover. Covering any of these lets",
+             "the advisor judge it research-grade instead of a framework guess.", "",
+             f"## Held ({len(held_unc)})",
+             (", ".join(t for _m, t in held_unc) if held_unc else "(none)"), "",
+             f"## Watchlist ({len(watch_unc)})",
+             (", ".join(t for _m, t in watch_unc) if watch_unc else "(none)"), ""]
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+def load_book_cash(client: str) -> tuple[float | None, float | None]:
+    """Book total and total cash (INR) from assets.md > dynamic.totals, for the cash
+    fit-check. (None, None) when unavailable - the check falls back to percents."""
+    assets = client_root(client) / "assets.md"
+    if not assets.exists():
+        return None, None
+    match = re.search(r"```yaml\n(.*?)```", assets.read_text(encoding="utf-8"), re.DOTALL)
+    if not match:
+        return None, None
+    try:
+        data = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError:
+        return None, None
+    totals = ((data.get("dynamic") or {}).get("totals")) or {}
+    grand = totals.get("grand_total_inr")
+    cash = sum(v for k, v in totals.items()
+               if k.startswith("cash_") and k.endswith("_inr") and isinstance(v, (int, float)))
+    grand = float(grand) if isinstance(grand, (int, float)) else None
+    return grand, (cash or None)
 
 
 def target_weights_block(back: list[dict]) -> dict:
@@ -192,16 +278,19 @@ def _label(row: dict) -> str:
     return f"{row['ticker']} ({row['name']}, {market})"
 
 
-def format_report(proposal: dict, client: str) -> str:
+def format_report(proposal: dict, client: str, dry_powder: float | None,
+                  legacy: list[tuple[str, str]], book_total: float | None = None,
+                  cash: float | None = None) -> str:
     rows = proposal["rows"]
-    lines = [f"Portfolio formation for client '{client}' - a proposal for the research names, "
-             "not a saved book.", ""]
+    lines = [f"Portfolio formation for client '{client}' - a proposal reconciled against "
+             "your book.", ""]
 
     back = proposal["back"]
     if back:
-        lines.append("Back now (proposed targets for the research names to buy now):")
+        lines.append("Back now (proposed targets to buy / add now):")
         for r in sorted(back, key=lambda x: -x["target_pct"]):
-            lines.append(f"  {_label(r)}  ->  {r['target_pct']:.0f}%  ({r['conviction']} conviction)")
+            tag = "  (ADD to your existing position)" if r.get("relation") == "HELD" else ""
+            lines.append(f"  {_label(r)}  ->  {r['target_pct']:.0f}%{tag}  ({r['conviction']} conviction)")
             lines.append(f"      {r['verdict']}  |  zone {r['zone']}  |  {r['reason']}")
     else:
         lines.append("Back now: nothing - no covered name is a buy at today's price.")
@@ -213,6 +302,9 @@ def format_report(proposal: dict, client: str) -> str:
         for r in wait:
             lines.append(f"  {_label(r)}  ->  ~{r['target_pct']:.0f}% ({r['conviction']}), waiting")
             lines.append(f"      {r['verdict']}  |  zone {r['zone']}  |  why: {r['why']}")
+            if str(r.get("zone") or "").upper() not in ("", "EXPENSIVE"):
+                lines.append(f"      -> research zone is already {r['zone']} - the better price you're "
+                             "waiting for may be here; your call.")
 
     watching = [r for r in rows if r["outcome"] == "watching"]
     if watching:
@@ -220,6 +312,14 @@ def format_report(proposal: dict, client: str) -> str:
         lines.append("Just watching (watchlist, no size yet):")
         for r in watching:
             lines.append(f"  {_label(r)} - {r['verdict']}")
+
+    exits = [r for r in rows if r["outcome"] == "exit"]
+    if exits:
+        lines.append("")
+        lines.append("Exit check (research rates Avoid a name you hold - propose, never auto-sell):")
+        for r in exits:
+            lines.append(f"  {_label(r)} - {r['verdict']}")
+            lines.append("      -> propose the exit with the tax read (LTCG vs STCG via `tax`); you decide.")
 
     skip = [r for r in rows if r["outcome"] == "skip"]
     if skip:
@@ -240,12 +340,46 @@ def format_report(proposal: dict, client: str) -> str:
         for line in yaml.safe_dump(block, sort_keys=False, allow_unicode=True).splitlines():
             lines.append("  " + line)
 
+    if back:
+        buy_total = sum(r["target_pct"] for r in back)
+        lines.append("")
+        lines.append("Funding:")
+        if book_total:
+            buy_inr = buy_total / 100.0 * book_total
+            line = f"  the back-now buys total ~{buy_total:.0f}% (~Rs {buy_inr:,.0f})."
+            if cash is not None:
+                leftover = cash - buy_inr
+                if leftover >= 0:
+                    line += f" You have ~Rs {cash:,.0f} cash - fits, leaves ~Rs {leftover:,.0f}."
+                else:
+                    line += f" You have ~Rs {cash:,.0f} cash - short ~Rs {-leftover:,.0f}."
+            lines.append(line)
+            if dry_powder is not None and cash is not None:
+                left_pct = max(cash - buy_inr, 0.0) / book_total * 100.0
+                lines.append(f"  That leaves ~{left_pct:.0f}% cash vs your ~{dry_powder:.0f}% reserve "
+                             "(an average target, not a hard floor - your call).")
+        else:
+            lines.append(f"  the back-now buys total ~{buy_total:.0f}% of the book.")
+        lines.append("  Fund cash-first; if short, rotate from the weakest name you can defend: a covered")
+        lines.append("  Avoid, then a covered expensive / weak-thesis name, then - last resort - a frozen")
+        lines.append("  legacy name you pick (size + gain + tax shown). Run `rebalance` for the exact trades.")
+        if dry_powder is None:
+            lines.append("  (No reserve set - add capital.dry_powder_pct to profile.md to hold dip-buying cash.)")
+
+    if legacy:
+        preview = ", ".join(t for _m, t in legacy[:12])
+        more = f", +{len(legacy) - 12} more" if len(legacy) > 12 else ""
+        lines.append("")
+        lines.append(f"Frozen legacy holdings ({len(legacy)}) - research does not cover these, so they")
+        lines.append("hold their current weight (moved only by a cap breach, the FIRE glide, or funding):")
+        lines.append(f"  {preview}{more}")
+        lines.append("  -> to judge any properly, commission a research deep-dive (a framework guess until")
+        lines.append("     covered). `company <name>` shows what is known now; --write-requests saves")
+        lines.append("     this list for the research house.")
+
     lines.append("")
-    lines.append("Scope: the research names only - formation does not read your current holdings")
-    lines.append("yet. After you save the targets, run `rebalance` for the whole-book view and its")
-    lines.append("single-name / sector / country cap warnings.")
-    lines.append("This is a proposal. Adjust any size with --set TICKER=PCT, drop a name with")
-    lines.append("--drop TICKER, then confirm before the targets are written to assets.md.")
+    lines.append("This is a proposal - nothing is written. Adjust a size with --set TICKER=PCT, drop a")
+    lines.append("name with --drop TICKER, then confirm before the targets are saved to assets.md.")
     return "\n".join(lines)
 
 
@@ -264,7 +398,8 @@ def _parse_kv(items: list[str]) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Propose a target-weight book from the research feed and your limits."
+        description="Propose a book from the research feed, reconciled against the "
+                    "client's holdings and watchlist."
     )
     parser.add_argument("--client", default="default", help="which client's book (default: default)")
     parser.add_argument("--research-path", default=None,
@@ -275,6 +410,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="override a name's target percent (repeatable)")
     parser.add_argument("--drop", action="append", default=[], metavar="TICKER",
                         help="exclude a name from the proposal (repeatable)")
+    parser.add_argument("--write-requests", action="store_true",
+                        help="write the uncovered held/watchlist names to research-requests.md "
+                             "for the research house to prioritise coverage")
     args = parser.parse_args(argv)
 
     try:
@@ -284,21 +422,24 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     drops = {t.strip().upper() for t in args.drop}
 
-    research = resolve_research_path(args.config, args.research_path)
-    manifest_path = research / "published" / "manifest.yaml"
-    if not manifest_path.exists():
-        print(f"research manifest not found: {manifest_path}", file=sys.stderr)
-        return 2
     try:
-        doc = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as error:
-        print(f"could not parse manifest: {error}", file=sys.stderr)
-        return 1
-    entries = [e for e in (doc.get("entries") or []) if isinstance(e, dict) and e.get("slug")]
+        rows, held, watched, _updated, _research = load_feed(
+            args.client, args.config, args.research_path)
+    except FeedError as error:
+        print(str(error), file=sys.stderr)
+        return error.code
 
     limits = load_limits(args.client)
-    proposal = build_proposal(entries, limits, overrides, drops)
-    print(format_report(proposal, args.client))
+    proposal = build_proposal(rows, limits, overrides, drops)
+    legacy = legacy_holdings(rows, held)
+    dry_powder = load_dry_powder_pct(args.client)
+    book_total, cash = load_book_cash(args.client)
+    print(format_report(proposal, args.client, dry_powder, legacy, book_total, cash))
+
+    if args.write_requests:
+        held_unc, watch_unc = coverage_requests(rows, held, watched)
+        path = write_coverage_requests(args.client, held_unc, watch_unc)
+        print(f"\nWrote {len(held_unc) + len(watch_unc)} coverage request(s) to {path}")
     return 0
 
 

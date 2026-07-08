@@ -7,6 +7,10 @@
 # Install with:
 #   python -m pip install -r requirements.txt
 
+# scripts/fetch_calendar.py + scripts/calendar_feed.py - live corporate calendar
+# (earnings / ex-dividend / AGM) for the `company` and `events` commands, via
+# yfinance + Screener.in / BSE. Needs requests + beautifulsoup4 + yfinance (all below).
+
 # scripts/fetch_quote.py, scripts/fetch_fundamentals.py - live quotes & data via yfinance.
 # Pinned with a lower bound; newer versions are expected to be compatible.
 # yfinance is unofficial Yahoo Finance and may rate-limit on heavy use.

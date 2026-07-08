@@ -418,3 +418,55 @@ nothing.
 book. It does not place a trade, size a position, or act on the research house's
 Buy / Invest label; any decision runs the full pipeline.
 
+## `company <name>` — one company's full dossier
+
+Assembles everything known about one name into a single readable view, drawn from
+the best source available and labelled with where each part came from. This is the
+"tell me about X" surface — a read, not a decision (a buy / sell / size still runs
+the relevant job).
+
+**Procedure:**
+
+1. Run `python scripts/company_view.py --client <active> "<name or ticker>"`. It
+   resolves the name, decides coverage (is it in the research manifest?) and book
+   relationship (held / watchlisted / neither), and assembles:
+   - **Covered name** → the research packet: the call, the valuation zone, the full
+     thesis (each assumption with its `breaks_if` tripwire), the scorecard, recent
+     fundamentals, and the curated news pulse — plus pointers to the packet's
+     narrative docs (report, business overview, governance, risk probe).
+   - **Uncovered name you hold** → your own local workspace (valuation, thesis
+     anchors, fundamentals) and doc pointers, **with the coverage disclaimer**
+     (Hard Rule #6) — it is lighter than research and may be stale.
+   - Either way, a **live calendar** of upcoming scheduled events is fetched fresh.
+2. Surface it. For an unknown name pass `--market us|india` so the calendar can be
+   fetched. If the user then wants to act, route to the job (a covered idea →
+   Job 2 formation; a held name → a hold-check).
+
+> *"Astra Microwave (ASTRAMICRO, IN) — covered by research, a new idea not yet in your book. Research call: Invest, about a year. Zone FAIR near-term / EXPENSIVE long-term. The thesis rests on the space demerger and the segment out-growing the parent — three of four assumptions on-track. No scheduled events in the next 180 days. Want the full write-up, or shall I size it?"*
+
+**What it does NOT do.** It reads only; the sole write is the live calendar cache
+in a held name's own workspace. It states no buy / sell / size — that is the job's
+work — and for a covered name it consumes the research verdict, never re-derives it.
+
+## `events` — upcoming calendar across everything you track
+
+One date-sorted calendar spanning every name the client holds, watchlists, or the
+research house covers — so an earnings date or ex-dividend never arrives unnoticed.
+Each row is tagged on both axes (covered / uncovered, and held / watchlist /
+research idea).
+
+**Procedure:**
+
+1. Run `python scripts/events_digest.py --client <active>`. It reconciles the book
+   and the research feed into one tracked universe, fetches each name's calendar
+   live and in parallel, and prints a single timeline (soonest first) plus the
+   names with nothing scheduled.
+2. Surface the timeline. Narrow with `--lookforward-days N` when the user wants a
+   nearer horizon (e.g. 30 for "this month").
+
+> *"Next 120 days across your 37 tracked names: NTPC Q3 earnings 29 Jul, MSFT 30 Jul, AMZN 31 Jul; a cluster of ex-dividends mid-July (CDSL, NH). Two research-covered names report — DATAPATTNS ex-div 24 Jul, BABA earnings 28 Aug. 13 names have nothing scheduled."*
+
+**What it does NOT do.** It reads only; the sole writes are the per-name calendar
+caches in held names' workspaces. The dates are facts, not a view — it states no
+buy / sell and grades nothing.
+

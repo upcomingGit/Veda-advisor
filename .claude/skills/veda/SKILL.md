@@ -12,9 +12,9 @@ $ARGUMENTS
 
 `SKILL.md` is the source of truth. It contains:
 
-- The 9-stage Veda pipeline.
-- 10 Hard Rules (including no-stale-data enforcement for FX, prices, and index levels, and the rule that derived profile values must be written to `profile.md` in the same turn).
-- The onboarding trigger — if `profile.md` is missing at the repo root, run `setup/onboarding.prompt.md` before anything else.
+- The five advisor jobs and the router that dispatches to them.
+- The Hard Rules (including no-stale-data enforcement for FX, prices, and index levels, and the rule that derived profile values must be written to the active client's `profile.md` in the same turn).
+- The onboarding trigger — if the active client's `profile.md` is missing, run `setup/onboarding.prompt.md` before anything else.
 - Invariants (decline script for non-investment questions; personal-education disclosure; plain-language rule — never narrate YAML field names or internal enum values to the user; no stage-by-stage narration).
 
 Do not answer the user's investment question from memory of prior Veda sessions. Re-read `SKILL.md` every session. It may have been updated.
