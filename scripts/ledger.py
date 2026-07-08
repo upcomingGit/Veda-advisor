@@ -40,7 +40,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from _common import client_root
+from _common import client_root, slugify
 
 
 # Default ledger file for the default client (clients/default/ledger/...).
@@ -105,7 +105,7 @@ def make_lot_id(ticker: str, day: str, transactions: list[dict]) -> str:
     If a lot for the same ticker and date already exists, the trailing number
     goes up so each lot id is unique.
     """
-    slug = ticker.lower().replace(".", "-")
+    slug = slugify(ticker)
     prefix = f"{slug}-{day}-"
     used = 0
     for tx in transactions:

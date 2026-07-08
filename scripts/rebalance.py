@@ -21,7 +21,6 @@ touch the network. Only the command-line run fetches from yfinance.
 
 Examples (from a terminal in the Veda-advisor folder):
 
-    python scripts/rebalance.py --setup     # friendly first-time rule setup
     python scripts/rebalance.py
     python scripts/rebalance.py --as-of 2026-03-31
 
@@ -49,161 +48,19 @@ from concentration import (
     build_price_book,
     build_sector_map,
     current_positions,
-    load_caps,
+    load_limits,
 )
 from _common import client_root
 
 # Default locations for the default client (clients/default/...). A specific
 # client's files are resolved from --client in main().
-DEFAULT_CAPS = client_root() / "caps.json"
 DEFAULT_HOLDINGS = client_root() / "holdings"
 DEFAULT_OUT = client_root() / "rebalance" / "proposal.json"
 
 TOLERANCE = 1e-9          # Small slack so a target exactly on a cap is not a breach.
 ALLOCATION_TOLERANCE = 0.005   # Allow targets to sum within half a percent of 100%.
 
-# Sensible starting rules for someone who has not set their own. Plain-language
-# meaning is in run_setup() and internal/rebalance-schema.md.
-DEFAULT_RULES = {
-    "max_per_stock": 0.10,                          # most in any one stock
-    "max_per_country": {"india": 0.70, "us": 0.50}, # most in Indian / US stocks
-    "max_per_sector": {"default": 0.30},            # most in any one sector
-    "ignore_drift_below": 0.02,                     # ignore differences smaller than this
-}
-
-
-# --- friendly guided setup -------------------------------------------------
-
-def _parse_percent(text: str, default: float) -> float:
-    """Read a percent the way a person would type it: 10, 10%, or 0.10.
-
-    Blank input keeps the default. A number above 1 is read as a percent
-    (10 -> 0.10); a number at or below 1 is read as a fraction already.
-    """
-    text = text.strip().rstrip("%").strip()
-    if not text:
-        return default
-    value = float(text)
-    if value < 0:
-        raise ValueError("a percent cannot be negative")
-    fraction = value / 100 if value > 1 else value
-    if fraction > 1:
-        raise ValueError("a percent cannot be more than 100")
-    return round(fraction, 4)
-
-
-def _ask_percent(prompt: str, default: float) -> float:
-    """Ask one percent question, re-asking until the answer is valid."""
-    while True:
-        raw = input(f"{prompt}\n  [{default * 100:.0f}%]: ")
-        try:
-            return _parse_percent(raw, default)
-        except ValueError as error:
-            print(f"  (couldn't read that - {error}. try a number like 10)")
-
-
-def run_setup(caps_path: Path) -> int:
-    """Walk a brand-new user through their rebalance rules in plain language.
-
-    Every question shows a default in brackets; pressing Enter keeps it. The
-    user can also accept all defaults at once. Any target weights already in the
-    file are preserved untouched. Writes user-config/caps.json and returns 0.
-    """
-    existing = json.loads(caps_path.read_text(encoding="utf-8")) if caps_path.exists() else {}
-
-    print("Veda rebalance setup")
-    print("--------------------")
-    print("These rules decide when Veda suggests buying or selling to keep your")
-    print("portfolio balanced. You can change them any time by running this again.")
-    print()
-
-    try:
-        choice = input(
-            "Set the rules yourself, or use sensible defaults?\n"
-            "  Type 'setup' to choose, or press Enter to use defaults: "
-        ).strip().lower()
-    except EOFError:
-        choice = ""
-
-    rules = dict(DEFAULT_RULES)
-    if choice in ("setup", "s", "yes", "y"):
-        print("\nPress Enter on any question to keep the default in brackets.\n")
-        try:
-            rules["max_per_stock"] = _ask_percent(
-                "1. Most in any one stock - the largest share a single stock may be.",
-                DEFAULT_RULES["max_per_stock"],
-            )
-            rules["max_per_country"] = {
-                "india": _ask_percent(
-                    "2. Most in Indian stocks together.", DEFAULT_RULES["max_per_country"]["india"]
-                ),
-                "us": _ask_percent(
-                    "3. Most in US stocks together.", DEFAULT_RULES["max_per_country"]["us"]
-                ),
-            }
-            rules["max_per_sector"] = {
-                "default": _ask_percent(
-                    "4. Most in any one sector (banks, tech, and so on).",
-                    DEFAULT_RULES["max_per_sector"]["default"],
-                )
-            }
-            rules["ignore_drift_below"] = _ask_percent(
-                "5. Ignore-small-differences band - we won't suggest a trade if a\n"
-                "   stock is already within this much of its target. Stops churning\n"
-                "   over tiny amounts.",
-                DEFAULT_RULES["ignore_drift_below"],
-            )
-        except EOFError:
-            print("\n(no input available - keeping defaults)")
-            rules = dict(DEFAULT_RULES)
-    else:
-        print("\nUsing sensible defaults. You can fine-tune them later by running")
-        print("  python scripts/rebalance.py --setup")
-
-    # Keep any target weights the user already set; start empty otherwise.
-    targets = existing.get("target_weights", existing.get("targets", {"india": {}, "us": {}}))
-
-    caps = {}
-    # Keep the _about header at the top of the file if it is already there.
-    if existing.get("_about") is not None:
-        caps["_about"] = existing["_about"]
-    caps.update({
-        "max_per_stock": rules["max_per_stock"],
-        "max_per_country": rules["max_per_country"],
-        "max_per_sector": rules["max_per_sector"],
-        "ignore_drift_below": rules["ignore_drift_below"],
-        "target_weights": targets,
-    })
-
-    caps_path.parent.mkdir(parents=True, exist_ok=True)
-    caps_path.write_text(json.dumps(caps, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-    print("\nYour rebalance rules:")
-    print(f"  Most in any one stock:   {caps['max_per_stock'] * 100:.0f}%")
-    print(f"  Most in Indian stocks:   {caps['max_per_country']['india'] * 100:.0f}%")
-    print(f"  Most in US stocks:       {caps['max_per_country']['us'] * 100:.0f}%")
-    print(f"  Most in any one sector:  {caps['max_per_sector']['default'] * 100:.0f}%")
-    print(f"  Ignore differences under {caps['ignore_drift_below'] * 100:.0f}%")
-    print(f"\nSaved to {caps_path}")
-    print("\nNext: pick a target weight for each stock you want to hold. Not sure what")
-    print("the targets should be? That's exactly what Veda is for - ask it to help you")
-    print("research a stock and decide how much to hold. You can also track stocks you")
-    print("don't own yet in your watchlist (assets.md), then set targets for them when")
-    print("you're ready. Once targets are set, run:")
-    print("  python scripts/rebalance.py")
-    print("to see suggested trades.")
-    return 0
-
-
-# --- reading targets and the band from the caps file -----------------------
-
-def load_caps_with_targets(path: Path) -> dict:
-    """Read user-config/caps.json and fill in the rebalancing defaults if absent."""
-    caps = load_caps(path)
-    caps.setdefault("target_weights", {})
-    caps.setdefault("ignore_drift_below", 0.0)
-    return caps
-
+# --- reading targets and the band ------------------------------------------
 
 def normalise_targets(caps: dict) -> dict[tuple[str, str], float]:
     """Flatten the caps target_weights block into a map of (market, ticker) -> fraction.
@@ -346,7 +203,7 @@ def build_proposal(
             item.update(target=None, target_weight=None, action="hold",
                         trade_shares=0.0, trade_inr=0.0, reason="not set in plan file")
             data_gaps.append(
-                f"{item['ticker']} ({item['market']}): missing target weight in user-config/caps.json"
+                f"{item['ticker']} ({item['market']}): missing target weight in assets.md > dynamic.target_weights"
             )
             continue
 
@@ -460,7 +317,7 @@ def build_proposal(
         "untracked_targets": untracked_targets,
         "scope_note": (
             "This rebalance covers the stocks you hold, plus any stock you have set a "
-            "target for in user-config/caps.json (including watchlist names you want to "
+            "target for in assets.md > dynamic.target_weights (including watchlist names you want to "
             "start buying). It does not pick stocks for you - decide what to track and "
             "what the target should be with Veda first."
         ),
@@ -580,7 +437,7 @@ def format_report(report: dict) -> str:
 
     if report["data_gaps"]:
         lines.append("")
-        lines.append("These stocks are in your portfolio but missing from user-config/caps.json:")
+        lines.append("These stocks are in your portfolio but missing from assets.md target weights:")
         lines.append("  add a target weight for each one")
         for gap in report["data_gaps"]:
             lines.append(f"  {gap}")
@@ -593,7 +450,7 @@ def format_report(report: dict) -> str:
 
     lines.append("")
     lines.append("Scope: we rebalance the stocks you hold, plus any stock you've set a target")
-    lines.append("  for in user-config/caps.json - including watchlist names you want to start")
+    lines.append("  for in assets.md - including watchlist names you want to start")
     lines.append("  buying. We don't pick stocks for you. To add a new name, ask Veda to help")
     lines.append("  research it and decide a target, then set that target here.")
 
@@ -606,22 +463,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Build the Veda rebalancing proposal.")
     parser.add_argument("--client", default="default", help="which client's book (default: default)")
     parser.add_argument("--file", type=Path, default=None, help="ledger file")
-    parser.add_argument("--caps", type=Path, default=None, help="caps config file")
     parser.add_argument("--holdings", type=Path, default=None, help="holdings folder")
     parser.add_argument("--out", type=Path, default=None, help="proposal output file")
     parser.add_argument("--as-of", default=date.today().isoformat(), help="proposal date YYYY-MM-DD")
-    parser.add_argument("--setup", action="store_true",
-                        help="friendly guided setup of your rebalance rules, then exit")
     args = parser.parse_args(argv)
 
     root = client_root(args.client)
     ledger_file = args.file or (root / "ledger" / "transactions.jsonl")
-    caps_file = args.caps or (root / "caps.json")
     holdings_dir = args.holdings or (root / "holdings")
     out_file = args.out or (root / "rebalance" / "proposal.json")
-
-    if args.setup:
-        return run_setup(caps_file)
 
     if not ledger_file.exists():
         print(f"ledger file not found: {ledger_file}", file=sys.stderr)
@@ -632,7 +482,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         if not transactions:
             print("ledger is empty; nothing to rebalance", file=sys.stderr)
             return 1
-        caps = load_caps_with_targets(caps_file)
+        caps = load_limits(args.client)
         sector_map = build_sector_map(holdings_dir)
         positions, _ = current_positions(transactions, args.as_of)
         prices = build_price_book(positions)

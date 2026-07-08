@@ -90,6 +90,7 @@ Do NOT scaffold for:
 #### Scaffolded files
 
 On workspace scaffold (orchestrator, lazy):
+- **Folder name (`instance_key` / `<slug>`).** Derive it from the ticker with the canonical rule: uppercase, strip the exchange suffix (`.NS` / `.BO` / `.BOM`), lowercase, then collapse any run of non-alphanumerics to a single `-` — e.g. `RELIANCE.NS` → `reliance`, `BRK.B` → `brk-b`. This mirrors `scripts/_common.py` `slugify()`; never leave the exchange suffix in the folder name (no `reliance-ns`).
 - `_meta.yaml` — created with required fields. `archetype` inferred or asked per § "Archetype inference" below. `market` derived from the assets.md row's currency: INR section → `IN`, USD section → `US`. For other currencies (rare in v1; the validator only accepts `US | IN`), ask the user which market the company files quarterly results in.
 - `kb.md` — created as stub: `_(to be populated)_`
 - `thesis.md` — created as stub with archetype header: `_(to be populated)_`
@@ -435,7 +436,7 @@ prices:                   # month-end close prices, oldest first, up to ~120 poi
 
 ## `valuation.yaml` — optional
 
-Valuation-zone snapshot per archetype's primary metric. Populated by `fundamentals-fetcher` ([internal/agents/fundamentals-fetcher.md](agents/fundamentals-fetcher.md)). The shape varies by `primary_metric`; common fields below, then per-archetype examples.
+Valuation-zone snapshot per archetype's primary metric. Populated by `fundamentals-fetcher` ([redundant/agents/fundamentals-fetcher.md](../redundant/agents/fundamentals-fetcher.md)). The shape varies by `primary_metric`; common fields below, then per-archetype examples.
 
 **Common fields** (all archetypes):
 
@@ -717,7 +718,7 @@ pledging:                     # India fresh builds OMIT this block in v1
   source: ORCL 2026 DEF 14A footnote 7
 ```
 
-Field notes (canonical contract: [`internal/agents/ownership-tracker.md`](agents/ownership-tracker.md)):
+Field notes (canonical contract: [`redundant/agents/ownership-tracker.md`](../redundant/agents/ownership-tracker.md)):
 
 - `id` — stable cross-run dedup key. The orchestrator's verify-write step
   greps for at least one returned `id` after writing. Required on every row.
@@ -771,7 +772,7 @@ history:
     dii_pct: null
 ```
 
-Field notes (canonical contract: [`internal/agents/ownership-tracker.md`](agents/ownership-tracker.md)):
+Field notes (canonical contract: [`redundant/agents/ownership-tracker.md`](../redundant/agents/ownership-tracker.md)):
 
 - `as_of` is the regulator-reported snapshot date; `period` is the matching
   fiscal-quarter label (`YYYY-Qn`). The orchestrator's verify-write step

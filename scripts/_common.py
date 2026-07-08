@@ -12,6 +12,7 @@ different scripts. Keep one definition here; import everywhere else.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -28,11 +29,32 @@ def detect_market(ticker: str) -> str:
     return "US"
 
 
+def slugify(ticker: str) -> str:
+    """Canonical holdings-folder slug for a ticker.
+
+    Indian-exchange suffixes (`.NS`, `.BO`, `.BOM`) are stripped before the
+    dot-to-dash replacement so that a ticker called both as `RELIANCE` and
+    `RELIANCE.NS` resolves to the same folder (`reliance`), not two distinct
+    folders (`reliance` and `reliance-ns`). US tickers (no exchange suffix in
+    this repo's convention) are unaffected: `BRK.B` -> `brk-b`. Ported from the
+    research repo's canonical slugify so both sides derive identical slugs.
+    """
+    t = ticker.upper()
+    for suffix in (".NS", ".BO", ".BOM"):
+        if t.endswith(suffix):
+            t = t[: -len(suffix)]
+            break
+    # Lowercase, then collapse any run of non-alphanumerics to a single hyphen.
+    # For a normal ticker this maps "." -> "-" exactly (BRK.B -> brk-b); it also
+    # keeps a name-based input (an unlisted company) folder-safe.
+    return re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-")
+
+
 # ---------------------------------------------------------------------------
 # Client roots (multi-client layout)
 #
 # Every client's personal files — profile.md, assets.md, journal.md, holdings/,
-# holdings_registry.csv, ledger/, caps.json — live under clients/<client>/.
+# holdings_registry.csv, ledger/ — live under clients/<client>/.
 # A single-client user never names one: the default client is "default".
 # ---------------------------------------------------------------------------
 

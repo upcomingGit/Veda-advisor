@@ -6,9 +6,10 @@ set. It answers one question: is any single name, sector, or market larger than
 the mandate allows, and if so, by how much.
 
 This is Module 3. It reads Module 1 (the ledger) for what is held, reads each
-holding's `_meta.yaml` for its sector, reads `user-config/caps.json` for the
-limits, and fetches current prices and the exchange rate from yfinance. It
-writes one snapshot file and prints a readable table.
+holding's `_meta.yaml` for its sector, reads the limits from `profile.md`
+(`concentration.target.max_single_position_pct` plus the `limits:` block), and
+fetches current prices and the exchange rate from yfinance. It writes one
+snapshot file and prints a readable table.
 
 It is a current snapshot, not a time series. It says where the book stands now.
 
@@ -45,33 +46,35 @@ the same convention the NAV pipeline uses.
   ledger holds but the map does not cover gets the sector `unknown` and is
   listed as a data gap. The sector is never guessed from a folder name or from
   prose.
-- **Caps.** Read from `user-config/caps.json`. See the schema below.
+- **Caps.** Read from `profile.md` — the single-name ceiling from
+  `concentration.target.max_single_position_pct`, the sector and country caps
+  from the `limits:` block. See the schema below.
 
-## The caps file
+## The limits
 
-`user-config/caps.json` holds the limits, as fractions of the total book value
-(0.10 means ten percent). You fill in the numbers; they are your mandate, not a
-suggestion from the tool.
+The limits live in `profile.md` as percents (20 means twenty percent). The
+single-name ceiling is `concentration.target.max_single_position_pct`; the rest
+live in the `limits:` block. `load_limits()` reads them and converts to fractions.
 
-```json
-{
-  "max_per_stock": 0.10,
-  "max_per_country": { "india": 0.70, "us": 0.50 },
-  "max_per_sector": { "default": 0.30, "Power": 0.25 }
-}
+```yaml
+# profile.md
+concentration:
+  target:
+    max_single_position_pct: 20   # the largest share any single stock may be
+limits:
+  max_per_sector: 30              # default cap for any one sector
+  max_per_country:                # a cap per market; a market with no entry has no cap
+    india: 70
+    us: 50
 ```
 
-- `max_per_stock` — one number that applies to every holding: the largest share
-  any single stock may be.
-- `max_per_country` — a cap per country. A country with no entry has no cap and
+- `max_single_position_pct` — one number that applies to every holding: the
+  largest share any single stock may be.
+- `max_per_country` — a cap per market. A market with no entry has no cap and
   is reported without a breach test.
-- `max_per_sector` — a cap per sector, plus an optional `default` that applies to
-  any known sector without its own entry. The `unknown` sector is never capped;
-  it is a data gap to fix by adding the missing `_meta.yaml`, not a breach.
-
-Older files may use the terse names (`single_name`, `market`, `sector`,
-`rebalance_band`, `targets`). These are still read and mapped onto the current
-names automatically, so an existing file keeps working unchanged.
+- `max_per_sector` — a default cap for any known sector (write it as a mapping
+  with per-sector overrides if you need them). The `unknown` sector is never
+  capped; it is a data gap to fix by adding the missing `_meta.yaml`, not a breach.
 
 A JSON file is used rather than YAML so the nested sector and country maps parse
 with the standard library and nothing has to be hand-read.

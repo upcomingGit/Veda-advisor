@@ -93,7 +93,7 @@ Retires a workspace and updates the registry. Used when a position is sold or ex
 
 ## `refresh portfolio news` — batch news update across all held positions
 
-Invokes the `news-researcher` subagent ([`internal/agents/news-researcher.md`](agents/news-researcher.md)) once per held position, in sequence, to refresh `holdings/<slug>/news/<quarter>.md` for the current calendar quarter. Used when the user wants a quarterly catch-up across the entire portfolio without asking a per-position question.
+Invokes the `news-researcher` subagent ([`redundant/agents/news-researcher.md`](../redundant/agents/news-researcher.md)) once per held position, in sequence, to refresh `holdings/<slug>/news/<quarter>.md` for the current calendar quarter. Used when the user wants a quarterly catch-up across the entire portfolio without asking a per-position question.
 
 **Why this is a command, not background work.** Per [ROADMAP.md](../ROADMAP.md) Tier 1.5, Veda is local-first with no scheduler and no daemon. Background polling is deferred to Tier 3 (hosted). Until then, batch news refresh is an explicit user-invoked command.
 
@@ -196,13 +196,13 @@ the book is well-run — it reports the number. It does not change the ledger.
 ## `concentration` — caps check
 
 Shows where the book is concentrated today and whether any single name, sector,
-or market is over the limits you set in `user-config/caps.json`.
+or market is over the limits you set in `profile.md`.
 
 **Procedure:**
 
 1. Run `reconcile` (shared note above). Warn on disagreement.
 2. Run `python scripts/concentration.py`. It reads the ledger, each holding's
-   `_meta.yaml` for its sector, and `user-config/caps.json` for the limits, fetches
+   `_meta.yaml` for its sector, and `profile.md` for the limits, fetches
    prices and the exchange rate, writes `concentration/snapshot.json`, and prints
    a table.
 3. Surface the breaches first, then the clean lines. For each breach, state how
@@ -225,13 +225,14 @@ them, within a no-trade band, staying inside your caps.
 **Procedure:**
 
 1. Run `reconcile` (shared note above). Warn on disagreement.
-2. Check `user-config/caps.json` has `targets`. If it has none, there is nothing to
-   balance toward — offer first-time setup: *"You have no target weights set yet.
-   Run `python scripts/rebalance.py --setup` for the plain-language setup, then
-   set a target weight per name you want to hold."* Do not invent targets.
-3. Run `python scripts/rebalance.py`. It reads the ledger, `_meta.yaml`, and
-   `user-config/caps.json` (targets, caps, band), fetches prices and the exchange
-   rate, writes `rebalance/proposal.json`, and prints a table.
+2. Check `assets.md > dynamic.target_weights` has entries. If it has none, there
+   is nothing to balance toward — say so: *"You have no target weights set yet.
+   Set a target weight per name you want to hold — formation can propose them, or
+   you can set them by hand in assets.md."* Do not invent targets.
+3. Run `python scripts/rebalance.py`. It reads the ledger, `_meta.yaml`, the
+   limits + band from `profile.md`, and the targets from
+   `assets.md > dynamic.target_weights`, fetches prices and the exchange rate,
+   writes `rebalance/proposal.json`, and prints a table.
 4. Surface the proposed buys and sells, the no-trade band that filtered small
    differences, cash shown as its own target line, and any cap that constrained a
    target. If a cash target is set and the targets do not sum to 100%, surface the
@@ -244,8 +245,8 @@ here places or stages a trade. A person reads it, edits it, and only then acts.
 > *"Proposal (toward your targets, 2% band): buy 30 NTPC, sell 5 MSFT. Two names inside the band — no trade. This is a proposal, not an order; nothing is placed. When you act, tell me and I will record it. Source: yfinance, <date>."*
 
 **What it does NOT do.** It never trades. It does not decide your targets — you
-set those in `user-config/caps.json`, including the cash target. It does not change
-the ledger.
+set those in `assets.md > dynamic.target_weights`, including the cash target. It
+does not change the ledger.
 
 ---
 
@@ -384,67 +385,6 @@ cash came in.
 **What it does NOT do.** It does not place the trade — you already did, at your
 broker. It records what happened. It never invents a price; if the user did not
 give one, ask.
-
----
-
-## `refresh cohort <name>` — pull research data for a cohort
-
-Fills a cohort's research data so the screen has numbers to filter on. This is
-the one step that crosses to the Veda-research work: for each name in the cohort
-it asks the research agent for that name's fundamentals and writes them under
-`screen/data/`. It carries the numbers across and nothing more — it does not
-filter or judge. Research gathers; the Advisor filters.
-
-**Procedure:**
-
-1. Confirm the cohort file exists at `user-config/cohorts/<name>.json`. If not, tell
-   the user to create it (a sector name and the list of tickers, each with the
-   archetype label research assigned it). Do not invent the names.
-2. Run `python scripts/research_bridge.py --cohort <name>`. It reads the cohort,
-   asks Veda-research for each name (the research repository's location is in
-   `user-config/research.json`), maps each answer into `screen/data/<TICKER>.json`,
-   and prints a summary of what it wrote, which names came back with no valuation
-   zone, and which failed.
-3. Surface that summary in plain language: how many names were refreshed, any
-   that failed (and why), and any zone gaps to be aware of. Full contract in
-   [screen-schema.md](screen-schema.md).
-
-> *"Refreshed 5 of 6 names in airlines-india. One failed (SPICEJET: no data from research). Two have no valuation zone yet. Run `screen airlines-india` to filter them."*
-
-**What it does NOT do.** It does not filter — that is `screen`. It judges
-nothing; the archetype labels are research's call, forwarded as given. It writes
-only under `screen/data/`, never the ledger or `assets.md`.
-
----
-
-## `screen <name>` — filter a cohort
-
-Takes a cohort — the names in one sector — and narrows them to the names that
-clear your filters, so research time goes to the few worth a closer read first.
-This is research support, not a buy list. It never proposes a trade and it does
-not rank the survivors; it lists names for you to read.
-
-**Procedure:**
-
-1. Run `python scripts/screen.py --cohort <name>`. It reads the cohort and each
-   name's saved research data under `screen/data/`, applies your filters from
-   `user-config/screen.json`, writes `screen/<name>.json`, and prints the names that
-   cleared the filters.
-2. If names come back as data gaps ("no research data"), tell the user to run
-   `refresh cohort <name>` first — the screen does not fetch, gathering is the
-   bridge's job.
-3. Surface the names that cleared the filters, then the excluded names and the
-   rule each failed, then any data gaps. Show the valuation beside each name but
-   say plainly it is shown, not used to filter — a name can fit more than one
-   lens, so the judgment stays with you. Full contract in
-   [screen-schema.md](screen-schema.md).
-
-> *"Screened airlines-india on your filters (min return on capital, max debt). Three names cleared: INDIGO, and two others, listed alphabetically. Valuation is shown, not used to filter — INDIGO reads FAIR on the growth lens, CHEAP on the cyclical lens. This lists names to read; it is not a buy list and it does not rank them."*
-
-**What it does NOT do.** It does not fetch research — that is `refresh cohort`. It
-does not rank, score, propose a trade, size a position, or set a target. It lists
-the names in this cohort that clear your filters, nothing wider. Valuation never
-filters; it is shown for you to weigh.
 
 ---
 

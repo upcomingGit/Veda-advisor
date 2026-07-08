@@ -2,6 +2,8 @@
 
 This file is loaded on demand by contributors building or maintaining subagents. Day-to-day behaviour for not-yet-shipped subagents is driven by the "inline bridge" notes in SKILL.md Stage 4 — the orchestrator performs each subagent's job inline until the real implementation ships.
 
+> **Quarantine note (2026-07 re-center).** Only `portfolio-parser` remains core (`internal/agents/portfolio-parser.md`). The eight per-name subagents are **backup** (the uncovered-name fallback — the research house covers held names): their definitions moved to `redundant/agents/` and their fetcher scripts to `redundant/scripts/`. `earnings-grader` and `indicators-researcher` were never built. The links throughout this file still read `internal/agents/` and `scripts/`; the files now live under `redundant/`.
+
 ---
 
 ## Status

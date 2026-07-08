@@ -48,7 +48,7 @@ A maintainer will respond with feedback. This step prevents you from spending ho
 
 ### Step 2 — Copy a template
 
-The cleanest example to copy is `internal/agents/devils-advocate.md`. Open it and read it end to end — the structure is small.
+The cleanest example to copy is `redundant/agents/devils-advocate.md`. Open it and read it end to end — the structure is small.
 
 Create a new file `internal/agents/<your-name>.md` and fill in these sections (in this order):
 
@@ -108,11 +108,11 @@ How Veda runs the same contract on hosts that do not support isolated subagents 
 2 to 5 named examples. For each: an input, the expected output shape, and what should happen.
 ```
 
-Match the depth of `internal/agents/devils-advocate.md`. Do not pad. Do not over-engineer.
+Match the depth of `redundant/agents/devils-advocate.md`. Do not pad. Do not over-engineer.
 
 ### Step 3 — If your subagent fetches data, write the Python script
 
-Some subagents call a Python script to do their fetching (for example, the existing fundamentals helper calls `scripts/fetch_fundamentals.py`). If yours does, add the script under `scripts/`. The rules:
+Some subagents call a Python script to do their fetching (for example, the existing fundamentals helper calls `redundant/scripts/fetch_fundamentals.py`). If yours does, add the script under `scripts/`. The rules:
 
 - It must run on its own from the command line.
 - It must print structured JSON to standard output.

@@ -12,7 +12,7 @@ This file is loaded on demand by SKILL.md Stage 4 when stating a base rate. The 
 4. **General knowledge, not researched.** If you're reasoning from first principles or pattern-matching without a specific source, say so explicitly: *"General base rate, not researched for this specific situation. Verify before high-stakes action."* This tier applies when the `base-rate-researcher` subagent has returned `status: not_found` (no Tier 1–3 source within its 3-operation budget) or the orchestrator is running inline without subagent isolation. Express the rate as an **unbounded or wide range** (e.g., "roughly 20–40%", "likely between a third and a half"), **never a point estimate**. Record `base_rate_confidence: LOW` and carry it to Stage 7.
 5. **Nothing.** If you cannot find or reason to a base rate for this specific situation, say so: *"I don't have a reliable base rate for this. Proceeding without an outside view — the recommendation rests entirely on the inside-view framework analysis, which is weaker."* Record `base_rate_confidence: NONE`.
 
-The `base-rate-researcher` subagent ([internal/agents/base-rate-researcher.md](agents/base-rate-researcher.md)) covers Tier 1–3 only. Tier 4 (general-knowledge hedged-range) and Tier 5 (NONE) remain the orchestrator's responsibility per the discipline rules in SKILL.md Stage 4.
+The `base-rate-researcher` subagent ([redundant/agents/base-rate-researcher.md](../redundant/agents/base-rate-researcher.md)) covers Tier 1–3 only. Tier 4 (general-knowledge hedged-range) and Tier 5 (NONE) remain the orchestrator's responsibility per the discipline rules in SKILL.md Stage 4.
 
 ---
 

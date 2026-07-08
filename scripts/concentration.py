@@ -2,7 +2,7 @@
 Veda - concentration and caps view.
 
 Turns the transaction ledger into a snapshot of where the book is concentrated
-today and checks each position against the limits in user-config/caps.json.
+today and checks each position against the limits in profile.md > limits.
 
 See internal/concentration-schema.md for the full contract.
 
@@ -31,10 +31,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
+
+import yaml
 
 from ledger import load
 from nav import (
@@ -49,7 +52,6 @@ from _common import client_root
 
 # Default locations for the default client (clients/default/...). A specific
 # client's files are resolved from --client in main().
-DEFAULT_CAPS = client_root() / "caps.json"
 DEFAULT_HOLDINGS = client_root() / "holdings"
 DEFAULT_OUT = client_root() / "concentration" / "snapshot.json"
 
@@ -112,33 +114,60 @@ def build_sector_map(holdings_dir: Path) -> dict[tuple[str, str], str]:
     return sectors
 
 
-# Older caps.json files used terse field names. These are still read and mapped
-# to the current friendlier names so an existing file keeps working unchanged.
-_LEGACY_CAP_KEYS = {
-    "single_name": "max_per_stock",
-    "market": "max_per_country",
-    "sector": "max_per_sector",
-    "rebalance_band": "ignore_drift_below",
-    "targets": "target_weights",
-}
+def _read_yaml_block(path: Path) -> dict:
+    """Parse the first ```yaml fenced block of a markdown file into a dict.
 
-
-def load_caps(path: Path) -> dict:
-    """Read user-config/caps.json. Missing countries / sectors mean no cap there.
-
-    The field names are plain-language: max_per_stock, max_per_country,
-    max_per_sector, ignore_drift_below, target_weights. Older files that used the
-    terse names (single_name / market / sector / rebalance_band / targets) are
-    read and mapped onto the current names automatically.
+    profile.md and assets.md are markdown with a single fenced YAML block near
+    the top; this reads that block. Returns {} when the file or block is absent.
     """
-    caps = json.loads(path.read_text(encoding="utf-8"))
-    for old, new in _LEGACY_CAP_KEYS.items():
-        if old in caps and new not in caps:
-            caps[new] = caps.pop(old)
-    caps.setdefault("max_per_stock", None)
-    caps.setdefault("max_per_country", {})
-    caps.setdefault("max_per_sector", {})
-    return caps
+    if not path.exists():
+        return {}
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"```ya?ml\s*\n(.*?)\n```", text, re.DOTALL)
+    block = match.group(1) if match else text
+    data = yaml.safe_load(block)
+    return data if isinstance(data, dict) else {}
+
+
+def load_limits(client: str = "default") -> dict:
+    """Build the caps dict from profile.md (limits) + assets.md (target weights).
+
+    This replaces the old caps.json. The single-name ceiling is
+    profile.md > concentration.target.max_single_position_pct; the sector,
+    country, and no-trade-band limits are profile.md > limits. Both are percents,
+    converted to fractions here. Per-name target weights (set by portfolio
+    formation) are percents in assets.md > dynamic.target_weights. Missing limits
+    mean no cap there.
+    """
+    root = client_root(client)
+    profile = _read_yaml_block(root / "profile.md")
+    limits = profile.get("limits") or {}
+    target = (profile.get("concentration") or {}).get("target") or {}
+    dynamic = (_read_yaml_block(root / "assets.md").get("dynamic") or {})
+
+    def frac(value):
+        return float(value) / 100.0 if value is not None else None
+
+    sector = limits.get("max_per_sector")
+    sector_caps = ({"default": frac(sector)} if isinstance(sector, (int, float))
+                   else {k: frac(v) for k, v in (sector or {}).items()})
+    country = limits.get("max_per_country") or {}
+
+    targets_raw = dynamic.get("target_weights") or {}
+    targets: dict = {}
+    for market, names in targets_raw.items():
+        if market == "cash":
+            targets["cash"] = frac(names)
+        elif isinstance(names, dict):
+            targets[market] = {t: frac(w) for t, w in names.items()}
+
+    return {
+        "max_per_stock": frac(target.get("max_single_position_pct")),
+        "max_per_country": {k: frac(v) for k, v in country.items()},
+        "max_per_sector": sector_caps,
+        "ignore_drift_below": frac(limits.get("ignore_drift_below")) or 0.0,
+        "target_weights": targets,
+    }
 
 
 # --- replaying the ledger into current positions ---------------------------
@@ -398,7 +427,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Build the Veda concentration snapshot.")
     parser.add_argument("--client", default="default", help="which client's book (default: default)")
     parser.add_argument("--file", type=Path, default=None, help="ledger file")
-    parser.add_argument("--caps", type=Path, default=None, help="caps config file")
     parser.add_argument("--holdings", type=Path, default=None, help="holdings folder")
     parser.add_argument("--out", type=Path, default=None, help="snapshot output file")
     parser.add_argument("--as-of", default=date.today().isoformat(), help="snapshot date YYYY-MM-DD")
@@ -406,7 +434,6 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     root = client_root(args.client)
     ledger_file = args.file or (root / "ledger" / "transactions.jsonl")
-    caps_file = args.caps or (root / "caps.json")
     holdings_dir = args.holdings or (root / "holdings")
     out_file = args.out or (root / "concentration" / "snapshot.json")
 
@@ -419,7 +446,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         if not transactions:
             print("ledger is empty; nothing to value", file=sys.stderr)
             return 1
-        caps = load_caps(caps_file)
+        caps = load_limits(args.client)
         sector_map = build_sector_map(holdings_dir)
         positions, _ = current_positions(transactions, args.as_of)
         prices = build_price_book(positions)

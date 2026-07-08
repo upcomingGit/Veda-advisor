@@ -289,6 +289,61 @@ def iron_condor(
     }
 
 
+def credit_spread(
+    width: float,
+    credit: float,
+    lot_size: int,
+    num_lots: int = 1,
+) -> dict[str, float]:
+    """Defined-risk single vertical credit spread (2 legs) economics.
+
+    Plain-English version
+    ---------------------
+    A credit spread SELLS one option and BUYS a cheaper, further-out option of
+    the same type as a wing. You keep the net credit if the underlying stays on
+    the safe side of the strike you sold; your loss is capped at the strike
+    width minus the credit. This is the simplest defined-risk income structure
+    (a bull put spread or a bear call spread) -- half the legs of an iron condor.
+
+        max profit = credit               (kept if it expires safe)
+        max loss   = width - credit       (capped by the bought wing)
+        return on risk = max profit / max loss
+
+    ``width`` and ``credit`` are index POINTS; rupees are points x lot_size x
+    num_lots. ``credit`` must be user- or source-supplied from a live chain per
+    SKILL.md Hard Rule #5/#9.
+
+    Also returns ``breakeven_winrate_pct``: the share of trades you must win --
+    if every loss were a FULL loss -- just to break even. Selling closer to the
+    money RAISES return-on-risk AND LOWERS this breakeven, but the ACTUAL win
+    rate falls too, because the strike is nearer the money. The market prices
+    that trade-off; return-on-risk alone is not edge (frameworks/thorp.md,
+    principle 4).
+    """
+    if width <= 0:
+        raise ValueError(f"width {width} must be > 0")
+    if credit <= 0:
+        raise ValueError(
+            f"credit {credit} must be > 0 (this is a net-credit strategy)"
+        )
+    if credit >= width:
+        raise ValueError(
+            f"credit {credit} >= width {width}: implies a risk-free position, "
+            "almost certainly a misread chain -- re-check premiums"
+        )
+    if lot_size <= 0 or num_lots <= 0:
+        raise ValueError("lot_size and num_lots must be positive integers")
+
+    contracts = lot_size * num_lots
+    max_loss_per_unit = width - credit
+    return {
+        "max_profit_total": credit * contracts,
+        "max_loss_total": max_loss_per_unit * contracts,
+        "return_on_risk_pct": credit / max_loss_per_unit * 100.0,
+        "breakeven_winrate_pct": max_loss_per_unit / width * 100.0,
+    }
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -369,6 +424,20 @@ def _cmd_iron_condor(args: argparse.Namespace) -> int:
     print(f"max_profit_total:    {r['max_profit_total']:.2f}")
     print(f"max_loss_total:      {r['max_loss_total']:.2f}")
     print(f"return_on_risk_pct:  {r['return_on_risk_pct']:.2f}")
+    return 0
+
+
+def _cmd_credit_spread(args: argparse.Namespace) -> int:
+    r = credit_spread(
+        width=args.width,
+        credit=args.credit,
+        lot_size=args.lot_size,
+        num_lots=args.num_lots,
+    )
+    print(f"max_profit_total:      {r['max_profit_total']:.2f}")
+    print(f"max_loss_total:        {r['max_loss_total']:.2f}")
+    print(f"return_on_risk_pct:    {r['return_on_risk_pct']:.2f}")
+    print(f"breakeven_winrate_pct: {r['breakeven_winrate_pct']:.2f}")
     return 0
 
 
@@ -468,6 +537,19 @@ def main(argv: list[str] | None = None) -> int:
                       help="index-option lot size (verify current NSE spec)")
     p_ic.add_argument("--num-lots", dest="num_lots", type=int, default=1)
     p_ic.set_defaults(func=_cmd_iron_condor)
+
+    p_cs = sub.add_parser(
+        "credit-spread",
+        help="defined-risk single vertical credit spread (2 legs)",
+    )
+    p_cs.add_argument("--width", type=float, required=True,
+                      help="strike width in points (short strike to long wing)")
+    p_cs.add_argument("--credit", type=float, required=True,
+                      help="net premium received in points (sell leg - buy leg)")
+    p_cs.add_argument("--lot-size", dest="lot_size", type=int, required=True,
+                      help="index-option lot size (verify current NSE spec)")
+    p_cs.add_argument("--num-lots", dest="num_lots", type=int, default=1)
+    p_cs.set_defaults(func=_cmd_credit_spread)
 
     args = parser.parse_args(argv)
     return args.func(args)

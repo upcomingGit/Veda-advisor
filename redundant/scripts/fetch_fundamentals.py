@@ -52,9 +52,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Shared with fetch_company_info.py + fetch_calendar.py. Single source of
-# truth for market detection, sector classification, and Screener.in HTTP.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Shared with the core scripts: market detection, sector classification, and
+# Screener.in HTTP settings. This file is quarantined in redundant/scripts/, so
+# reach up to the core scripts/ dir (repo_root/scripts) for _common.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from _common import (  # noqa: E402
     MAX_RETRIES,
     RETRY_BASE_DELAY,

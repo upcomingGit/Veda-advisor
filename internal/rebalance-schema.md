@@ -6,38 +6,25 @@ one question: to reach the weights I want, what should I buy and sell, and how
 much.
 
 This is Module 4. It reads Module 1 (the ledger) for what is held, reads each
-holding's `_meta.yaml` for its sector, reads `user-config/caps.json` for the
-targets, the caps, and the no-trade band, and fetches current prices and the
+holding's `_meta.yaml` for its sector, reads your **limits** from `profile.md`
+and your **target weights** from `assets.md`, and fetches current prices and the
 exchange rate from yfinance. It writes one proposal file and prints a readable
 table.
 
-`user-config/caps.json` is your rebalance plan file. You edit this file directly.
-It stores three things: your target weights (`target_weights`), your limits
-(`max_per_stock`, `max_per_sector`, `max_per_country`), and your
-ignore-small-difference setting (`ignore_drift_below`).
+Where the plan lives (as of the 2026-07 consolidation — there is no `caps.json`):
 
-## First-time setup (no JSON editing needed)
+- **Limits** live in `profile.md`. The single-name ceiling is
+  `concentration.target.max_single_position_pct`; the sector cap, the per-market
+  (country) caps, and the no-trade band (`ignore_drift_below`) live in the
+  `limits:` block. All are percents.
+- **Target weights** — the share of the book you want each name to be — live in
+  `assets.md > dynamic.target_weights`, grouped by market with an optional
+  `cash:` line, also as percents. These are set by portfolio formation (Job 2),
+  or edited via chat.
 
-If you are new to the system, you do not have to write JSON by hand. Run:
-
-```
-python scripts/rebalance.py --setup
-```
-
-It asks a few plain-language questions (most in one stock, most in Indian
-stocks, most in US stocks, most in one sector, and the ignore-small-differences
-band). Every question shows a sensible default in brackets — press Enter to keep
-it, or type a number like `10`. You can also accept all the defaults at once
-without answering anything. The setup writes `user-config/caps.json` for you and
-keeps any target weights you have already set. You can run it again any time to
-change the rules.
-
-The defaults, if you accept them: 10% most in one stock, 70% in Indian stocks,
-50% in US stocks, 30% in one sector, and a 2% ignore-small-differences band.
-
-Setup fills in the rules, not your target weights. To get an actual trade list
-you still set a target weight for each stock you want to hold (see below); the
-rules are the limits those targets must stay inside.
+`scripts/concentration.py > load_limits()` reads both and hands the rebalancer a
+single caps dict (fractions). Missing limits mean no cap there; a held name with
+no target is reported as a data gap, never traded.
 
 It is a proposal, not an order. **Nothing here ever places or stages a trade.**
 A person reads the proposal, edits it as they see fit, and only then acts. This
@@ -62,42 +49,47 @@ up to 100% of the book. When you have not set a cash target, cash is whatever th
 stock trades leave over, and the proposal says so on the cash row rather than
 assuming the leftover was intended.
 
-## The targets and band in the caps file
+## The limits (profile.md) and the targets (assets.md)
 
-`user-config/caps.json` carries the targets and the no-trade band alongside the
-caps:
+**Limits** live in `profile.md` as percents. The single-name ceiling is
+`concentration.target.max_single_position_pct`; the rest live in the `limits:`
+block:
 
-```json
-{
-  "max_per_stock": 0.10,
-  "max_per_country": { "india": 0.70, "us": 0.50 },
-  "max_per_sector": { "default": 0.30 },
-  "ignore_drift_below": 0.02,
-  "target_weights": {
-    "cash": 0.20,
-    "india": { "NTPC": 0.08 },
-    "us": { "MSFT": 0.06 }
-  }
-}
+```yaml
+# profile.md
+concentration:
+  target:
+    max_single_position_pct: 20   # most in any one stock
+limits:
+  max_per_sector: 30              # most in any one sector
+  max_per_country:                # most in each market
+    india: 70
+    us: 50
+  ignore_drift_below: 2           # the no-trade band
 ```
 
-- `target_weights` — a target weight per name, grouped by country (`india` or
-  `us`) and then by ticker, plus an optional `cash` line for the share of the
-  book to hold in cash. Each number is a fraction of the book value. You fill
-  these in; they are your mandate.
-- `target_weights.cash` — the cash target, treated as an equal position. Optional:
-  leave it out and cash is whatever the stock trades leave. When you set it, your
-  stock targets plus the cash target should sum to 100% of the book, or the
-  proposal warns that part of the book is unallocated or over-allocated.
-- `ignore_drift_below` — the no-trade band, as a fraction of the book. A name
-  already within this many percentage points of its target is left alone. The
-  default is `0.02` (two percentage points). The band stops the proposal from
-  churning a name over a small gap, which matches the rule that winners should
-  not be trimmed just to rebalance.
+**Target weights** live in `assets.md > dynamic.target_weights` as percents,
+grouped by market with an optional `cash:` line:
 
-Older files may use the terse names (`single_name`, `market`, `sector`,
-`rebalance_band`, `targets`). These are still read and mapped onto the current
-names automatically, so an existing file keeps working unchanged.
+```yaml
+# assets.md > dynamic
+  target_weights:
+    cash: 20
+    india: { NTPC: 8 }
+    us: { MSFT: 6 }
+```
+
+- `target_weights` — a target weight per name, grouped by market (`india` / `us`)
+  then ticker, plus an optional `cash` line. Set by portfolio formation (Job 2)
+  or edited via chat; they are your mandate.
+- `cash` — the cash target, treated as an equal position. Optional: leave it out
+  and cash is whatever the stock trades leave. When set, your stock targets plus
+  the cash target should sum to 100% of the book, or the proposal warns.
+- `ignore_drift_below` — the no-trade band. A name already within this many
+  percentage points of its target is left alone (default 2%). The band stops the
+  proposal churning a name over a small gap.
+
+`load_limits()` reads both files and converts the percents to fractions.
 
 ## Where each input comes from
 
@@ -106,7 +98,9 @@ names automatically, so an existing file keeps working unchanged.
   bonuses rescale, cash flows move cash. Shares of a name are aggregated across
   lots. The split and bonus factors are the same functions the NAV pipeline
   uses, so the modules cannot drift apart on that math.
-- **Targets, caps, band.** Read from `user-config/caps.json`.
+- **Targets.** Read from `assets.md > dynamic.target_weights`. **Caps and the
+  band.** Read from `profile.md` (`concentration.target.max_single_position_pct`
+  plus the `limits:` block), via `load_limits()`.
 - **Sector.** Read from each holding's `_meta.yaml`, the same scan the
   concentration view uses, so the proposal can check each target against the
   sector cap. A holding whose `_meta.yaml` gives no sector is listed as a data
@@ -120,7 +114,7 @@ names automatically, so an existing file keeps working unchanged.
 For each name currently held:
 
 1. **Current weight** = the name's rupee value / book value.
-2. **Target weight** = the target from the caps file.
+2. **Target weight** = the target from `assets.md > dynamic.target_weights`.
 3. **Gap** = target weight − current weight.
 4. **No-trade band.** If the gap is smaller than `ignore_drift_below` either way,
    the name is left alone (action `hold`, reason "within band").
@@ -195,7 +189,7 @@ not sum to 100%.
 
 - No name picking. It does not search the wider market for ideas. It rebalances
   what you already hold, plus any stock you have set a target for in
-  `user-config/caps.json` - including watchlist names you do not own yet. A target
+  `assets.md > dynamic.target_weights` - including watchlist names you do not own yet. A target
   set for a watchlist name shows up as a proposed new-position buy. Deciding
   what to track and what the target should be is a research question: ask Veda
   to help, then set the target here.
