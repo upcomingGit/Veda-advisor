@@ -42,6 +42,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from datetime import date, timedelta
@@ -701,6 +702,311 @@ def build_report(
     }
 
 
+# --- broker open-lots statement path ---------------------------------------
+#
+# The views above replay the *ledger*. A pasted broker statement (e.g. Fidelity
+# "View open lots") is a different input: it already carries each lot's cost and
+# current value, so no price fetch is needed. This path ingests such a file,
+# reconverts every lot into rupees at per-date FX, reclassifies it on the INDIAN
+# 24-month clock (not the broker's 12-month one), lifts the base rates by
+# surcharge and cess, and ranks a least-tax trim to a target weight. See
+# internal/tax-schema.md "Foreign-currency lots - three traps".
+
+_BROKER_MONTHS = {
+    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+}
+
+
+def _parse_broker_date(text: str) -> str:
+    """Turn a broker 'Mon-DD-YYYY' date into ISO 'YYYY-MM-DD'."""
+    month, dom, year = text.strip().split("-")
+    return f"{int(year):04d}-{_BROKER_MONTHS[month]:02d}-{int(dom):02d}"
+
+
+def _parse_money(text: str) -> float:
+    """Parse a money / quantity cell, tolerating thousands commas and a currency mark."""
+    return float(text.strip().lstrip("$").replace(",", ""))
+
+
+def parse_fidelity_open_lots(text: str) -> list[dict]:
+    """Parse a Fidelity 'View open lots' CSV export into open-lot dicts.
+
+    The header row must contain 'Date acquired'; the expected columns are
+    Date acquired, Quantity, Cost basis, Cost basis/share, Value, Gain/loss,
+    Sale availability date, Transfer availability date, Grant date, Share
+    source, Holding period. Blank rows and the trailing 'values are displayed
+    in ...' note are skipped. Returns
+    [{acquired, shares, cost_native, value_native, source, grant}, ...].
+    """
+    text = text.lstrip("\ufeff")                          # tolerate a UTF-8 BOM
+    rows: list[dict] = []
+    seen_header = False
+    for cells in csv.reader(text.splitlines()):
+        if not cells or not any(cell.strip() for cell in cells):
+            continue
+        first = cells[0].strip()
+        if not seen_header:
+            if first == "Date acquired":
+                seen_header = True
+            continue
+        if first.lower().startswith("the values"):        # trailing note line
+            continue
+        if len(cells) < 5:
+            continue
+        try:
+            rows.append({
+                "acquired": _parse_broker_date(first),
+                "shares": _parse_money(cells[1]),
+                "cost_native": _parse_money(cells[2]),
+                "value_native": _parse_money(cells[4]),
+                "source": cells[9].strip() if len(cells) > 9 else "",
+                "grant": cells[8].strip() if len(cells) > 8 and cells[8].strip() not in ("", "-") else None,
+            })
+        except (ValueError, KeyError) as error:
+            raise ValueError(f"bad open-lots row {cells!r}: {error}") from error
+    return rows
+
+
+def surcharge_rate(total_income_inr: float, new_regime: bool = True) -> float:
+    """Surcharge fraction by total income. Thresholds: > Rs50L -> 10%,
+    > Rs1Cr -> 15%, > Rs2Cr -> 25%, > Rs5Cr -> 37% (old regime only; the new
+    regime caps the top surcharge at 25%).
+    """
+    if total_income_inr <= 5_000_000:
+        return 0.0
+    if total_income_inr <= 10_000_000:
+        return 0.10
+    if total_income_inr <= 20_000_000:
+        return 0.15
+    if new_regime or total_income_inr <= 50_000_000:
+        return 0.25
+    return 0.37
+
+
+def effective_rate(bucket: str, base_rate: float, surcharge: float, cess: float) -> float:
+    """Base rate lifted by surcharge and cess. Surcharge on gains taxed under
+    s.111A / s.112 / s.112A is capped at 15%; foreign short-term gains are taxed
+    at the slab as ordinary income and carry the full surcharge.
+    """
+    applied = surcharge if bucket == "foreign_short_term" else min(surcharge, 0.15)
+    return base_rate * (1.0 + applied) * (1.0 + cess)
+
+
+def classify_open_lots_in_inr(
+    lots: list[dict],
+    market: str,
+    fx: Series,
+    as_of: str,
+    long_term_months: int,
+) -> tuple[list[dict], int]:
+    """One row per lot in rupees: cost at the acquisition-date rate, value at the
+    as-of rate, the INR gain (which can flip the broker's native-currency sign),
+    the Indian short / long classification, and days to long-term. Returns
+    (rows, max_fx_age).
+    """
+    rows: list[dict] = []
+    ages = [0]
+    for lot in lots:
+        acquired = lot["acquired"]
+        if market == "us":
+            buy_rate, buy_age = fx.as_of(acquired)
+            now_rate, now_age = fx.as_of(as_of)
+            ages += [buy_age, now_age]
+            cost_inr = lot["cost_native"] * buy_rate
+            value_inr = lot["value_native"] * now_rate
+        else:
+            cost_inr = lot["cost_native"]
+            value_inr = lot["value_native"]
+        long_now = _is_long_term(acquired, as_of, long_term_months)
+        days_to_long = 0 if long_now else max(
+            0, (_first_long_term_date(acquired, long_term_months) - _to_date(as_of)).days
+        )
+        rows.append({
+            "acquired": acquired,
+            "source": lot.get("source", ""),
+            "shares": round(lot["shares"], 4),
+            "cost_native": round(lot["cost_native"], 2),
+            "value_native": round(lot["value_native"], 2),
+            "cost_inr": round(cost_inr, 2),
+            "value_inr": round(value_inr, 2),
+            "proceeds_inr": round(value_inr, 2),
+            "gain_inr": round(value_inr - cost_inr, 2),
+            "long_term": long_now,
+            "days_to_long_term": days_to_long,
+            "bucket": _bucket(market, long_now),
+        })
+    return rows, max(ages)
+
+
+def tax_with_setoff(
+    buckets: dict[str, float],
+    rules: dict,
+    slab_rate: Optional[float],
+    surcharge: float = 0.0,
+    cess: float = 0.0,
+) -> dict:
+    """Tax on a bucket -> net-gain map: run the Section-74 set-off (reusing the
+    realized engine, which offsets the highest-taxed gain first), then rate the
+    surviving gains at their effective rates.
+    """
+    year = _run_one_year(buckets, 0.0, 0.0, rules, slab_rate)
+    exemption = rules["india_listed_equity"]["long_term_exemption_inr"]
+    tax = 0.0
+    unknown = 0.0
+    by_bucket: dict[str, dict] = {}
+    for bucket, gain in year["_taxable_gain_raw"].items():
+        taxable = max(0.0, gain - exemption) if bucket == "india_long_term" else gain
+        base = _bucket_rate(bucket, rules, slab_rate)
+        if base is None:                              # foreign short-term, slab unknown
+            unknown += taxable
+            continue
+        rate = effective_rate(bucket, base, surcharge, cess)
+        amount = taxable * rate
+        tax += amount
+        by_bucket[bucket] = {
+            "taxable_inr": round(taxable, 2),
+            "effective_rate": round(rate, 4),
+            "tax_inr": round(amount, 2),
+        }
+    return {
+        "tax_inr": round(tax, 2),
+        "by_bucket": by_bucket,
+        "foreign_short_term_unknown_slab_inr": round(unknown, 2),
+        "carried_forward": year["carried_forward"],
+    }
+
+
+def trim_target_proceeds(current_value_inr: float, other_book_inr: float, target_weight: float) -> float:
+    """Rupees of the position to sell so it becomes `target_weight` of the book,
+    holding the rest of the book fixed.
+    """
+    if not 0.0 < target_weight < 1.0:
+        raise ValueError("target_weight must be between 0 and 1")
+    target_value = (target_weight / (1.0 - target_weight)) * other_book_inr
+    return max(0.0, current_value_inr - target_value)
+
+
+def rank_trim(
+    rows: list[dict],
+    target_proceeds_inr: float,
+    rules: dict,
+    slab_rate: Optional[float],
+    surcharge: float = 0.0,
+    cess: float = 0.0,
+    realized_buckets: Optional[dict[str, float]] = None,
+) -> dict:
+    """Order lots for the least-tax way to raise `target_proceeds_inr`: INR-loss
+    lots first (they cut the position and book a deductible loss), then the
+    lowest-gain long-term lots; short-term winners are avoided. Set-off is run
+    against `realized_buckets` too (gains already booked this year), so a
+    short-term loss lands on the highest-taxed gain first.
+    """
+    losers = sorted((r for r in rows if r["gain_inr"] < -EPSILON), key=lambda r: r["gain_inr"])
+    lt_winners = sorted((r for r in rows if r["gain_inr"] > EPSILON and r["long_term"]), key=lambda r: r["gain_inr"])
+    st_winners = sorted((r for r in rows if r["gain_inr"] > EPSILON and not r["long_term"]), key=lambda r: -r["gain_inr"])
+
+    ordered = losers + lt_winners
+    selected: list[dict] = []
+    cum = 0.0
+    for row in ordered:
+        if cum >= target_proceeds_inr:
+            break
+        selected.append(row)
+        cum += row["proceeds_inr"]
+    chosen = {id(row) for row in selected}
+    deferred = [row for row in ordered if id(row) not in chosen] + st_winners
+
+    base = dict(realized_buckets or {})
+
+    def combined_with(extra: list[dict]) -> dict[str, float]:
+        merged = dict(base)
+        for row in extra:
+            merged[row["bucket"]] = merged.get(row["bucket"], 0.0) + row["gain_inr"]
+        return merged
+
+    tax_before = tax_with_setoff(base, rules, slab_rate, surcharge, cess)["tax_inr"] if base else 0.0
+    after = tax_with_setoff(combined_with(selected), rules, slab_rate, surcharge, cess)
+    incremental = round(after["tax_inr"] - tax_before, 2)
+
+    def tier(row: dict) -> str:
+        return "harvest" if row["gain_inr"] < 0 else "long_term_fund"
+
+    def reason(row: dict) -> str:
+        return "short_term_winner" if not row["long_term"] else "largest_gain"
+
+    return {
+        "target_proceeds_inr": round(target_proceeds_inr, 2),
+        "sell": [dict(row, tier=tier(row)) for row in selected],
+        "defer": [dict(row, reason=reason(row)) for row in deferred],
+        "proceeds_inr": round(cum, 2),
+        "incremental_tax_inr": incremental,
+        "incremental_tax_pct_of_proceeds": round(incremental / cum * 100, 2) if cum > EPSILON else None,
+        "tax_after_setoff": after,
+    }
+
+
+def build_statement_report(
+    lots: list[dict],
+    market: str,
+    ticker: str,
+    fx: Series,
+    rules: dict,
+    as_of: str,
+    *,
+    slab_rate: Optional[float] = None,
+    surcharge: float = 0.0,
+    cess: float = 0.0,
+    target_weight: Optional[float] = None,
+    other_book_inr: Optional[float] = None,
+    realized_buckets: Optional[dict[str, float]] = None,
+    staleness_days: int = STALENESS_DAYS,
+) -> dict:
+    """Pure core for the broker open-lots path. Classifies every lot in rupees,
+    totals the position, and (given a target weight and the rest of the book)
+    ranks a least-tax trim. Every number comes from the arguments.
+    """
+    months = int(_regime(rules, market)["long_term_months"])
+    rows, fx_age = classify_open_lots_in_inr(lots, market, fx, as_of, months)
+    for row in rows:
+        row["ticker"] = ticker
+
+    current_value_inr = round(sum(row["value_inr"] for row in rows), 2)
+    bucket_totals: dict[str, float] = {}
+    for row in rows:
+        bucket_totals[row["bucket"]] = round(bucket_totals.get(row["bucket"], 0.0) + row["gain_inr"], 2)
+
+    trim = None
+    if target_weight is not None and other_book_inr is not None:
+        target = trim_target_proceeds(current_value_inr, other_book_inr, target_weight)
+        trim = rank_trim(rows, target, rules, slab_rate, surcharge, cess, realized_buckets)
+        new_value = current_value_inr - trim["proceeds_inr"]
+        denom = new_value + other_book_inr
+        trim["resulting_weight_pct"] = round(new_value / denom * 100, 2) if denom > EPSILON else None
+
+    return {
+        "as_of": as_of,
+        "market": market,
+        "ticker": ticker,
+        "lots": sorted(rows, key=lambda r: r["gain_inr"]),
+        "current_value_inr": current_value_inr,
+        "embedded_gain_inr": round(sum(r["gain_inr"] for r in rows), 2),
+        "bucket_totals_inr": bucket_totals,
+        "surcharge": surcharge,
+        "cess": cess,
+        "trim": trim,
+        "stale": fx_age > staleness_days,
+        "ca_note": (
+            "Awareness, not advice from a chartered accountant. Effective rates apply surcharge "
+            "and cess to the base rates; verify the band and the FX method before filing."
+        ),
+        "fx_note": (
+            "Foreign lots converted per date (cost at the acquisition date, value at the as-of "
+            "date). The prescribed rate is the SBI TT buying rate; a market rate is an estimate."
+        ),
+    }
+
+
 # --- network fetch layer (only used by the command-line run) ---------------
 
 def _build_price_book(transactions: list[dict]) -> dict[tuple[str, str], Series]:
@@ -716,6 +1022,77 @@ def _build_price_book(transactions: list[dict]) -> dict[tuple[str, str], Series]
     return book
 
 
+def _run_statement_path(args: argparse.Namespace) -> int:
+    """CLI entry for --open-lots: ingest a broker statement, fetch USD-INR, and
+    write the rupee reclassification plus (optionally) a least-tax trim.
+    """
+    if not args.open_lots.exists():
+        print(f"open-lots file not found: {args.open_lots}", file=sys.stderr)
+        return 2
+    try:
+        lots = parse_fidelity_open_lots(args.open_lots.read_text(encoding="utf-8-sig"))
+    except ValueError as error:
+        print(f"could not parse open-lots file: {error}", file=sys.stderr)
+        return 1
+    if not lots:
+        print("no open lots found in the file", file=sys.stderr)
+        return 1
+
+    rules = load_rules(args.rules)
+    if args.surcharge is not None:
+        surcharge = args.surcharge
+    elif args.income is not None:
+        surcharge = surcharge_rate(args.income, not args.old_regime)
+    else:
+        surcharge = 0.0
+
+    realized = {
+        bucket: value
+        for bucket, value in (
+            ("foreign_short_term", args.prior_foreign_st),
+            ("foreign_long_term", args.prior_foreign_lt),
+            ("india_short_term", args.prior_india_st),
+            ("india_long_term", args.prior_india_lt),
+        )
+        if value
+    }
+
+    try:
+        fx = Series(_fetch_closes(FX_TICKER))
+        report = build_statement_report(
+            lots, args.market, args.ticker, fx, rules, args.as_of,
+            slab_rate=args.slab_rate, surcharge=surcharge, cess=args.cess,
+            target_weight=args.target_weight, other_book_inr=args.other_book,
+            realized_buckets=realized or None,
+        )
+    except (ValueError, LookupError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+    out_file = args.out or (client_root(args.client) / "tax" / "tax-statement-report.json")
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    with out_file.open("w", encoding="utf-8") as handle:
+        json.dump(report, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+
+    print(f"wrote open-lots tax report ({args.ticker or args.market}) to {out_file}")
+    print(
+        f"position: {len(lots)} lots, value Rs {report['current_value_inr']:.2f}, "
+        f"embedded gain Rs {report['embedded_gain_inr']:.2f}"
+    )
+    if report["trim"] is not None:
+        trim = report["trim"]
+        print(
+            f"trim: sell {len(trim['sell'])} lots for Rs {trim['proceeds_inr']:.2f} -> "
+            f"incremental tax Rs {trim['incremental_tax_inr']:.2f} "
+            f"({trim['incremental_tax_pct_of_proceeds']}% of proceeds); "
+            f"resulting weight {trim.get('resulting_weight_pct')}%"
+        )
+    if report["stale"]:
+        print("warning: the FX rate used was stale for the as-of date", file=sys.stderr)
+    return 0
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Build the Veda capital-gains tax report.")
     parser.add_argument("--client", default="default", help="which client's book (default: default)")
@@ -726,7 +1103,34 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--fy", dest="fy", default=None, help="financial year to report, like 2026-2027")
     parser.add_argument("--slab-rate", dest="slab_rate", type=float, default=None,
                         help="your marginal income-tax rate as a fraction (e.g. 0.30), to tax US short-term gains")
+    parser.add_argument("--open-lots", dest="open_lots", type=Path, default=None,
+                        help="broker open-lots CSV (Fidelity 'View open lots'); runs the statement path")
+    parser.add_argument("--market", default="us", choices=["us", "india"],
+                        help="market of the open-lots file (default us)")
+    parser.add_argument("--ticker", default="", help="ticker label for the open-lots report")
+    parser.add_argument("--income", type=float, default=None,
+                        help="total taxable income INR, to derive the surcharge band")
+    parser.add_argument("--surcharge", type=float, default=None,
+                        help="surcharge fraction (e.g. 0.10); overrides --income")
+    parser.add_argument("--old-regime", dest="old_regime", action="store_true",
+                        help="old-regime surcharge (up to 37%%); default new regime caps at 25%%")
+    parser.add_argument("--cess", type=float, default=0.04, help="health and education cess (default 0.04)")
+    parser.add_argument("--target-weight", dest="target_weight", type=float, default=None,
+                        help="target concentration weight (e.g. 0.20) to size a trim")
+    parser.add_argument("--other-book", dest="other_book", type=float, default=None,
+                        help="INR value of the rest of the book, to size the trim to --target-weight")
+    parser.add_argument("--prior-foreign-st", dest="prior_foreign_st", type=float, default=0.0,
+                        help="foreign short-term gains already realized this FY (INR), for set-off")
+    parser.add_argument("--prior-foreign-lt", dest="prior_foreign_lt", type=float, default=0.0,
+                        help="foreign long-term gains already realized this FY (INR)")
+    parser.add_argument("--prior-india-st", dest="prior_india_st", type=float, default=0.0,
+                        help="India short-term gains already realized this FY (INR)")
+    parser.add_argument("--prior-india-lt", dest="prior_india_lt", type=float, default=0.0,
+                        help="India long-term gains already realized this FY (INR)")
     args = parser.parse_args(argv)
+
+    if args.open_lots is not None:
+        return _run_statement_path(args)
 
     root = client_root(args.client)
     ledger_file = args.file or (root / "ledger" / "transactions.jsonl")

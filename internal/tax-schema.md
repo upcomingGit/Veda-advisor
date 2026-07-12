@@ -50,6 +50,24 @@ exemption applied, and the source row — so the year's position is auditable an
 a rerun is identical. The rule is read from the dated rules table below, never
 hard-coded, and the chosen row is recorded on the sell.
 
+#### Surcharge and cess turn the table rates into effective rates
+
+The rates in the table above are **base** rates. Two add-ons sit on top before a
+rupee figure is real. The engine reports the base-rate tax; the advice/chat layer
+applies these once the user gives an income band:
+
+- **Health-and-education cess: 4%** on (tax + surcharge), always.
+- **Surcharge by total income:** 10% above ₹50 lakh, 15% above ₹1 crore, 25%
+  above ₹2 crore, 37% above ₹5 crore (the new regime caps surcharge at 25%).
+  **The catch:** surcharge on gains taxed under s.111A / s.112 / s.112A is
+  **capped at 15%**, but foreign short-term gains are taxed at the *slab* as
+  ordinary income (not s.111A), so they carry the **full** surcharge — a high
+  earner can pay 25–37% surcharge on foreign STCG while the 15% cap shields the
+  same year's foreign LTCG. Worked at the ₹50L–1Cr band (10% surcharge, 4% cess):
+  foreign long-term effective = 12.5 × 1.10 × 1.04 = **14.30%**; foreign
+  short-term at a 30% slab = 30 × 1.10 × 1.04 = **34.32%**. Never quote the bare
+  12.5% / slab rate as the out-go.
+
 ### Stage 2 — Gains, losses, set-off and carry-forward (covers point 3)
 
 The tax year is the Indian financial year, 1 April to 31 March, for *both*
@@ -98,6 +116,18 @@ to cut the tax out-go, ranked by the rupees saved.
   taxable long-term gain down to the ₹1.25 lakh free limit, so no tax is paid on
   gains the exemption would have covered; and a flag when realized long-term
   gains are still under the limit, where booking a little more gain is free.
+- **Set-off ordering.** A short-term loss may be set against either short-term
+  or long-term gains — direct it against the **highest-taxed** gain first (a
+  slab-rate foreign STCG before a 12.5% LTCG), which saves the rate difference on
+  the whole loss. Name the rupee gap between the good and the naive order.
+- **Surcharge-threshold timing.** When a large realization would push total
+  income past a surcharge step (₹50L / ₹1Cr / ₹2Cr / ₹5Cr), splitting it across
+  two financial years to stay under the line can save more than any lot choice.
+  Flag the threshold and the year-split when realized gains approach it.
+- **Specific-lot identification.** When recommending a trim, name the exact lots
+  (date acquired + shares + cost basis) so the broker sells the intended tax
+  lots. FIFO is only the default; the tax-optimal set is usually the loss lots
+  plus the lowest-gain long-term lots, not the oldest.
 
 This layer recommends — it names the move and the saving. What it does not do is
 act: it never places a trade, never files anything, and flags that a harvested
@@ -132,7 +162,31 @@ data, recorded against each sell.
   for the CA.
 - **US gains in INR.** Cost is converted at the buy-date rate and proceeds at the
   sell-date rate. The report states this convention; confirm the prescribed rate
-  with a CA.
+  with a CA. See the traps below.
+
+## Foreign-currency lots — three traps the broker statement sets
+
+A resident's US (or any foreign) shares are taxed in **rupees**, and the broker
+statement is in dollars. Three general traps follow, none specific to any one
+book:
+
+1. **The native-currency gain/loss column is not the taxable figure — and can
+   have the opposite sign.** Recompute every lot in INR: cost at the
+   acquisition-date rate, proceeds at the sale-date rate. Because the rupee has
+   trended weaker, a lot that shows a **loss in dollars can be a gain in rupees**
+   (the sale-date rate lifts the proceeds leg more than the cost leg), and a
+   strengthening rupee does the reverse. Loss-harvesting is judged on the INR
+   sign, never the broker's dollar column.
+2. **The broker's "holding period / long-term" flag is that country's rule, not
+   India's.** A US broker marks a lot long-term after **12 months**; India's
+   foreign-share clock is **24 months**. Reclassify every foreign lot on the
+   24-month test before bucketing — lots the broker calls "Long" are routinely
+   still short-term for the Indian return.
+3. **The prescribed rate is the SBI TT buying rate on the relevant date**
+   (Rule 115), not the interbank/market rate. A market rate (yfinance and the
+   like) is an **estimate** — fine for planning, not for filing — and historical
+   SBI TTBR is not cleanly fetchable, so flag the gap rather than fabricate a
+   rate.
 
 ## Out of scope
 
@@ -174,7 +228,10 @@ if the return is filed on time, s.74). Still open:
 - Whether any US DTAA credit changes the *effective* tax on the US sleeve (a
   filing matter, but worth the CA's note).
 - Whether FIFO is required for demat-held listed shares.
-- Which date's exchange rate applies to a foreign gain, in INR.
+- Which date's exchange rate applies to a foreign gain, in INR — the prescribed
+  convention is the SBI TT buying rate (Rule 115) on the relevant date, but
+  whether that is a per-date rate on each acquisition and sale or a single
+  Rule-115 month-end rate on the net gain is a CA call that moves the number.
 - Whether any Indian wash-sale-style bar applies to a harvested-and-rebought
   holding (assumed none today).
 
@@ -192,7 +249,20 @@ command-line run fetches current prices and the USD/INR rate from yfinance for
 the unrealized and advice views. US short-term gains are taxed at the user's
 income slab, which the book does not hold — pass `--slab-rate` to include them,
 else the report shows the gain and leaves its tax out.
+## Broker open-lots path (pasted statements)
 
+The views above replay the ledger. When the input is instead a pasted broker
+open-lots export - a Fidelity "View open lots" CSV, which already carries each
+lot's cost and current value - the same engine runs a second entry point:
+`python scripts/tax.py --open-lots <file> --market us --ticker MSFT`. It
+reconverts every lot into rupees at per-date FX, reclassifies each on the Indian
+24-month clock (ignoring the broker's 12-month "Long" flag), lifts the base
+rates by `--surcharge` / `--income` and `--cess` into effective rates, and -
+given `--target-weight` and `--other-book` - ranks a least-tax trim (loss lots
+first, then the lowest-gain long-term lots), directing harvested short-term
+losses at the highest-taxed prior gains (`--prior-foreign-st` and the like).
+No price fetch is needed (the statement carries value); only USD-INR is fetched.
+Pure core: `build_statement_report`; golden cases in `scripts/test_tax.py`.
 ## Checks
 
 `scripts/test_tax.py` runs golden cases with fixed prices, dates, and rule rows,
