@@ -194,14 +194,112 @@ book:
 - Dividend tax, STT, and other transaction taxes. Recorded in the ledger, not
   computed here.
 - US tax. The user is an Indian resident; US capital-gains tax does not apply to
-  this book. (US dividend withholding and any treaty credit are a tax-filing
-  matter, not this module.)
+  this book. US dividend withholding and any treaty credit are a tax-filing
+  matter the engine does not compute — the awareness facts (Form 67, W-8BEN,
+  1042-S) are recorded under "Cross-border filing awareness" below.
 - Filing, forms, and any standalone "what should I do" answer divorced from the
   numbers. Out of scope for good — that is tax advice.
 
 - Filing and forms. Veda never files. The advice view always attaches the rupee
   figure and the CA caveat; a bare "what should I do" with no numbers is not the
   product.
+
+## Cross-border filing awareness (US brokers — gains, dividends, the forms) — not computed here
+
+The engine computes India capital-gains tax only. It does **not** compute the
+dividend / foreign-tax-credit side and files nothing, but the advisor is asked
+about the mechanics often enough that they are recorded here as **awareness** —
+always with the "not a chartered accountant — verify before filing" caveat,
+never as a filing instruction. **Every US broker is handled the same way and
+each account is treated on its own:** Fidelity and Vested (and any other US
+broker) each need their own US certification and each issue their own year-end
+statement, but all of it lands on **one** Indian return.
+
+### What each form is, by side and by income type
+
+| | **US side** | **India side** |
+|---|---|---|
+| **Set up / certify** | **W-8BEN** to each broker (not the IRS): certifies Indian residency, claims the DTAA 25% dividend rate vs 30%. Uses your **PAN** as the foreign TIN. **Expires end of the 3rd calendar year** after signing — renew, or a lapse reverts to 30% / 24% backup. | PAN + the income-tax e-filing login; no separate US-facing setup. |
+| **Dividends** | Withheld at source (25% under DTAA Art. 10). You **receive Form 1042-S** from each broker (the nonresident 1099) — proof of income and tax withheld. Nothing is filed in the US. | Report the dividend (Income from Other Sources); claim the US tax withheld as a **Foreign Tax Credit** via **Form 67** (Rule 128), reported in **Schedule FSI** + **Schedule TR**. Credit = lower of the Indian tax on it or the US tax paid. |
+| **Capital gains / losses** | **Not US-taxable** for a nonresident alien (unless in the US 183+ days, effectively-connected income, or a US real-property interest). No US form, no withholding — the statement shows "backup withholding: 0". | Compute in **rupees** (per-date FX, 24-month clock — the `tax.py` engine). Report gains in **Schedule CG**; losses in **Schedule CFL** to carry forward. |
+| **Holdings disclosure** | — | **Schedule FA** — every foreign holding across **both** brokers, mandatory for a resident regardless of any gain. |
+| **Do NOT** | file a **W-9** (that is for US persons) or expect a 1099; a **1040-NR** arises only to reclaim excess / backup withholding or for US-connected income. | file ITR-1 (no Schedule FA/CG) — use **ITR-2**, or ITR-3 if there is business income. |
+
+**How Form 67, Schedule FSI, Schedule TR and Schedule FA fit together.** They do
+four different jobs:
+
+- **Schedule FA** — pure *disclosure* of the foreign holdings (ownership),
+  mandatory even with zero income or tax. (It reports the calendar-year holding —
+  a period quirk to check.)
+- **Schedule FSI** — declares the foreign *income* and the foreign *tax paid* on
+  it, country by country (US = country code 2).
+- **Schedule TR** — totals the *relief* (the foreign tax credit) drawn from FSI.
+- **Form 67** — the standalone online statement (Rule 128) that *unlocks* that
+  relief; it must be filed **before / with** the return, or the FTC can be denied.
+
+Routing by income type: US **dividends** bore US tax, so they flow to **FSI →
+TR → Form 67** (to claim the credit) and also sit in Schedule OS. US **capital
+gains** bore **no** US tax, so there is nothing to relieve — they go to
+**Schedule CG** only, with the shares still disclosed in **Schedule FA**. Chain:
+Form 67 first → FTC → detailed in FSI → summed in TR → reduces the India tax;
+FA runs alongside as disclosure.
+
+### The process, step by step
+
+**US side — once per account, then every ~3 years:**
+1. In each broker portal (Fidelity, then Vested), open the tax-certification / W-8BEN section and submit it: legal name, country **India**, foreign TIN = **PAN**, address, and claim treaty benefits (Article 10, 25%). Sign and date.
+2. Confirm withholding drops to 25% on the next dividend (a Fidelity statement already showing 25% means its W-8BEN is live; check Vested the same way).
+3. Set a **renewal reminder** for the end of the third calendar year.
+4. Each year (~March), **download the 1042-S** from each broker and keep it as the FTC proof.
+
+**India side — every financial year:**
+1. Pull from **both** brokers: realized gains/losses per lot (in INR), dividend income and US tax withheld, and year-end holding values for Schedule FA.
+2. **File Form 67 online before / with the ITR** (verify the current Rule 128(9) deadline — it has been amended).
+3. File **ITR-2/3** with Schedule CG (gains), Schedule CFL (losses to carry), Schedule OS/FSI (dividends), Schedule TR (FTC), Schedule FA (all foreign holdings).
+
+### Reminders Veda must surface to the user
+
+- **Losses carry forward up to 8 assessment years — but only if the return is filed by the original due date** (section 139(1)); a belated return **forfeits** the carry-forward (in-year set-off still applies). A short-term loss carries against future short- **or** long-term gains; a long-term loss against future long-term gains **only**, and it must be reported in **Schedule CG / CFL** of the loss year to survive. **File on time to keep the loss alive**, and each later year re-enter the brought-forward loss so it is actually used.
+- **Schedule FA is mandatory** for a resident holding any foreign asset — omitting it carries Black Money Act penalties, independent of any tax due. Remind every year, for both brokers.
+- **W-8BEN is per broker and expires ~every 3 years** — renew both Fidelity and Vested, or withholding jumps back to 30%.
+- **Form 67 goes in before / with the ITR**, not after.
+- **RSU / ESPP vesting** can carry its own US-workday sourcing rules, separate from dividends and sales — a CA question.
+- **Not a chartered accountant** — verify the current rules and your facts before filing.
+
+## Return-filing checklist (awareness — Veda never files)
+
+A resident files **one** ITR covering worldwide income. This is the
+document-and-schedule gathering list for that return — awareness only, not
+computed by the engine, always under the "not a chartered accountant — verify
+before filing" caveat. **Regime matters first:** under the **new regime** most
+Chapter VI-A deductions (80C, 80TTA, 80CCD(1)/(1B), and the PPF / EPF / NPS
+*employee* contributions) are **not** available — only employer NPS 80CCD(2)
+and the standard deduction — so the deduction rows below apply mainly to the
+**old** regime. Confirm the regime before relying on any deduction.
+
+| Source | Document to gather | Where it goes on the ITR |
+|---|---|---|
+| **Salary (employer)** | **Form 16** + Form 12BA (perquisites, incl. RSU / ESPP value at vest) | Schedule S (salary); perquisite already inside Form 16 |
+| **Employer computation** | **Tax Computation Sheet** | cross-check TDS and perquisite against Form 16 |
+| **Master reconciliation** | **Form 26AS + AIS / TIS** (e-filing portal) | reconcile every TDS, dividend and interest **before** filing |
+| **Bank interest (HDFC)** | Interest certificate (savings + FD); FD TDS in 26AS | Schedule OS; 80TTA on savings interest (old regime only) |
+| **PPF** | Passbook / statement | interest **exempt** → Schedule EI; contribution 80C (old regime only) |
+| **EPF** | Passbook / annual statement | via Form 16 / Schedule S; interest exempt, but interest on employee contribution above Rs 2.5L/yr is taxable; contribution 80C (old regime only) |
+| **NPS** | Contribution / transaction statement | 80CCD(1)+(1B) employee (old regime only); **80CCD(2) employer — both regimes** |
+| **Zerodha (India equity)** | Tradewise **Capital Gains** statement; **dividend** summary | Schedule CG (STCG s.111A 20%, LTCG s.112A 12.5% after Rs 1.25L); dividends → Schedule OS |
+| **Fidelity + Vested (US equity)** | Realized / open-lots **Capital Gains** (→ INR via `tax.py`); **dividends** + **1042-S** | Schedule CG (foreign, 24-month clock); dividends → Schedule OS + FSI; US tax → **Form 67** + Schedule TR |
+| **All foreign holdings** | Fidelity + Vested year-end statements | **Schedule FA** (mandatory, both brokers) |
+| **Carried-forward losses** | prior-year return / CFL schedule | Schedule CFL — only if each loss year's return was filed on time |
+
+**If you traded F&O or intraday** this year, that is **business income**
+(Schedule BP, **ITR-3**), taxed at slab — not capital gains — and can trip
+tax-audit thresholds; a CA question. Otherwise a salaried resident with capital
+gains and foreign assets files **ITR-2**.
+
+Sequence: reconcile Form 16 + 26AS / AIS first; compute the two capital-gains
+sleeves (India via the ledger, US via the open-lots path); file **Form 67 before
+the ITR**; then file the return with every schedule above. **File by the due
+date** to preserve any carry-forward loss.
 
 ## Decisions (made)
 

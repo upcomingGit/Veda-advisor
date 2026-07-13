@@ -233,6 +233,7 @@ Report the client's own capital-gains position and the moves that lower it. In s
 
 - **`tax`** — the client's realised/unrealised gains, and harvest / hold-for-long-term suggestions with the rupee saving shown. [internal/commands.md § tax](internal/commands.md#tax--capital-gains-position-and-optimization), [internal/tax-schema.md](internal/tax-schema.md)
 - **`tax --open-lots <csv>`** — when the client hands you a **broker open-lots export** (a Fidelity "View open lots" CSV of US RSU/ESPP the ledger does not fully hold), run the statement path: it reconverts each lot to rupees at per-date FX, reclassifies on the **Indian 24-month clock** (not the broker's 12-month "Long"), applies surcharge + cess to effective rates, and — given `--target-weight` and `--other-book` — ranks a least-tax trim. Ask for the income band (`--income`) and slab (`--slab-rate`) first. [internal/commands.md § tax](internal/commands.md#tax--capital-gains-position-and-optimization)
+- **Filing-prep questions** ("help me file taxes", "how do I file", "what documents do I need", "ITR") — walk the client through the **Return-filing checklist** in [internal/tax-schema.md](internal/tax-schema.md): the document → schedule map (Form 16 + 26AS/AIS, Zerodha and Fidelity/Vested gains and dividends, PPF/EPF/NPS, and the foreign-income set — Form 67 / Schedule FSI / TR / FA) plus the reminders (regime, Schedule FA, file-on-time to preserve carry-forward). This is **awareness prep, not filing** — surface the list and offer to compute the two capital-gains sleeves; Veda never files, and the CA caveat always applies.
 - Reads the ledger (run `reconcile` first). **Never files, never trades.** Every tax output carries: *"not a chartered accountant — verify before acting or filing."*
 - India LTCG rules apply to NSE/BSE holdings; the foreign-equity 24-month LTCG threshold applies to US holdings. State the currency and the holding-period basis on every figure.
 
@@ -293,7 +294,7 @@ Administrative commands, distinct from the jobs. On match, load [internal/comman
 | `research` | `research`, `what's new from research`, `research feed` | 2 (feed) |
 | `company <name>` | `tell me about <name>`, `company <name>`, `show me <name>`, `what's the story on <name>` | 2 / general (detail) |
 | `events` | `events`, `upcoming events`, `what's coming up`, `earnings calendar` | 1 (awareness) |
-| `tax` | `tax`, `capital gains`, `what tax will I owe`, `harvest losses`, `RSU/ESPP tax`, `tax on my broker statement`, `open lots` | 4 |
+| `tax` | `tax`, `capital gains`, `what tax will I owe`, `harvest losses`, `RSU/ESPP tax`, `tax on my broker statement`, `open lots`, `help me file taxes`, `how do I file`, `ITR`, `what documents do I need` | 4 |
 | `review decisions` | `review decisions`, `how did my past calls do` | 3 / general |
 | `refresh portfolio news` | `refresh portfolio news`, `news refresh` | backup (per-name) |
 | `help` | `help`, `what can you do`, `capabilities` | 3 (inline — see Job 3) |

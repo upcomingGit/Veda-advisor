@@ -290,6 +290,14 @@ saving shown. It still files nothing and places no trade, and every answer
 carries the "not a chartered accountant — verify before acting or filing" line.
 The scope carve-out is recorded in [SKILL.md](../SKILL.md) Hard Rule #7 and Stage 0.
 
+**Filing-prep questions** ("help me file taxes", "how do I file", "ITR", "what
+documents do I need") are not a request to run the report — surface the
+**Return-filing checklist** in [tax-schema.md](tax-schema.md): the document →
+schedule map (Form 16 + 26AS/AIS, Zerodha and Fidelity/Vested gains and
+dividends, PPF/EPF/NPS, Form 67 / FSI / TR / FA) with the regime, Schedule FA and
+file-on-time reminders. Offer to compute the two capital-gains sleeves (India via
+the ledger, US via `--open-lots`). Awareness prep only — Veda never files.
+
 **Procedure:**
 
 1. Run `reconcile` (shared note above). Warn on disagreement.
