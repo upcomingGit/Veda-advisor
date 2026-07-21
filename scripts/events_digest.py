@@ -3,10 +3,9 @@ Veda - upcoming-events digest ("what's coming up for everything I track").
 
 Builds one date-sorted calendar across the client's whole tracked universe:
 every name they HOLD, every name on their WATCHLIST, and every name the research
-house COVERS (even if not yet held or watchlisted). Each row is tagged with both
-axes - coverage (covered / uncovered) and book relationship (held / watchlist /
-research idea) - so the reader sees at a glance which names sit in the expertise
-zone.
+house COVERS or actively TRACKS (even if not yet held or watchlisted). Each row
+is tagged with three independent axes: research coverage, research tracking and
+book relationship. Tracking-only names remain not assessed.
 
 Calendars are fetched live (Hard Rule #9) and in parallel (calendar_feed), so a
 30-name book resolves in about the time of its slowest single name, not the sum.
@@ -28,7 +27,13 @@ import sys
 from pathlib import Path
 
 from _common import slugify
-from research_feed import DEFAULT_RESEARCH_CONFIG, FeedError, load_feed
+from research_feed import (
+    DEFAULT_RESEARCH_CONFIG,
+    FeedError,
+    has_active_coverage,
+    has_ended_coverage,
+    load_feed,
+)
 from calendar_feed import LOOKFORWARD_DAYS, get_many
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -40,17 +45,24 @@ _REL_LABEL = {"HELD": "held", "WATCHLIST": "watchlist", "NEW_IDEA": "research id
 
 
 def build_universe(rows: list[dict], held: set, watched: set) -> dict:
-    """The tracked universe keyed by (market, ticker): every covered listed name,
-    plus every held and watchlisted name (which may be uncovered). Covered rows
-    win the slug/name; unlisted (no-ticker) names are dropped - nothing to fetch."""
+    """The universe keyed by (market, ticker): every covered or actively tracked
+    listed name, plus every held and watchlisted name. Feed rows win the
+    slug/name; unlisted names are dropped because there is no calendar ticker."""
     universe: dict[tuple, dict] = {}
     for row in rows:
+        complete = has_active_coverage(row)
+        globally_tracked = bool((row.get("tracking") or {}).get("globally_tracked"))
         ticker = row.get("ticker")
         if not ticker:  # private / unlisted - no calendar to fetch
             continue
         key = (row["market"], ticker)
+        if not complete and not globally_tracked and key not in held and key not in watched:
+            continue
         universe[key] = {"slug": row["slug"], "ticker": ticker, "market": row["market"],
-                         "name": row.get("name") or row["slug"], "covered": True,
+                         "name": row.get("name") or row["slug"], "covered": complete,
+                         "research_status": row.get("research_status"),
+                         "coverage_ended": has_ended_coverage(row),
+                         "research_tracked": globally_tracked,
                          "relation": row.get("relation")}
     for market, ticker in held:
         key = (market, ticker)
@@ -66,7 +78,14 @@ def build_universe(rows: list[dict], held: set, watched: set) -> dict:
 
 
 def _tag(item: dict) -> str:
-    cover = "covered" if item["covered"] else "uncovered"
+    if item["covered"]:
+        cover = "covered"
+    elif item.get("coverage_ended"):
+        cover = "research-tracked, coverage ended" if item.get("research_tracked") else "coverage ended"
+    elif item.get("research_tracked"):
+        cover = "research-tracked, not assessed"
+    else:
+        cover = "uncovered"
     rel = _REL_LABEL.get(item["relation"], str(item["relation"]).lower())
     return f"{cover}, {rel}"
 
@@ -97,9 +116,11 @@ def build_digest(universe: dict, calendars: dict, as_of: str,
     held = sum(1 for i in universe.values() if i["relation"] == "HELD")
     watch = sum(1 for i in universe.values() if i["relation"] == "WATCHLIST")
     covered = sum(1 for i in universe.values() if i["covered"])
+    pending = sum(1 for i in universe.values() if i.get("research_tracked") and not i["covered"])
     lines = [f"Upcoming events - everything you track (as of {as_of}).",
-             f"Scope: held + watchlist + research-covered ({n} names: "
-             f"{held} held, {watch} watchlisted, {covered} covered).", ""]
+             f"Scope: held + watchlist + research-covered/tracked ({n} names: "
+             f"{held} held, {watch} watchlisted, {covered} covered, "
+             f"{pending} research-tracked without active coverage).", ""]
 
     if timeline:
         for date_s, item, ev in timeline:
@@ -123,7 +144,7 @@ def build_digest(universe: dict, calendars: dict, as_of: str,
 def main() -> int:
     p = argparse.ArgumentParser(
         description="A date-sorted calendar across every name you hold, watch, or "
-                    "the research house covers. Live fetch, coverage-tagged.")
+                    "the research house covers or actively tracks. Live fetch, status-tagged.")
     p.add_argument("--client", default="default", help="Active client (default: default).")
     p.add_argument("--research-path", default=None, help="Override the research repo path.")
     p.add_argument("--config", type=Path, default=DEFAULT_RESEARCH_CONFIG)
@@ -141,7 +162,7 @@ def main() -> int:
     universe = build_universe(rows, held, watched)
     if not universe:
         print(f"No tracked names for client '{args.client}' "
-              "(no holdings, no watchlist, no covered names).")
+              "(no holdings, no watchlist, no covered or research-tracked names).")
         return 0
 
     calendars = get_many(args.client, list(universe.values()),

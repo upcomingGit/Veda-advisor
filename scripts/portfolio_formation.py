@@ -17,6 +17,10 @@ first read:
   - just watching : research says watch, not buy yet.
   - skip          : research says avoid.
 
+Tracking-only rows remain Not yet assessed. They are shown separately with no
+Call, conviction, target weight, or portfolio action. An explicitly Untracked
+relationship is also shown separately rather than described as active tracking.
+
 For the names it would back (now or later), it sets a first-cut conviction -
 high / medium / low, from how the assumptions are holding - and turns that into a
 target weight, capped by your single-name limit (profile.md). The names to back
@@ -58,7 +62,14 @@ import yaml
 
 from _common import client_root
 from concentration import load_limits
-from research_feed import DEFAULT_RESEARCH_CONFIG, FeedError, _norm_market, load_feed
+from research_feed import (
+    DEFAULT_RESEARCH_CONFIG,
+    FeedError,
+    _norm_market,
+    has_active_coverage,
+    has_ended_coverage,
+    load_feed,
+)
 
 # Force UTF-8 stdout so em-dashes / rupee signs in research text don't mangle on
 # Windows consoles that default to cp1252 (house idiom, see review_decisions.py).
@@ -112,10 +123,21 @@ def conviction_from_assumptions(row: dict) -> tuple[str, str]:
 def first_cut(row: dict) -> tuple[str, str, str]:
     """A mechanical read of one covered name: (outcome, conviction, reason).
 
-    outcome: back_now | own_but_wait | watching | skip.
+    outcome: back_now | own_but_wait | watching | skip | not_assessed | untracked | coverage_ended.
     conviction is set only for back_now / own_but_wait (the names worth backing).
     A starting point the advisor can override.
     """
+    if has_ended_coverage(row):
+        coverage = row.get("coverage") or {}
+        return (
+            "coverage_ended",
+            "",
+            f"research coverage ended {coverage.get('ended_on')}: {coverage.get('reason')}",
+        )
+    if row.get("research_status") != "Completed":
+        if (row.get("tracking") or {}).get("globally_tracked"):
+            return "not_assessed", "", "tracked by research, but no completed company assessment"
+        return "untracked", "", "research reviewed the relationship and chose not to track it"
     if not row.get("listed", True) or not row.get("ticker"):
         return "watching", "", "unlisted - watch for a listing"
     verdict = verdict_word(row.get("value"))
@@ -157,8 +179,8 @@ def _row(row: dict, outcome: str, conviction: str, reason: str) -> dict:
 
 def build_proposal(rows: list[dict], limits: dict, overrides: dict,
                    drops: set) -> dict:
-    """One proposal: covered names tagged with an outcome and (where backed) a
-    target %, routed by how each relates to the book.
+    """One proposal: manifest names tagged with an outcome and, where backed, a
+    target %, routed by research status and relationship to the book.
 
     Each backed name gets a conviction-based %, trimmed to the single-name cap
     (--set overrides). A research Avoid on a name you HOLD becomes an exit to
@@ -191,10 +213,16 @@ def build_proposal(rows: list[dict], limits: dict, overrides: dict,
 
 
 def legacy_holdings(rows: list[dict], held: set) -> list[tuple[str, str]]:
-    """Held names research does not cover: (market, ticker) in the book but absent
-    from the feed. Frozen at their current weight; each carries the research nudge."""
-    covered = {(r.get("market"), (r.get("ticker") or "").upper())
-               for r in rows if r.get("ticker")}
+    """Held names without active coverage, whether absent, pending, or ended.
+
+    Returns ``(market, ticker)`` pairs. They stay frozen at current weight and
+    carry the research nudge.
+    """
+    covered = {
+        (r.get("market"), (r.get("ticker") or "").upper())
+        for r in rows
+        if r.get("ticker") and has_active_coverage(r)
+    }
     return sorted(k for k in held if k not in covered)
 
 
@@ -219,11 +247,15 @@ def load_dry_powder_pct(client: str) -> float | None:
 def coverage_requests(rows: list[dict], held: set, watched: set) -> tuple[list, list]:
     """The uncovered names the client holds or watches - the coverage the advisor would
     ask the research house to add. Returns (held_uncovered, watch_uncovered), each a
-    sorted list of (market, ticker)."""
-    covered = {(r.get("market"), (r.get("ticker") or "").upper())
-               for r in rows if r.get("ticker")}
-    held_unc = sorted(k for k in held if k not in covered)
-    watch_unc = sorted(k for k in watched if k not in covered)
+    sorted list of (market, ticker). Explicitly ended names are excluded: reopening
+    coverage requires a new deliberate decision, not an automatic request."""
+    resolved = {
+        (r.get("market"), (r.get("ticker") or "").upper())
+        for r in rows
+        if r.get("ticker") and (has_active_coverage(r) or has_ended_coverage(r))
+    }
+    held_unc = sorted(k for k in held if k not in resolved)
+    watch_unc = sorted(k for k in watched if k not in resolved)
     return held_unc, watch_unc
 
 
@@ -312,6 +344,27 @@ def format_report(proposal: dict, client: str, dry_powder: float | None,
         lines.append("Just watching (watchlist, no size yet):")
         for r in watching:
             lines.append(f"  {_label(r)} - {r['verdict']}")
+
+    not_assessed = [r for r in rows if r["outcome"] == "not_assessed"]
+    if not_assessed:
+        lines.append("")
+        lines.append("Research tracking only (not assessed; no size or research-grade call):")
+        for r in not_assessed:
+            lines.append(f"  {_label(r)} - {r['reason']}")
+
+    untracked = [r for r in rows if r["outcome"] == "untracked"]
+    if untracked:
+        lines.append("")
+        lines.append("Research relationships reviewed as Untracked (no assessment or size):")
+        for r in untracked:
+            lines.append(f"  {_label(r)} - {r['reason']}")
+
+    ended = [r for r in rows if r["outcome"] == "coverage_ended"]
+    if ended:
+        lines.append("")
+        lines.append("Research coverage ended (retained for audit; no active Call or size):")
+        for r in ended:
+            lines.append(f"  {_label(r)} - {r['reason']}")
 
     exits = [r for r in rows if r["outcome"] == "exit"]
     if exits:

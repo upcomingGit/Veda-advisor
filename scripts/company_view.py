@@ -12,6 +12,9 @@ labels every section with where it came from:
     standing coverage disclaimer.
   - UNCOVERED name you do not hold -> just the header + a live calendar; the
     real analysis is the framework fallback the orchestrator runs.
+    - TRACKING-ONLY manifest row -> still uncovered. The header states whether
+        research actively tracks or explicitly declined the relationship; neither
+        state is presented as a completed company assessment.
 
 The calendar is always fetched live (calendar_feed) so the dates are fresh and
 cover names the packet never carries. This script only READS; the sole write is
@@ -35,7 +38,14 @@ from pathlib import Path
 import yaml
 
 from _common import client_root, slugify
-from research_feed import DEFAULT_RESEARCH_CONFIG, FeedError, _norm_market, load_feed
+from research_feed import (
+    DEFAULT_RESEARCH_CONFIG,
+    FeedError,
+    _norm_market,
+    has_active_coverage,
+    has_ended_coverage,
+    load_feed,
+)
 from calendar_feed import get_calendar
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -101,9 +111,12 @@ def read_local(client: str, slug: str) -> dict:
 
 # --- resolution (query -> a target with coverage + relationship) -----------
 
-def _covered_target(row: dict) -> dict:
+def _feed_target(row: dict) -> dict:
+    covered = has_active_coverage(row)
     return {"slug": row["slug"], "ticker": row.get("ticker"), "market": row.get("market"),
-            "name": row.get("name") or row["slug"], "covered": True,
+            "name": row.get("name") or row["slug"], "covered": covered,
+            "research_status": row.get("research_status"),
+            "tracking": row.get("tracking") or {},
             "relation": row.get("relation"), "row": row}
 
 
@@ -111,18 +124,18 @@ def resolve_target(query: str, rows: list[dict], held: set, watched: set,
                    client: str, market_hint: str = "") -> dict:
     """Resolve a name/ticker to {slug, ticker, market, name, covered, relation, row}.
 
-    Covered names win (exact slug/ticker first, then a name substring); then a
-    held or watchlisted uncovered name; then a local workspace by slug; else an
+    Feed names win (exact slug/ticker first, then a name substring); then a held
+    or watchlisted uncovered name; then a local workspace by slug; else an
     unknown name (uncovered, not held)."""
     q = query.strip()
     qslug, qtick = slugify(q), q.upper()
 
     for row in rows:  # covered, exact
         if row.get("slug") == qslug or (row.get("ticker") and row["ticker"] == qtick):
-            return _covered_target(row)
+            return _feed_target(row)
     for row in rows:  # covered, name substring
         if row.get("name") and q.lower() in row["name"].lower():
-            return _covered_target(row)
+            return _feed_target(row)
 
     for market, tick in sorted(held):
         if tick == qtick or slugify(tick) == qslug:
@@ -165,7 +178,25 @@ def _fmt_header(t: dict) -> list[str]:
     lines = [f"=== {t['name']}  ({ticker}, {market}) ===",
              f"Coverage: {cover}    In your book: {_RELATION_LABEL.get(t['relation'], t['relation'])}"]
     if not t["covered"]:
-        lines.append("Note: " + DISCLAIMER.format(name=t["name"]))
+        if t.get("research_status") == "Not yet assessed":
+            if (t.get("tracking") or {}).get("globally_tracked"):
+                lines.append(
+                    "Note: The research house tracks this relationship but has not completed a company assessment. "
+                    "Do not treat it as research-grade conviction."
+                )
+            else:
+                lines.append(
+                    "Note: The research house reviewed this relationship and chose not to track it. "
+                    "There is no completed company assessment or research-grade conviction."
+                )
+        elif has_ended_coverage(t.get("row") or {}):
+            coverage = (t.get("row") or {}).get("coverage") or {}
+            lines.append(
+                f"Note: Research coverage ended {coverage.get('ended_on')}: {coverage.get('reason')} "
+                "The retained Call is historical only and must not be used for sizing."
+            )
+        else:
+            lines.append("Note: " + DISCLAIMER.format(name=t["name"]))
     return lines
 
 

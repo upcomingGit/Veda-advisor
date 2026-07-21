@@ -1,15 +1,20 @@
 """
 Veda - research feed reader.
 
-Reads the research arm's recommendation feed (published/manifest.yaml in the
-companion Veda-research repo) and reconciles it against ONE client's book:
-which recommended names the client already holds, already watches, is brand new,
-or is an unlisted (private) name. It flags the new and updated recommendations so
-the advisor can start tracking them for the client.
+Reads the research arm's shared dataset (published/manifest.yaml in the
+companion research repo) and reconciles it against ONE client's book. Completed
+packet rows carry research-grade Calls; tracking-only rows carry approved
+monitoring context but remain Not yet assessed. Both retain the separate client
+relationship: held, watchlisted, neither, or private.
+
+An explicitly ended row retains the last approved packet and Call for audit,
+but is no longer active coverage and is never sized. Its semantic record hash
+changes once when coverage ends; packet-only byte churn does not create an
+advisor alert.
 
 Boundary: this is read-only w.r.t. the client's book. It never writes assets.md
 or holdings/. The only thing it writes is the client's own "seen" cursor
-(clients/<client>/research-seen.json, with --mark-seen) so a recommendation is
+(clients/<client>/research-seen.json, with --mark-seen) so a record revision is
 flagged once, not every session. The recommendation VALUE (the analyst's "My
 Call") is free text and is shown verbatim as evidence; the advisor never acts on
 it directly - sizing and buy/sell stay the advisor's job, through the pipeline.
@@ -31,6 +36,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import json
 import sys
 from pathlib import Path
@@ -58,12 +64,40 @@ _MARKET_ALIASES = {"india": "india", "in": "india", "us": "us", "usa": "us"}
 
 # Held positions at or below this many shares are treated as closed, not held.
 EPSILON = 1e-9
+RESEARCH_COMPLETE = "Completed"
+NOT_YET_ASSESSED = "Not yet assessed"
+MANIFEST_SCHEMA_VERSION = 4
 
 
 def _norm_market(raw) -> str | None:
     if not raw:
         return None
     return _MARKET_ALIASES.get(str(raw).strip().lower())
+
+
+def _valid_iso_date(value) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def has_active_coverage(row: dict) -> bool:
+    """Whether a row carries completed research that remains active."""
+    return (
+        row.get("research_status") == RESEARCH_COMPLETE
+        and (row.get("coverage") or {}).get("status") == "Active"
+    )
+
+
+def has_ended_coverage(row: dict) -> bool:
+    """Whether a row retains completed research as an explicit ending tombstone."""
+    return (
+        row.get("research_status") == RESEARCH_COMPLETE
+        and (row.get("coverage") or {}).get("status") == "Ended"
+    )
 
 
 # --- reading the research repo location ------------------------------------
@@ -121,7 +155,7 @@ def read_watchlist(assets_path: Path) -> set[tuple[str, str]]:
 
 
 def load_seen(path: Path) -> dict:
-    """The per-client seen cursor: {slug: version, ...}. Empty when absent."""
+    """The per-client seen cursor: ``{slug: revision, ...}``. Empty when absent."""
     if not path.exists():
         return {}
     try:
@@ -139,16 +173,134 @@ def classify(
     held: set[tuple[str, str]],
     watched: set[tuple[str, str]],
     seen: dict,
+    *,
+    schema_version: int = MANIFEST_SCHEMA_VERSION,
 ) -> list[dict]:
     """One row per manifest entry, tagged with change (vs seen) and relation
     (vs the client's book). Pure - no I/O."""
+    if schema_version != MANIFEST_SCHEMA_VERSION:
+        raise ValueError(f"unsupported manifest schema_version {schema_version!r}")
     rows: list[dict] = []
+    slugs: set[str] = set()
     for entry in entries:
         slug = entry.get("slug")
-        listed = entry.get("listed", True)
-        ticker = (entry.get("ticker") or "").strip().upper()
-        market = _norm_market(entry.get("market"))
+        if not isinstance(slug, str) or not slug or slug in slugs:
+            raise ValueError(f"manifest entry has a missing or duplicate slug: {slug!r}")
+        slugs.add(slug)
+        listed = entry.get("listed")
+        if not isinstance(listed, bool):
+            raise ValueError(f"manifest entry '{slug}' has no valid listed flag")
+        raw_ticker = entry.get("ticker")
+        name = entry.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"manifest entry '{slug}' has no valid company name")
+        if listed:
+            if not isinstance(raw_ticker, str) or not raw_ticker or raw_ticker != raw_ticker.strip().upper():
+                raise ValueError(f"manifest entry '{slug}' has invalid market or ticker identity")
+            ticker = raw_ticker
+        else:
+            if raw_ticker is not None:
+                raise ValueError(f"manifest entry '{slug}' has invalid market or ticker identity")
+            ticker = ""
+        raw_market = entry.get("market")
+        market = _norm_market(raw_market)
+        if raw_market not in {"IN", "US"} or market is None or (listed and not ticker) or (not listed and ticker):
+            raise ValueError(f"manifest entry '{slug}' has invalid market or ticker identity")
         key = (market, ticker)
+
+        packet = entry.get("packet")
+        recommendation = entry.get("recommendation")
+        research_status = entry.get("research_status")
+        if research_status not in {RESEARCH_COMPLETE, NOT_YET_ASSESSED}:
+            raise ValueError(f"manifest v4 entry '{slug}' has no valid research_status")
+        company_id = entry.get("company_id")
+        expected_company_id = f"{raw_market}:{ticker}" if listed else f"{raw_market}:private:"
+        if (
+            not isinstance(company_id, str)
+            or not company_id
+            or (listed and company_id != expected_company_id)
+            or (not listed and not company_id.startswith(expected_company_id))
+        ):
+            raise ValueError(f"manifest v4 entry '{slug}' has no company_id")
+        revision = entry.get("record_hash")
+        if (
+            not isinstance(revision, str)
+            or not revision.startswith("sha256:")
+            or len(revision) != 71
+            or any(char not in "0123456789abcdef" for char in revision[7:])
+        ):
+            raise ValueError(f"manifest v4 entry '{slug}' has no record_hash")
+        tracking = entry.get("tracking")
+        if not isinstance(tracking, dict):
+            raise ValueError(f"manifest v4 entry '{slug}' has no tracking block")
+        relationships = tracking.get("relationships")
+        if (
+            not isinstance(tracking.get("reviewed"), bool)
+            or not isinstance(tracking.get("globally_tracked"), bool)
+            or not isinstance(relationships, list)
+            or any(
+                not isinstance(rel, dict)
+                or not isinstance(rel.get("key"), str)
+                or rel.get("scope") not in {"sector", "standalone"}
+                or (
+                    rel.get("scope") == "sector"
+                    and (not isinstance(rel.get("sector_slug"), str) or not rel["sector_slug"])
+                )
+                or (rel.get("scope") == "standalone" and rel.get("sector_slug") is not None)
+                or rel.get("key") != (
+                    f"sector:{rel.get('sector_slug')}:{company_id}"
+                    if rel.get("scope") == "sector"
+                    else f"standalone:{company_id}"
+                )
+                or rel.get("state") not in {"Tracked", "Untracked"}
+                or not isinstance(rel.get("reason"), str)
+                or not rel["reason"].strip()
+                or not isinstance(rel.get("decision_date"), str)
+                for rel in relationships
+            )
+            or tracking["reviewed"] != bool(relationships)
+            or tracking["globally_tracked"] != any(rel["state"] == "Tracked" for rel in relationships)
+        ):
+            raise ValueError(f"manifest v4 entry '{slug}' has an invalid tracking block")
+        coverage = entry.get("coverage")
+        if research_status == NOT_YET_ASSESSED:
+            if coverage is not None:
+                raise ValueError(f"not-yet-assessed manifest entry '{slug}' cannot carry coverage history")
+        elif (
+            not isinstance(coverage, dict)
+            or set(coverage) != {"status", "ended_on", "reason"}
+            or coverage.get("status") not in {"Active", "Ended"}
+            or (
+                coverage.get("status") == "Active"
+                and (coverage.get("ended_on") is not None or coverage.get("reason") is not None)
+            )
+            or (
+                coverage.get("status") == "Ended"
+                and (
+                    not isinstance(coverage.get("ended_on"), str)
+                    or not _valid_iso_date(coverage["ended_on"])
+                    or not isinstance(coverage.get("reason"), str)
+                    or not coverage["reason"].strip()
+                )
+            )
+        ):
+            raise ValueError(f"manifest v4 entry '{slug}' has an invalid coverage block")
+        if research_status == RESEARCH_COMPLETE:
+            if (
+                not isinstance(packet, dict)
+                or not isinstance(packet.get("version"), int)
+                or isinstance(packet["version"], bool)
+                or packet["version"] < 1
+                or not isinstance(recommendation, dict)
+                or not isinstance(recommendation.get("value"), str)
+                or not recommendation["value"].strip()
+            ):
+                raise ValueError(f"completed manifest entry '{slug}' has no valid packet or Call")
+        else:
+            if not relationships:
+                raise ValueError(f"not-yet-assessed manifest entry '{slug}' has no reviewed relationship")
+            if any(entry.get(field) is not None for field in ("packet", "recommendation", "why", "thesis", "valuation")):
+                raise ValueError(f"not-yet-assessed manifest entry '{slug}' contains fabricated research")
 
         if not listed or not ticker:
             relation = "PRIVATE"
@@ -159,10 +311,10 @@ def classify(
         else:
             relation = "NEW_IDEA"
 
-        version = (entry.get("packet") or {}).get("version")
+        version = (packet or {}).get("version")
         if slug not in seen:
             change = "NEW"
-        elif seen.get(slug) != version:
+        elif seen.get(slug) != revision:
             change = "UPDATED"
         else:
             change = "UNCHANGED"
@@ -171,19 +323,30 @@ def classify(
         thesis = entry.get("thesis") or {}
         rows.append({
             "slug": slug,
+            "company_id": entry.get("company_id"),
             "ticker": ticker or None,
             "market": market,
-            "name": entry.get("name") or slug,
+            "name": name,
             "listed": listed,
             "relation": relation,
             "change": change,
             "version": version,
+            "revision": revision,
+            "tracking": tracking,
+            "coverage": coverage,
+            "research_status": research_status,
             "value": rec.get("value"),
             "why": entry.get("why"),
             "statement": thesis.get("statement"),
             "assumptions": thesis.get("assumptions") or [],
             "valuation": entry.get("valuation") or {},
         })
+    silently_removed = sorted(set(seen) - slugs)
+    if silently_removed:
+        raise ValueError(
+            "manifest silently removed previously seen research instead of publishing "
+            "an explicit Ended tombstone: " + ", ".join(silently_removed)
+        )
     return rows
 
 
@@ -211,6 +374,32 @@ def _name(row: dict) -> str:
 
 
 def _detail_lines(row: dict) -> list[str]:
+    if has_ended_coverage(row):
+        coverage = row["coverage"]
+        out = [
+            f"  {_RELATION_TAG.get(row['relation'], row['relation'])} {_name(row)} "
+            f"- COVERAGE ENDED {coverage['ended_on']}  [{row['change']}]",
+            f"      reason: {coverage['reason']}",
+        ]
+        if row.get("value"):
+            out.append(f"      last approved Call (historical only): {row['value']}")
+        out.append("      -> treat as uncovered; do not size from the retained packet.")
+        return out
+    if row["research_status"] != RESEARCH_COMPLETE:
+        relationships = row["tracking"].get("relationships") or []
+        tracked = [rel for rel in relationships if rel.get("state") == "Tracked"]
+        through = ", ".join(rel.get("sector_slug") or "standalone" for rel in tracked)
+        out = [f"  {_RELATION_TAG.get(row['relation'], row['relation'])} {_name(row)} "
+               f"- {NOT_YET_ASSESSED}  [{row['change']}]",
+               f"      research tracking: {through or 'no active relationship'}"]
+        for rel in relationships:
+            scope = rel.get("sector_slug") or "standalone"
+            out.append(f"      {rel.get('state')}: {scope} — {rel.get('reason')}")
+        if tracked:
+            out.append("      -> monitor the relationship; do not size or treat it as research coverage.")
+        else:
+            out.append("      -> relationship reviewed as Untracked; no company assessment or size.")
+        return out
     out = [f"  {_RELATION_TAG.get(row['relation'], row['relation'])} {_name(row)} "
            f"- {row['value']}  [{row['change']}]"]
     if row["why"]:
@@ -265,18 +454,25 @@ def format_report(rows: list[dict], client: str, manifest_updated) -> str:
     unchanged = [r for r in rows if r["change"] == "UNCHANGED"]
 
     if flagged:
-        lines.append("New or updated (surface these):")
+        lines.append("New, updated, or ended (surface these):")
         for row in flagged:
             lines.extend(_detail_lines(row))
     else:
-        lines.append("New or updated: none.")
+        lines.append("New, updated, or ended: none.")
 
     if unchanged:
         lines.append("")
         lines.append("Already seen (unchanged since last check):")
         for row in unchanged:
+            if has_ended_coverage(row):
+                value = f"Coverage ended {row['coverage']['ended_on']}"
+            elif row["research_status"] == RESEARCH_COMPLETE:
+                value = row["value"]
+            else:
+                state = "Tracked" if row["tracking"]["globally_tracked"] else "Untracked"
+                value = f"{NOT_YET_ASSESSED} ({state})"
             lines.append(f"  {_RELATION_TAG.get(row['relation'], row['relation'])} "
-                         f"{_name(row)} - {row['value']}")
+                         f"{_name(row)} - {value}")
 
     def rel_count(rel: str) -> int:
         return sum(1 for r in rows if r["relation"] == rel)
@@ -310,10 +506,10 @@ class FeedError(Exception):
 def load_feed(client: str, config_path: Path = DEFAULT_RESEARCH_CONFIG,
               research_override: str | None = None):
     """Resolve the research repo, load the manifest, reconcile it against one
-    client's book, and classify every covered name.
+    client's book, and classify every manifest record.
 
     Returns (rows, held, watched, manifest_updated, research_path):
-      - rows: one classified entry per covered (manifest) name.
+    - rows: one classified entry per completed or tracking-only manifest name.
       - held / watched: the client's own {(market, ticker)} sets, which may
         include names the research house does NOT cover.
       - research_path: the resolved Veda-research repo (for packet reads).
@@ -327,7 +523,18 @@ def load_feed(client: str, config_path: Path = DEFAULT_RESEARCH_CONFIG,
         doc = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as error:
         raise FeedError(f"could not parse manifest: {error}", code=1)
-    entries = [e for e in (doc.get("entries") or []) if isinstance(e, dict) and e.get("slug")]
+    if not isinstance(doc, dict):
+        raise FeedError("invalid research manifest: root must be a mapping", code=1)
+    schema_version = doc.get("schema_version")
+    if schema_version != MANIFEST_SCHEMA_VERSION:
+        raise FeedError(
+            f"unsupported research manifest schema {schema_version!r}; "
+            f"expected {MANIFEST_SCHEMA_VERSION}",
+            code=1,
+        )
+    entries = doc.get("entries")
+    if not isinstance(entries, list):
+        raise FeedError("invalid research manifest: entries must be a list", code=1)
     manifest_updated = doc.get("updated")
 
     root = client_root(client)
@@ -339,7 +546,10 @@ def load_feed(client: str, config_path: Path = DEFAULT_RESEARCH_CONFIG,
     watched = read_watchlist(assets_path)
     seen = load_seen(seen_path)
 
-    rows = classify(entries, held, watched, seen)
+    try:
+        rows = classify(entries, held, watched, seen, schema_version=schema_version)
+    except ValueError as error:
+        raise FeedError(f"invalid research manifest: {error}", code=1) from error
     return rows, held, watched, manifest_updated, research
 
 
@@ -347,7 +557,7 @@ def load_feed(client: str, config_path: Path = DEFAULT_RESEARCH_CONFIG,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Read the research recommendation feed and reconcile it against one client's book."
+        description="Read the shared research dataset and reconcile it against one client's book."
     )
     parser.add_argument("--client", default="default", help="which client's book (default: default)")
     parser.add_argument("--research-path", default=None,
@@ -355,7 +565,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_RESEARCH_CONFIG,
                         help="research.json path")
     parser.add_argument("--mark-seen", action="store_true",
-                        help="record the current versions so they are not re-flagged next session")
+                        help="record current row revisions so they are not re-flagged next session")
     args = parser.parse_args(argv)
 
     try:
@@ -371,11 +581,11 @@ def main(argv: list[str] | None = None) -> int:
         seen_path = client_root(args.client) / "research-seen.json"
         cursor = {
             "manifest_updated": str(manifest_updated) if manifest_updated is not None else None,
-            "seen": {row["slug"]: row["version"] for row in rows},
+            "seen": {row["slug"]: row["revision"] for row in rows},
         }
         seen_path.parent.mkdir(parents=True, exist_ok=True)
         seen_path.write_text(json.dumps(cursor, indent=2) + "\n", encoding="utf-8")
-        print(f"\nMarked {len(rows)} recommendation(s) as seen for client '{args.client}'.")
+        print(f"\nMarked {len(rows)} research record(s) as seen for client '{args.client}'.")
 
     return 0
 

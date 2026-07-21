@@ -420,25 +420,27 @@ give one, ask.
 
 ## `research` — research house feed vs book
 
-Reads what the research house has published and lines it up against this client's
-holdings and watchlist, so a name the research side has picked up does not sit
-unnoticed. The session-load check (Stage 1.5) already surfaces new and changed
-entries once per session and marks them seen; this command re-runs the same read
-on demand and shows the full picture — new, changed, and already-seen — and marks
-nothing.
+Reads the research house's shared dataset and lines it up against this client's
+holdings and watchlist. Completed rows carry research coverage; tracking-only
+rows carry an approved `Tracked` or `Untracked` relationship and remain `Not yet
+assessed`. The session-load check already surfaces new and changed entries once
+per session and marks them seen; this command re-runs the same read on demand
+without marking anything.
 
 **Procedure:**
 
 1. Run `python scripts/research_feed.py --client <active>`. It reads the research
    house manifest (`../veda-ai-research-team/published/manifest.yaml`, path set in
    `research.json`), the client's held names and watchlist from `assets.md`, then
-   prints each published name tagged by how it relates to the book — held,
-   watchlisted, a new idea, or a private / pre-listing name — and whether it is
-   new, updated, or already seen.
+   prints each manifest name tagged by research status, research tracking, book
+   relationship and whether it is new, updated, explicitly ended, or already seen.
 2. Surface the report as-is. For a name the user wants to act on, route by tag: a
    held or watchlisted name to a hold-check (Stage 9a); a new idea to a watchlist
    add (plan-then-confirm, `why_tracking` ← the research `why`). The research
    `recommendation.value` is opaque evidence — it never skips the pipeline.
+   A `Not yet assessed` row carries no Call or size; state its approved tracking
+   relationship and stop there. A `coverage.status: Ended` row states the approved
+   date and reason; its retained Call is historical only and cannot be sized.
 
 > *"Research house feed for this client: 2 names, both new ideas not in your book or watchlist. ASTRAMICRO (Astra Microwave, IN) — a tactical defence up-cycle hold. BABA (Alibaba, US) — cheap cloud-and-AI at about 15x earnings. Add either to your watchlist to start tracking it?"*
 
@@ -458,8 +460,9 @@ the relevant job).
 **Procedure:**
 
 1. Run `python scripts/company_view.py --client <active> "<name or ticker>"`. It
-   resolves the name, decides coverage (is it in the research manifest?) and book
-   relationship (held / watchlisted / neither), and assembles:
+   resolves the name, decides coverage (`research_status: Completed`, not merely
+   manifest membership) and book relationship (held / watchlisted / neither),
+   and assembles:
    - **Covered name** → the research packet: the call, the valuation zone, the full
      thesis (each assumption with its `breaks_if` tripwire), the scorecard, recent
      fundamentals, and the curated news pulse — plus pointers to the packet's
@@ -467,6 +470,10 @@ the relevant job).
    - **Uncovered name you hold** → your own local workspace (valuation, thesis
      anchors, fundamentals) and doc pointers, **with the coverage disclaimer**
      (Hard Rule #6) — it is lighter than research and may be stale.
+    - **Tracking-only row** → the approved `Tracked` or `Untracked` context and a
+       plain statement that no company assessment or research-grade Call exists.
+      - **`coverage.status: Ended` row** → the approved coverage-ending date and reason,
+         with any retained packet treated as audit history rather than current research.
    - Either way, a **live calendar** of upcoming scheduled events is fetched fresh.
 2. Surface it. For an unknown name pass `--market us|india` so the calendar can be
    fetched. If the user then wants to act, route to the job (a covered idea →
@@ -480,10 +487,10 @@ work — and for a covered name it consumes the research verdict, never re-deriv
 
 ## `events` — upcoming calendar across everything you track
 
-One date-sorted calendar spanning every name the client holds, watchlists, or the
-research house covers — so an earnings date or ex-dividend never arrives unnoticed.
-Each row is tagged on both axes (covered / uncovered, and held / watchlist /
-research idea).
+One date-sorted calendar spanning every listed name the client holds, watchlists,
+or the research house covers or actively tracks. Each row keeps coverage,
+research tracking and book relationship separate; tracking-only names are marked
+not assessed.
 
 **Procedure:**
 
