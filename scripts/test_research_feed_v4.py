@@ -121,6 +121,98 @@ class ResearchFeedV4Tests(unittest.TestCase):
         target = company_view.resolve_target("ALPHA", [row], set(), set(), "default")
         self.assertTrue(target["covered"])
 
+    def test_completed_private_research_is_context_only_even_with_size_override(self) -> None:
+        entry = self._entry(completed=True)
+        entry.update(
+            {
+                "slug": "private-alpha",
+                "company_id": "IN:private:alpha",
+                "ticker": None,
+                "name": "Alpha Private Limited",
+                "listed": False,
+                "recommendation": None,
+                "private_research_view": {
+                    "status": "Promising",
+                    "as_of": "2026-07-19",
+                    "horizon": "FY2028",
+                    "review_by": "Q2 FY2027 results",
+                    "reasoning": "A paid programme exists, but repeatability remains unproven.",
+                },
+                "private_context": {
+                    "boat": {
+                        "status": "Insufficient evidence",
+                        "segment": "Private systems",
+                        "as_of": "2026-07-19",
+                        "reasoning": "Peer-relative repeatability is not established.",
+                        "gap": "Comparable private operating evidence is incomplete.",
+                    },
+                    "source_gaps": ["No independent customer confirmation."],
+                    "unknowns": ["A second paid programme remains unconfirmed."],
+                    "freshness": {
+                        "scorecard_as_of": "2026-07-19",
+                        "thesis_as_of": "2026-07-19",
+                        "website_retrieved_at": "2026-07-19T12:00:00+00:00",
+                    },
+                },
+                "why": None,
+                "valuation": None,
+            }
+        )
+        entry["tracking"]["relationships"][0]["key"] = (
+            "sector:test-india:IN:private:alpha"
+        )
+
+        row = research_feed.classify([entry], set(), set(), {}, schema_version=4)[0]
+        self.assertEqual(row["relation"], "PRIVATE")
+        self.assertEqual(row["private_research_view"]["status"], "Promising")
+        self.assertIsNone(row["value"])
+        self.assertEqual(
+            portfolio_formation.first_cut(row),
+            (
+                "context_only",
+                "",
+                "private-company research is context only; no portfolio action or size",
+            ),
+        )
+        proposal = portfolio_formation.build_proposal(
+            [row], {"max_per_stock": 0.10}, {"PRIVATE-ALPHA": 25.0}, set()
+        )
+        self.assertEqual(proposal["rows"][0]["outcome"], "context_only")
+        self.assertIsNone(proposal["rows"][0]["target_pct"])
+        report = research_feed.format_report([row], "default", "2026-07-19")
+        self.assertIn("context only", report)
+        self.assertIn("no portfolio action", report)
+        target = company_view.resolve_target(
+            "Alpha Private Limited", [row], set(), set(), "default"
+        )
+        dossier = company_view.build_dossier(
+            target,
+            {"scorecard": {}, "thesis": {}, "docs": []},
+            None,
+            {"as_of": "2026-07-19", "upcoming": [], "cached": False},
+            180,
+        )
+        self.assertIn("Private Research View: Promising", dossier)
+        self.assertIn("Boat: Insufficient evidence", dossier)
+        self.assertIn("No independent customer confirmation", dossier)
+        self.assertIn("2026-07-19T12:00:00+00:00", dossier)
+        self.assertIn("no portfolio action", dossier)
+
+        invalid = self._entry(completed=True)
+        invalid.update(entry)
+        invalid["company_id"] = "IN:private:other-alpha"
+        invalid["tracking"] = {
+            **entry["tracking"],
+            "relationships": [
+                {
+                    **entry["tracking"]["relationships"][0],
+                    "key": "sector:test-india:IN:private:other-alpha",
+                }
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "no company_id"):
+            research_feed.classify([invalid], set(), set(), {}, schema_version=4)
+
     def test_v4_entry_without_explicit_research_status_fails_closed(self) -> None:
         entry = self._entry(completed=False)
         del entry["research_status"]

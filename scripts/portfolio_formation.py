@@ -123,7 +123,7 @@ def conviction_from_assumptions(row: dict) -> tuple[str, str]:
 def first_cut(row: dict) -> tuple[str, str, str]:
     """A mechanical read of one covered name: (outcome, conviction, reason).
 
-    outcome: back_now | own_but_wait | watching | skip | not_assessed | untracked | coverage_ended.
+    outcome: back_now | own_but_wait | watching | skip | context_only | not_assessed | untracked | coverage_ended.
     conviction is set only for back_now / own_but_wait (the names worth backing).
     A starting point the advisor can override.
     """
@@ -139,7 +139,11 @@ def first_cut(row: dict) -> tuple[str, str, str]:
             return "not_assessed", "", "tracked by research, but no completed company assessment"
         return "untracked", "", "research reviewed the relationship and chose not to track it"
     if not row.get("listed", True) or not row.get("ticker"):
-        return "watching", "", "unlisted - watch for a listing"
+        return (
+            "context_only",
+            "",
+            "private-company research is context only; no portfolio action or size",
+        )
     verdict = verdict_word(row.get("value"))
     if verdict == "Avoid":
         return "skip", "", "research says avoid"
@@ -350,6 +354,13 @@ def format_report(proposal: dict, client: str, dry_powder: float | None,
         lines.append("")
         lines.append("Research tracking only (not assessed; no size or research-grade call):")
         for r in not_assessed:
+            lines.append(f"  {_label(r)} - {r['reason']}")
+
+    context_only = [r for r in rows if r["outcome"] == "context_only"]
+    if context_only:
+        lines.append("")
+        lines.append("Private-company research context (no action, size, funding or trade):")
+        for r in context_only:
             lines.append(f"  {_label(r)} - {r['reason']}")
 
     untracked = [r for r in rows if r["outcome"] == "untracked"]

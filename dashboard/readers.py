@@ -17,6 +17,7 @@ than substituting a default — display logic is responsible for showing
 from __future__ import annotations
 
 import csv
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -260,6 +261,77 @@ def _section_after_heading(text: str, heading: str) -> str:
     rest = text[m.end():]
     next_h2 = re.search(r"^##\s", rest, flags=re.MULTILINE)
     return rest[: next_h2.start()] if next_h2 else rest
+
+
+# ---------------------------------------------------------------------------
+# published/tracked-companies.yaml -- the research repo's one published file
+# ---------------------------------------------------------------------------
+
+# The research repo publishes exactly one file for this dashboard. Nothing here
+# reads any other file in that repo, so it stays free to reorganise internally.
+TRACKED_SCHEMA_VERSION = 1
+DEFAULT_RESEARCH_PATH = "../veda-ai-research-team"
+
+
+@dataclass(frozen=True)
+class TrackedView:
+    path: Path
+    generated_at: str = ""
+    run_finished_at: str = ""
+    companies: list[dict[str, Any]] = field(default_factory=list)
+    error: str = ""
+
+
+def research_repo_path(workspace: Path) -> Path:
+    """Where the research repo sits: user-config/research.json, else the sibling folder."""
+    config_path = workspace / "user-config" / "research.json"
+    base = DEFAULT_RESEARCH_PATH
+    if config_path.exists():
+        try:
+            configured = json.loads(config_path.read_text(encoding="utf-8"))
+            base = (configured.get("research_repo_path") or "").strip() or DEFAULT_RESEARCH_PATH
+        except (OSError, json.JSONDecodeError, AttributeError):
+            base = DEFAULT_RESEARCH_PATH
+    path = Path(base).expanduser()
+    return path if path.is_absolute() else (workspace / path).resolve()
+
+
+def tracked_path(workspace: Path) -> Path:
+    return research_repo_path(workspace) / "published" / "tracked-companies.yaml"
+
+
+def read_tracked(workspace: Path) -> TrackedView:
+    """Read the published tracked-companies file, or say plainly why it could not be read."""
+    path = tracked_path(workspace)
+    if not path.exists():
+        return TrackedView(
+            path=path,
+            error=(
+                "The research repo has not published this file yet. Run its research list "
+                "daily pass, which writes it when the last tracked company has an outcome."
+            ),
+        )
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        return TrackedView(path=path, error=f"The published file could not be read: {exc}")
+    if not isinstance(doc, dict):
+        return TrackedView(path=path, error="The published file is not a mapping.")
+    version = doc.get("schema_version")
+    if version != TRACKED_SCHEMA_VERSION:
+        return TrackedView(
+            path=path,
+            error=(
+                f"The published file is schema version {version!r}; this dashboard reads "
+                f"version {TRACKED_SCHEMA_VERSION}. One side is ahead of the other."
+            ),
+        )
+    return TrackedView(
+        path=path,
+        generated_at=str(doc.get("generated_at") or ""),
+        run_finished_at=str(doc.get("run_finished_at") or ""),
+        companies=[row for row in doc.get("companies") or [] if isinstance(row, dict)],
+    )
 
 
 # ---------------------------------------------------------------------------

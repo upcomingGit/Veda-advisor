@@ -211,6 +211,26 @@ def _fmt_call(row: dict) -> list[str]:
     return out
 
 
+def _fmt_private_research_view(row: dict) -> list[str]:
+    view = row.get("private_research_view") or {}
+    if row.get("listed") is not False or not view.get("status"):
+        return []
+    context = row.get("private_context") or {}
+    boat = context.get("boat") or {}
+    freshness = context.get("freshness") or {}
+    gaps = [*(context.get("source_gaps") or []), *(context.get("unknowns") or [])]
+    return [
+        "",
+        f"Private Research View: {view['status']}",
+        f"  {view.get('reasoning')}",
+        f"  as of {view.get('as_of')} | horizon {view.get('horizon')} | review by {view.get('review_by')}",
+        f"  Boat: {boat.get('status')} - {boat.get('reasoning')}",
+        f"  website evidence refreshed {freshness.get('website_retrieved_at')}",
+        *( [f"  gaps: {'; '.join(gaps)}"] if gaps else [] ),
+        "  context only - no portfolio action, position size, funding source or trade.",
+    ]
+
+
 def _fmt_valuation(val: dict | None, row: dict | None, provenance: str) -> list[str]:
     val = val or {}
     zone = val.get("zone") or (row or {}).get("valuation", {}).get("zone")
@@ -370,6 +390,7 @@ def build_dossier(target: dict, packet: dict | None, local: dict | None,
     lines = _fmt_header(target)
     if target["covered"]:
         row = target["row"] or {}
+        lines += _fmt_private_research_view(row)
         lines += _fmt_call(row)
         lines += _fmt_valuation((packet or {}).get("valuation"), row, "research packet")
         lines += _fmt_thesis_packet((packet or {}).get("thesis"))

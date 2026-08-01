@@ -20,7 +20,15 @@
   <article class="setting-card">
     <div class="summary-label">Event horizon</div>
     <div class="setting-main-value">{{ config.event_window_days }} days</div>
-    <p class="summary-note">Used by the overview calendar. Change with <code>--event-window-days N</code>.</p>
+    <p class="summary-note">Used by the overview calendar and the Tracked attention list. Change with <code>--event-window-days N</code>.</p>
+  </article>
+  <article class="setting-card">
+    <div class="summary-label">Tracked companies file</div>
+    <div class="setting-main-value"><code>{{ tracked.path }}</code></div>
+    <p class="summary-note">
+      {% if tracked.error %}{{ tracked.error }}{% else %}Published {{ tracked.generated_at }}. The only research file this dashboard reads.{% endif %}
+      Its location comes from <code>user-config/research.json</code>.
+    </p>
   </article>
 </section>
 

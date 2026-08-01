@@ -517,6 +517,77 @@ def _derive_cash_split(cash_rows: list[dict[str, str]]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Tracked companies — the research repo's published surface
+# ---------------------------------------------------------------------------
+
+# Assumption statuses that mean the claim is under strain.
+_WEAK_ASSUMPTIONS = {"weak", "broken"}
+_INCOMPLETE_RUN_STATES = {"blocked", "failed", "source-incomplete"}
+
+
+def _next_date(company: dict[str, Any], today: date) -> Optional[date]:
+    dates = [
+        _coerce_date(row.get("date"))
+        for row in (company.get("calendar") or {}).get("upcoming") or []
+        if isinstance(row, dict)
+    ]
+    future = [d for d in dates if d is not None and d >= today]
+    return min(future) if future else None
+
+
+def _attention_reasons(company: dict[str, Any], today: date, window_days: int) -> list[str]:
+    """Why this company is worth looking at today, in the order the user reads them."""
+    reasons: list[str] = []
+    run = company.get("run") or {}
+    approved = company.get("approved") or {}
+    if run.get("state") in _INCOMPLETE_RUN_STATES:
+        reasons.append(f"Last pass was {run.get('state')}, so this is not a completed review")
+    changes = company.get("changes") or []
+    if changes:
+        fields = ", ".join(sorted({str(c.get("field") or "") for c in changes if isinstance(c, dict)}))
+        reasons.append(f"{len(changes)} approved change{'' if len(changes) == 1 else 's'}: {fields}")
+    if str((approved.get("thesis") or {}).get("status") or "").lower() == "weakening":
+        reasons.append("Approved thesis status is Weakening")
+    strained = [
+        str(row.get("id") or "")
+        for row in approved.get("assumptions") or []
+        if isinstance(row, dict) and str(row.get("status") or "").lower() in _WEAK_ASSUMPTIONS
+    ]
+    if strained:
+        reasons.append(f"Assumption{'' if len(strained) == 1 else 's'} {', '.join(strained)} under strain")
+    due = _next_date(company, today)
+    if due is not None and due <= today + timedelta(days=window_days):
+        reasons.append(f"Dated event on {due.isoformat()}")
+    if run.get("deep_dive_due"):
+        reasons.append("An annual report is awaiting a deep-dive")
+    return reasons
+
+
+def derive_tracked_view(
+    view: readers.TrackedView,
+    window_days: int,
+    today: Optional[date] = None,
+) -> dict[str, Any]:
+    """Split the published companies into an attention list and the full roster.
+
+    Attention is derived here, not in the research repo. The published file states
+    facts; deciding what deserves a look today is this dashboard's judgement.
+    """
+    today = today or date.today()
+    roster = sorted(view.companies, key=lambda c: str(c.get("name") or c.get("slug") or "").lower())
+    attention = []
+    for company in roster:
+        reasons = _attention_reasons(company, today, window_days)
+        if reasons:
+            attention.append({"company": company, "reasons": reasons})
+    return {"attention": attention, "roster": roster}
+
+
+def find_tracked_company(view: readers.TrackedView, slug: str) -> Optional[dict[str, Any]]:
+    return next((c for c in view.companies if str(c.get("slug") or "") == slug), None)
+
+
+# ---------------------------------------------------------------------------
 # Holdings overview enrichment
 # ---------------------------------------------------------------------------
 

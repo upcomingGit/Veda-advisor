@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% from "_macros.html" import zone_pill %}
+{% block title %}{{ company.name }} - Tracked - Veda{% endblock %}
+{% block content %}
+
+{% set approved = company.approved or {} %}
+{% set thesis = approved.thesis or {} %}
+{% set tide_boat = approved.tide_and_boat or {} %}
+{% set val = approved.valuation or {} %}
+{% set rec = approved.recommendation or {} %}
+{% set rt = company.run_time or {} %}
+{% set price = rt.price or {} %}
+{% set run = company.run or {} %}
+{% set earnings = company.earnings or {} %}
+
+<section class="page-header">
+  <h1>{{ company.name }}</h1>
+  <p class="subtitle">
+    {{ company.ticker or 'private company' }} · {{ company.market }} ·
+    <a href="{{ url_for('tracked') }}">back to Tracked</a>
+  </p>
+  <div class="date-strip">
+    <span><strong>Last pass</strong> {{ run.state }}</span>
+    {% if run.evidence_cutoff %}<span><strong>Evidence to</strong> {{ run.evidence_cutoff }}</span>{% endif %}
+    {% if view.generated_at %}<span><strong>File published</strong> {{ view.generated_at }}</span>{% endif %}
+  </div>
+</section>
+
+{% if run.reason %}
+<section class="card with-gold">
+  <div class="summary-label">Why the last pass did not complete</div>
+  <p>{{ run.reason }}</p>
+</section>
+{% endif %}
+{% if run.deep_dive_due %}
+<section class="card with-gold">
+  <p>An annual report has been filed since this research was approved. A deep-dive is due.</p>
+</section>
+{% endif %}
+
+<section class="card with-accent">
+  <div class="summary-label">Approved research</div>
+  <p class="summary-note">
+    {% if approved.approved_at %}
+    Everything in this block was reviewed and signed off. It was last approved on
+    <strong>{{ approved.approved_at }}</strong> and does not change when the market moves.
+    {% else %}
+    No current approval could be read for this company, so nothing in this block is confirmed
+    as signed off. It still does not change when the market moves.
+    {% endif %}
+  </p>
+  <p class="summary-note">
+    Detailed evidence was last rebuilt by a deep-dive on
+    <strong>{{ approved.deep_dive_approved_at or 'a date not separately recorded for this legacy baseline' }}</strong>.
+    {% if approved.deep_dive_date_basis == 'history-source-pack' %}For this legacy baseline, that is the saved historical source-pack date.{% endif %}
+    Company updates may be newer than that evidence base.
+  </p>
+
+  <h3>Thesis</h3>
+  <p>{{ thesis.statement or 'No thesis statement is recorded.' }}</p>
+  <table class="kv">
+    <tr><th>Status</th><td>{{ thesis.status }}{% if thesis.as_of %} <span class="meta">set {{ thesis.as_of }}</span>{% endif %}</td></tr>
+    <tr><th>Recommendation</th><td>{{ rec.value or '—' }}{% if rec.as_of %} <span class="meta">approved {{ rec.as_of }}</span>{% endif %}</td></tr>
+    <tr><th>Horizon</th><td>{{ rec.horizon or '—' }}</td></tr>
+    <tr><th>Review by</th><td>{{ rec.review_by or '—' }}</td></tr>
+  </table>
+
+  <h3>Valuation</h3>
+  {% if val.method %}
+  <table class="kv">
+    <tr><th>Method</th><td>{{ val.method }}{% if val.as_of %} <span class="meta">approved {{ val.as_of }}</span>{% endif %}</td></tr>
+    <tr><th>Fair value</th><td>{% if val.fair_value %}{{ val.fair_value.low }}–{{ val.fair_value.high }} {{ val.currency }}{% else %}—{% endif %}</td></tr>
+    <tr><th>Entry range</th><td>{% if val.entry %}{{ val.entry.low }}–{{ val.entry.high }} {{ val.currency }}{% else %}—{% endif %}</td></tr>
+    <tr><th>Exit range</th><td>{% if val.exit %}{{ val.exit.low }}–{{ val.exit.high }} {{ val.currency }}{% else %}—{% endif %}</td></tr>
+    <tr><th>Zone</th><td>{{ zone_pill(val.zone) }}</td></tr>
+  </table>
+  {% else %}
+  <p class="muted">{{ val.reason }}</p>
+  {% endif %}
+
+  <h3>Tide and Boat</h3>
+  <table class="kv">
+    <tr><th>Tide</th><td>{{ tide_boat.tide or 'Insufficient evidence' }}</td></tr>
+    <tr><th>Boat</th><td>{{ tide_boat.boat or 'Insufficient evidence' }}{% if tide_boat.boat_as_of %} <span class="meta">as of {{ tide_boat.boat_as_of }}</span>{% endif %}</td></tr>
+    <tr><th>Combined position</th><td>{{ tide_boat.combined_position or 'Insufficient evidence' }}</td></tr>
+    {% if tide_boat.segment %}<tr><th>Segment</th><td>{{ tide_boat.segment }}</td></tr>{% endif %}
+  </table>
+
+  <h3>Assumptions</h3>
+  {% for a in approved.assumptions or [] %}
+  <article class="card">
+    <h4>{{ a.id }} — {{ a.status or 'ungraded' }}</h4>
+    <p>{{ a.claim }}</p>
+    {% if a.breaks_if %}<p class="summary-note">Breaks if: {{ a.breaks_if }}</p>{% endif %}
+    {% if a.questions %}
+    <table class="data">
+      <thead><tr><th>Question</th><th>Kind</th><th>Latest evidence</th></tr></thead>
+      <tbody>
+        {% for q in a.questions %}
+        <tr>
+          <td>{{ q.question }}</td>
+          <td>{{ q.kind }}</td>
+          <td>
+            {% if q.latest_evidence %}
+              <strong>{{ q.latest_evidence.direction }}</strong> · {{ q.latest_evidence.date }}<br>
+              {{ q.latest_evidence.note }}
+              <span class="meta">{{ q.latest_evidence.source }}</span>
+            {% else %}
+              <span class="muted">Nothing has answered this question yet</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="summary-note">
+      This thesis predates standing questions. Latest evidence on the assumption:
+      {{ a.latest_evidence }}
+    </p>
+    {% endif %}
+    {% if a.unattached_evidence %}
+    <p class="summary-note">Evidence filed here that answers none of these questions:</p>
+    <ul>
+      {% for e in a.unattached_evidence %}
+      <li>{{ e.date }} · {{ e.direction }} · {{ e.note }} <span class="meta">{{ e.reason }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </article>
+  {% else %}
+  <p class="empty">No standing assumption is recorded.</p>
+  {% endfor %}
+</section>
+
+<section class="card with-gold">
+  <div class="summary-label">Captured when the research run last executed</div>
+  <p class="summary-note">
+    These are market values read at run time{% if rt.captured_at %} on <strong>{{ rt.captured_at }}</strong>{% endif %}.
+    Nobody approved them and they change nothing above. PE and PEG are the approved figures
+    rescaled onto this price, so they inherit the approved judgement's age, not this price's.
+  </p>
+  <table class="kv">
+    <tr><th>Price</th><td>
+      {% if price.value is not none %}{{ price.value }} {{ price.currency }}
+        <span class="meta">as of {{ price.as_of }} · {{ price.source }}</span>
+      {% else %}<span class="muted">{{ price.reason }}</span>{% endif %}
+    </td></tr>
+    <tr><th>PE at this price</th><td>{{ rt.pe if rt.pe is not none else '—' }}</td></tr>
+    <tr><th>PEG at this price</th><td>{{ rt.peg if rt.peg is not none else '—' }}</td></tr>
+    <tr><th>Zone at this price</th><td>{% if rt.zone %}{{ zone_pill(rt.zone) }}{% else %}—{% endif %}</td></tr>
+    <tr><th>Growth used</th><td>{{ rt.growth_pct if rt.growth_pct is not none else '—' }}</td></tr>
+    {% if rt.rescaled_from %}
+    <tr><th>Rescaled from</th><td>{{ rt.rescaled_from.close }} on {{ rt.rescaled_from.date }}</td></tr>
+    {% endif %}
+  </table>
+  {% if rt.reason and company.listed %}<p class="muted">{{ rt.reason }}</p>{% endif %}
+</section>
+
+<section>
+  <h2>Earnings</h2>
+  <table class="kv">
+    <tr><th>Next scheduled</th><td>
+      {% if earnings.upcoming %}{{ earnings.upcoming.date }} · {{ earnings.upcoming.event }}
+        <span class="meta">{{ earnings.upcoming.status }} · {{ earnings.upcoming.source }}</span>
+      {% else %}<span class="muted">No earnings date is on the company calendar</span>{% endif %}
+    </td></tr>
+    <tr><th>Latest graded</th><td>
+      {% if earnings.latest %}{{ earnings.latest.fiscal_label }} ({{ earnings.latest.period }})
+        <span class="meta">graded {{ earnings.latest.graded_at }}</span>
+      {% else %}<span class="muted">No period has been graded</span>{% endif %}
+    </td></tr>
+  </table>
+  {% if earnings.latest and earnings.latest.rows %}
+  <table class="data">
+    <thead><tr><th>Line</th><th class="num">Year on year</th><th>Trajectory</th></tr></thead>
+    <tbody>
+      {% for row in earnings.latest.rows %}
+      <tr>
+        <td>{{ row.name | replace('_', ' ') }}</td>
+        <td class="num">{% if row.yoy_growth_pct is not none %}{{ row.yoy_growth_pct }}%{% else %}—{% endif %}</td>
+        <td>{{ row.trajectory or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Upcoming dates</h2>
+  {% if (company.calendar or {}).upcoming %}
+  <table class="data">
+    <thead><tr><th>Date</th><th>Event</th><th>Status</th><th>Source</th></tr></thead>
+    <tbody>
+      {% for row in company.calendar.upcoming %}
+      <tr>
+        <td>{{ row.date }}</td>
+        <td>{{ row.event }}{% if row.note %}<br><span class="meta">{{ row.note }}</span>{% endif %}</td>
+        <td>{{ row.status }}</td>
+        <td>{{ row.source }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">The company calendar has no upcoming date.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Latest events <span class="meta">approved at an update; unreviewed news is not shown</span></h2>
+  {% if company.events %}
+  <table class="data">
+    <thead><tr><th>Date</th><th>Category</th><th>What happened</th><th>Sources</th></tr></thead>
+    <tbody>
+      {% for e in company.events %}
+      <tr>
+        <td>{{ e.date }}</td>
+        <td>{{ e.category }}</td>
+        <td>{{ e.summary }}</td>
+        <td>{{ e.sources | join(', ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No approved event is recorded.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>What changed in the last pass</h2>
+  {% if company.changes %}
+  <table class="data">
+    <thead><tr><th>Field</th><th>Before</th><th>After</th><th>Why</th><th>Source</th><th>Effective</th></tr></thead>
+    <tbody>
+      {% for c in company.changes %}
+      <tr>
+        <td>{{ c.field }}</td>
+        <td>{{ c.before or '—' }}</td>
+        <td>{{ c.after }}</td>
+        <td>{{ c.reason }}</td>
+        <td>{{ c.source }}</td>
+        <td>{{ c.effective_date }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Nothing was promoted in the last pass.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

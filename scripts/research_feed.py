@@ -36,8 +36,9 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, datetime
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -82,6 +83,44 @@ def _valid_iso_date(value) -> bool:
         return date.fromisoformat(value).isoformat() == value
     except ValueError:
         return False
+
+
+def _private_company_identity_slug(name: str) -> str:
+    text = re.sub(r"\([^)]*\)", " ", str(name).casefold())
+    text = re.sub(
+        r"\b(?:private|unlisted|listed|limited|ltd|pvt|inc|plc|llc|corp|corporation)\b",
+        " ",
+        text,
+    )
+    return re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+
+
+def _valid_horizon(value) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    return _valid_iso_date(value) or bool(
+        re.search(r"\b20\d{2}\b|\b(?:FY|CY)\s*'?\d{2,4}\b", value, re.IGNORECASE)
+    )
+
+
+def _valid_review_by(value, as_of: str) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        review_date = date.fromisoformat(value)
+    except ValueError:
+        return bool(re.search(r"[A-Za-z]", value))
+    return review_date.isoformat() == value and review_date >= date.fromisoformat(as_of)
+
+
+def _valid_iso_datetime(value) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
 
 
 def has_active_coverage(row: dict) -> bool:
@@ -210,16 +249,22 @@ def classify(
 
         packet = entry.get("packet")
         recommendation = entry.get("recommendation")
+        private_view = entry.get("private_research_view")
+        private_context = entry.get("private_context")
         research_status = entry.get("research_status")
         if research_status not in {RESEARCH_COMPLETE, NOT_YET_ASSESSED}:
             raise ValueError(f"manifest v4 entry '{slug}' has no valid research_status")
         company_id = entry.get("company_id")
-        expected_company_id = f"{raw_market}:{ticker}" if listed else f"{raw_market}:private:"
+        expected_company_id = (
+            f"{raw_market}:{ticker}"
+            if listed
+            else f"{raw_market}:private:{_private_company_identity_slug(name)}"
+        )
         if (
             not isinstance(company_id, str)
             or not company_id
             or (listed and company_id != expected_company_id)
-            or (not listed and not company_id.startswith(expected_company_id))
+            or (not listed and company_id != expected_company_id)
         ):
             raise ValueError(f"manifest v4 entry '{slug}' has no company_id")
         revision = entry.get("record_hash")
@@ -286,20 +331,67 @@ def classify(
         ):
             raise ValueError(f"manifest v4 entry '{slug}' has an invalid coverage block")
         if research_status == RESEARCH_COMPLETE:
-            if (
+            packet_is_valid = (
                 not isinstance(packet, dict)
                 or not isinstance(packet.get("version"), int)
                 or isinstance(packet["version"], bool)
                 or packet["version"] < 1
-                or not isinstance(recommendation, dict)
+            )
+            listed_conclusion_invalid = listed and (
+                not isinstance(recommendation, dict)
                 or not isinstance(recommendation.get("value"), str)
                 or not recommendation["value"].strip()
-            ):
-                raise ValueError(f"completed manifest entry '{slug}' has no valid packet or Call")
+                or private_view is not None
+            )
+            private_conclusion_invalid = not listed and (
+                recommendation is not None
+                or entry.get("why") is not None
+                or entry.get("valuation") is not None
+                or not isinstance(private_view, dict)
+                or set(private_view) != {"status", "as_of", "horizon", "review_by", "reasoning"}
+                or private_view.get("status") not in {
+                    "Promising", "Monitor", "Concerning", "Insufficient evidence"
+                }
+                or not _valid_iso_date(private_view.get("as_of"))
+                or not _valid_horizon(private_view.get("horizon"))
+                or not _valid_review_by(private_view.get("review_by"), private_view.get("as_of"))
+                or not isinstance(private_view.get("reasoning"), str)
+                or not private_view["reasoning"].strip()
+                or not isinstance(private_context, dict)
+                or set(private_context) != {"boat", "source_gaps", "unknowns", "freshness"}
+                or not isinstance(private_context.get("boat"), dict)
+                or private_context["boat"].get("status") not in {
+                    "Better", "Weaker or unproven", "Insufficient evidence"
+                }
+                or not all(
+                    isinstance(private_context["boat"].get(field), str)
+                    and private_context["boat"][field].strip()
+                    for field in ("segment", "as_of", "reasoning")
+                )
+                or not _valid_iso_date(private_context["boat"].get("as_of"))
+                or (
+                    private_context["boat"].get("status") == "Insufficient evidence"
+                    and (
+                        not isinstance(private_context["boat"].get("gap"), str)
+                        or not private_context["boat"]["gap"].strip()
+                    )
+                )
+                or any(
+                    not isinstance(private_context.get(field), list)
+                    or any(not isinstance(item, str) or not item.strip() for item in private_context[field])
+                    for field in ("source_gaps", "unknowns")
+                )
+                or not isinstance(private_context.get("freshness"), dict)
+                or not _valid_iso_date(private_context["freshness"].get("scorecard_as_of"))
+                or not _valid_iso_date(private_context["freshness"].get("thesis_as_of"))
+                or not _valid_iso_datetime(private_context["freshness"].get("website_retrieved_at"))
+            )
+            if packet_is_valid or listed_conclusion_invalid or private_conclusion_invalid:
+                raise ValueError(f"completed manifest entry '{slug}' has no valid approved conclusion")
         else:
             if not relationships:
                 raise ValueError(f"not-yet-assessed manifest entry '{slug}' has no reviewed relationship")
-            if any(entry.get(field) is not None for field in ("packet", "recommendation", "why", "thesis", "valuation")):
+            if any(entry.get(field) is not None for field in ("packet", "recommendation", "private_research_view", "private_context", "why", "thesis", "valuation")):
                 raise ValueError(f"not-yet-assessed manifest entry '{slug}' contains fabricated research")
 
         if not listed or not ticker:
@@ -336,6 +428,8 @@ def classify(
             "coverage": coverage,
             "research_status": research_status,
             "value": rec.get("value"),
+            "private_research_view": private_view,
+            "private_context": private_context,
             "why": entry.get("why"),
             "statement": thesis.get("statement"),
             "assumptions": thesis.get("assumptions") or [],
@@ -400,6 +494,23 @@ def _detail_lines(row: dict) -> list[str]:
         else:
             out.append("      -> relationship reviewed as Untracked; no company assessment or size.")
         return out
+    if row.get("listed") is False:
+        view = row.get("private_research_view") or {}
+        context = row.get("private_context") or {}
+        boat = context.get("boat") or {}
+        freshness = context.get("freshness") or {}
+        gaps = [*(context.get("source_gaps") or []), *(context.get("unknowns") or [])]
+        return [
+            f"  {_RELATION_TAG.get(row['relation'], row['relation'])} {_name(row)} "
+            f"- {view.get('status')}  [{row['change']}]",
+            f"      private research view: {view.get('reasoning')}",
+            f"      as of {view.get('as_of')} | horizon {view.get('horizon')} | "
+            f"review by {view.get('review_by')}",
+            f"      Boat: {boat.get('status')} — {boat.get('reasoning')}",
+            f"      website evidence refreshed {freshness.get('website_retrieved_at')}",
+            *( [f"      gaps: {'; '.join(gaps)}"] if gaps else [] ),
+            "      -> context only; no portfolio action, position size, funding source or trade.",
+        ]
     out = [f"  {_RELATION_TAG.get(row['relation'], row['relation'])} {_name(row)} "
            f"- {row['value']}  [{row['change']}]"]
     if row["why"]:

@@ -5,6 +5,8 @@ prefetch it):
 
     /                          portfolio overview
     /position/<slug>           per-position page
+    /tracked                   companies the research house follows (read-only)
+    /tracked/<slug>            one followed company's approved research
     /journal                   rendered journal.md
     /settings                  active config + theme picker
     /api/quote (POST)          live-price refresh -- shells out to
@@ -229,9 +231,33 @@ def create_app(config: Config) -> Flask:
             journal_updated=_file_updated_date(config.journal_path),
         )
 
+    @app.route("/tracked")
+    def tracked() -> str:
+        view = readers.read_tracked(config.workspace)
+        split = derived.derive_tracked_view(view, config.event_window_days)
+        return render_template(
+            "tracked.html",
+            view=view,
+            attention=split["attention"],
+            roster=split["roster"],
+            event_window_days=config.event_window_days,
+        )
+
+    @app.route("/tracked/<slug>")
+    def tracked_company(slug: str) -> str:
+        view = readers.read_tracked(config.workspace)
+        company = derived.find_tracked_company(view, slug)
+        if company is None:
+            abort(404)
+        return render_template("tracked_company.html", view=view, company=company)
+
     @app.route("/settings")
     def settings() -> str:
-        return render_template("settings.html", config=config)
+        return render_template(
+            "settings.html",
+            config=config,
+            tracked=readers.read_tracked(config.workspace),
+        )
 
     @app.route("/api/quote", methods=["POST"])
     def api_quote() -> tuple[Response, int]:

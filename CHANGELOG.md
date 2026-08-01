@@ -34,6 +34,24 @@ changelog on release.
 
 ### Added
 
+- **Tracked — a read-only surface for every company the research house follows**
+  ([dashboard/app.py](dashboard/app.py), [dashboard/readers.py](dashboard/readers.py),
+  [dashboard/derived.py](dashboard/derived.py)). Two new pages, `/tracked` and
+  `/tracked/<slug>`, read exactly one file published by the research repo,
+  `published/tracked-companies.yaml`, whose location comes from the existing
+  `user-config/research.json` `research_repo_path` setting. The dashboard reads no
+  other file in that repo, so it stays free to reorganise internally; a schema
+  version mismatch is reported plainly rather than rendered.
+  Per company the surface shows the approved thesis and its state, the four
+  assumptions with their questions and the latest evidence answering each,
+  the approved valuation method, ranges and zone, the approved recommendation,
+  the calendar, the latest approved events, and upcoming and latest earnings.
+  Approved values and values captured at run time are rendered as two separate,
+  separately dated blocks, so a live price is never read as part of a judgement
+  nobody re-approved. Private companies read as not applicable, never blank.
+  The attention list at the top is derived here, not by the research house.
+  Nothing on the surface is writable: no sizes, quantities, cost, returns or
+  actions. Portfolio fit, action and sizing remain advisor decisions.
 - **BSE corporate-actions source in `calendar-tracker`** ([scripts/fetch_calendar.py](scripts/fetch_calendar.py),
   [internal/agents/calendar-tracker.md](internal/agents/calendar-tracker.md)).
   Indian-ticker mode now chains a third source after yfinance and Screener.in:

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% from "_macros.html" import zone_pill %}
+{% block title %}Tracked - Veda{% endblock %}
+{% block content %}
+
+<section class="page-header">
+  <h1>Tracked</h1>
+  <p class="subtitle">
+    Every company the research house follows. Read-only: no sizes, no quantities, no cost,
+    no returns. Portfolio fit, action and sizing stay with the advisor.
+  </p>
+  <div class="date-strip">
+    <span><strong>Current date</strong> {{ today }}</span>
+    {% if view.generated_at %}<span><strong>File published</strong> {{ view.generated_at }}</span>{% endif %}
+    {% if view.run_finished_at %}<span><strong>Research run finished</strong> {{ view.run_finished_at }}</span>{% endif %}
+  </div>
+</section>
+
+{% if view.error %}
+<section class="card with-gold">
+  <h3>This surface has nothing to show</h3>
+  <p>{{ view.error }}</p>
+  <p class="summary-note">Looked for <code>{{ view.path }}</code>.</p>
+</section>
+{% else %}
+
+<section class="card with-gold">
+  <div class="summary-label">Needs a look today</div>
+  {% if attention %}
+  <p class="summary-note">
+    Chosen by this dashboard, not by the research house: a company appears here when its last
+    pass did not complete, when something was approved, when the thesis or an assumption is
+    under strain, when a dated event falls within {{ event_window_days }} days, or when an
+    annual report is waiting on a deep-dive.
+  </p>
+  <ul class="cards-inline">
+    {% for item in attention %}
+    <li>
+      <a href="{{ url_for('tracked_company', slug=item.company.slug) }}"><strong>{{ item.company.name }}</strong></a>
+      <ul>
+        {% for reason in item.reasons %}<li class="muted">{{ reason }}</li>{% endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">Nothing changed, nothing is due within {{ event_window_days }} days, and no thesis is under strain.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Every company followed <span class="meta">{{ roster | length }} in total</span></h2>
+  {% if roster %}
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Company</th>
+        <th>Market</th>
+        <th>Approved thesis</th>
+        <th>Approved call</th>
+        <th>Approved zone</th>
+        <th class="num">Price at run time</th>
+        <th>Last pass</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in roster %}
+      {% set approved = c.approved or {} %}
+      {% set rec = approved.recommendation or {} %}
+      {% set val = approved.valuation or {} %}
+      {% set rt = c.run_time or {} %}
+      {% set price = rt.price or {} %}
+      <tr>
+        <td><a href="{{ url_for('tracked_company', slug=c.slug) }}">{{ c.name }}</a>
+          {% if not c.listed %}<span class="badge soft">private</span>{% endif %}</td>
+        <td>{{ c.market }}</td>
+        <td>{{ (approved.thesis or {}).status or '—' }}
+          {% if (approved.thesis or {}).as_of %}<span class="meta">set {{ (approved.thesis or {}).as_of }}</span>{% endif %}</td>
+        <td>{{ rec.value or '—' }}
+          {% if rec.as_of %}<span class="meta">approved {{ rec.as_of }}</span>{% endif %}</td>
+        <td>{% if val.method %}{{ zone_pill(val.zone) }}{% else %}<span class="muted" title="{{ val.reason }}">{{ 'Not applicable' if val.reason.startswith('Not applicable') else 'Not available' }}</span>{% endif %}</td>
+        <td class="num">
+          {% if price.value is not none %}{{ price.value }} {{ price.currency }}
+            <span class="meta">{{ price.as_of }}</span>
+          {% else %}<span class="muted" title="{{ price.reason }}">{{ 'Not applicable' if price.reason.startswith('Not applicable') else 'Not available' }}</span>{% endif %}
+        </td>
+        <td>{{ (c.run or {}).state }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="summary-note">
+    The approved columns are judgements someone signed off on, each carrying the date it was
+    approved. The price column is a market value captured when the research run last executed.
+    They are not one view and should not be read as one. Hover any short reason for the full
+    sentence, or open the company.
+  </p>
+  {% else %}
+  <p class="empty">No company currently has an approved tracked relationship.</p>
+  {% endif %}
+</section>
+
+{% endif %}
+{% endblock %}

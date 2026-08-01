@@ -299,6 +299,8 @@ The current profile is backed up to `profile.md.bak-<today>` before the intervie
 
 The local web dashboard ([dashboard/](../dashboard/), invoked with `python -m dashboard`) reads your workspace and renders it. Its behaviour is controlled by command-line flags rather than `profile.md` — this is an interface preference, not an advice preference, and it never affects the chat-side reasoning.
 
+Its **Tracked** page is the exception to "reads your workspace": it reads one file the research repo publishes, `published/tracked-companies.yaml`, found through the `research_repo_path` setting in [user-config/research.json](../user-config/research.json). Nothing else in that repo is read, and nothing is written back. If the file is missing or its schema version does not match, the page says so rather than guessing.
+
 **Where to change each option:**
 
 - **Theme** is the only setting you can change at runtime, without restarting. Use the picker in the top-right of every page, or visit [`http://127.0.0.1:8765/settings`](http://127.0.0.1:8765/settings) for a larger picker. Your choice is persisted in your browser's `localStorage`.
