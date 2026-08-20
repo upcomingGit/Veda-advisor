@@ -38,11 +38,7 @@ If you do believe a twelfth investor is warranted, open an issue first and expla
 
 We will not add Jim Simons, ARK-style thematic investors, or any framework built primarily on backtested returns. Veda is about decision frameworks, not quantitative strategies.
 
-### 4. Worked examples
-
-Examples in `examples/` are the most user-facing documentation. PRs adding real decisions (anonymized to whatever degree you want) are welcome. Use the structure of `examples/01-hold-check-winner.md` as a template.
-
-### 5. Install / setup docs
+### 4. Install / setup docs
 
 If you got Veda working in an assistant not currently documented (Gemini, local LLM, ChatGPT with custom GPTs, etc.) — write it up. A short "here's what I did, here's what worked" PR to the README's Install section is high value.
 

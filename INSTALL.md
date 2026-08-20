@@ -23,7 +23,7 @@ python scripts/fetch_quote.py fx --pair usd_inr
 
 Everything else in Veda — onboarding, the 9-stage pipeline, frameworks, decision blocks, journaling, `scripts/calc.py`, `scripts/validate_profile.py`, `scripts/import_assets.py` — is standard-library Python and needs no install step. You can skip this section entirely if you're happy pasting prices into the chat yourself.
 
-> `yfinance` is an unofficial Yahoo Finance client and may rate-limit under heavy use. It is adequate for personal use but not production-grade; the roadmap replaces it with paid feeds behind the same adapter interface. See [ROADMAP.md](ROADMAP.md#tier-5--live-market-data-and-fundamentals).
+> `yfinance` is an unofficial Yahoo Finance client and may rate-limit under heavy use. It is adequate for personal use but not an audit-grade production source.
 
 ## Optional — local workspace dashboard
 
@@ -143,7 +143,7 @@ The skill's `name: veda` frontmatter is what registers `/veda` as a slash comman
 
 ## Google Antigravity
 
-[Antigravity](https://antigravity.google.com) is Google's agent-first IDE — desktop workspace, Gemini-driven agent, filesystem access, terminal tool, browser control, and long-running **Missions**. For Veda it behaves like Claude Code with more autonomy: profile and portfolio files persist, `scripts/calc.py` runs in the terminal, and the agent can run multi-turn tasks without supervision. It is also the only consumer-facing surface today that can run the kind of scheduled kill-criterion monitoring described in [ROADMAP.md](ROADMAP.md) as a Mission rather than a manual re-prompt.
+[Antigravity](https://antigravity.google.com) is Google's agent-first IDE — desktop workspace, Gemini-driven agent, filesystem access, terminal tool, browser control, and long-running **Missions**. For Veda it behaves like Claude Code with more autonomy: profile and portfolio files persist, `scripts/calc.py` runs in the terminal, and the agent can run multi-turn tasks without supervision.
 
 **Step 1.** Install Antigravity from [antigravity.google.com](https://antigravity.google.com) and sign in with your Google account.
 
@@ -229,7 +229,7 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 9. `internal/base-rates.md` (Stage 4 reference)
 10. `setup/profile.template.md`
 
-Files omitted in the 10-file budget: `internal/assets-schema.md`, `internal/subagents.md`, `setup/profile.example-aggressive.md`, `frameworks/_template.md`. The examples are nice-to-have; the orchestrator will work without them.
+Files omitted in the 10-file budget: `internal/assets-schema.md`, `frameworks/_template.md`. The orchestrator will work without them.
 
 Click **Save**.
 
@@ -297,19 +297,17 @@ git clone https://github.com/upcomingGit/Veda-advisor.git
 1. `SKILL.md` (required — the shim points here)
 2. `setup/onboarding.prompt.md`
 3. `setup/profile.template.md`
-4. `setup/profile.example-aggressive.md`
-5. `routing/framework-router.md`
-6. `templates/decision-block.md`
-7. `frameworks/lynch.md`
-9. `frameworks/buffett.md`
-10. `frameworks/munger.md`
-11. `frameworks/_template.md`
-12. `internal/scope-and-abuse.md`
-13. `internal/base-rates.md`
-14. `internal/assets-schema.md`
-15. `internal/subagents.md`
-16. `scripts/calc.py`
-17. `CREDITS.md`
+4. `routing/framework-router.md`
+5. `templates/decision-block.md`
+6. `frameworks/lynch.md`
+7. `frameworks/buffett.md`
+8. `frameworks/munger.md`
+9. `frameworks/_template.md`
+10. `internal/scope-and-abuse.md`
+11. `internal/base-rates.md`
+12. `internal/assets-schema.md`
+13. `scripts/calc.py`
+14. `CREDITS.md`
 
 **Step 5.** Capabilities — below Knowledge, three checkboxes:
 

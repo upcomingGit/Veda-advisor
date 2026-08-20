@@ -58,7 +58,7 @@ Veda re-reads the file on next session. No Veda action needed beyond the normal 
 3. Write the answer to `profile.md > broker.primary`. Valid values: `zerodha`, `other`, `none`.
 4. **Gate check:**
    - If `zerodha` → proceed with pull below.
-   - If `other` or `none` → stop and respond: *"Live broker pull is Zerodha-only in v0.1. For your broker, please use pattern 1 (paste holdings) or pattern 3 (edit `assets.md` directly). I'll add your broker to the roadmap — what is it?"* Log the requested broker name in the reply so it surfaces in [ROADMAP.md](../ROADMAP.md) review later. Do not attempt the Kite script for non-Zerodha users — it will fail.
+   - If `other` or `none` → stop and respond: *"Live broker pull is Zerodha-only in v0.1. For your broker, please use pattern 1 (paste holdings) or pattern 3 (edit `assets.md` directly)."* Do not attempt the Kite script for non-Zerodha users — it will fail.
 
 ### Pull procedure (after gate passes)
 

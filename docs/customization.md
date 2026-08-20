@@ -2,7 +2,7 @@
 
 Veda is opinionated, but every opinion is applied **through your profile**. Edit the profile, change every decision Veda makes for you. Most users only edit 5–10 lines.
 
-Full schema: [setup/profile.template.md](../setup/profile.template.md). Worked example: [aggressive](../setup/profile.example-aggressive.md).
+Full schema: [setup/profile.template.md](../setup/profile.template.md).
 
 ## Start here — the three lines that matter most
 

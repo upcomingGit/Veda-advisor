@@ -213,13 +213,13 @@ calendar_tracker:
      | Source | URL | Status |
      |---|---|---|
      | FOMC schedule | `https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm` | **v1 auto-fetch.** Helper walks H4 headers (`<YYYY> FOMC Meetings`) and parses month-day-range tokens (`January 27-28`, `June 16-17`). The earlier date in each range is used as the canonical event date (FOMC decisions are released on day 2; the helper uses day 1 to be conservative — the meeting starts then). |
-     | US CPI release schedule | `https://www.bls.gov/schedule/news_release/cpi.htm` | **v2 — BLS blocks bot User-Agents (HTTP 403) even with full browser-spoofed headers and session cookies.** Confirmed during the v1 build. Documented in [ROADMAP.md](../../ROADMAP.md) Tier 5. v1 fallback: user pastes via `pasted_dates`. |
+    | US CPI release schedule | `https://www.bls.gov/schedule/news_release/cpi.htm` | **Unsupported — BLS blocks bot User-Agents (HTTP 403) even with full browser-spoofed headers and session cookies.** Confirmed during the v1 build. Fallback: user pastes via `pasted_dates`. |
      | RBI MPC schedule | `https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx` (or future MPC calendar URL) | **v2 — page loads but the MPC schedule is buried in dated press releases requiring targeted parsing brittle enough to defer.** v1 fallback: user pastes via `pasted_dates`. |
      | India CPI / IIP release | `https://www.mospi.gov.in/release-calendar` | **v2 — same brittleness profile as RBI; defer.** v1 fallback: user pastes via `pasted_dates`. |
 
      The helper parses each in-scope source conservatively. If a parser cannot extract a date (HTML structure changed, page returns 5xx, captcha), the helper records the failure in `endpoint_errors` and continues with other in-scope sources. **You do not write fabricated dates if a fetch fails** — you set the status to `partial` and surface the failed source in `search_log`.
 
-     The full v2 list (BLS, RBI, MoSPI) is captured in [ROADMAP.md](../../ROADMAP.md) Tier 5 as `Q-cal-1`. When those scrapers ship, the contract here is updated to move them from "v2" to "v1 auto-fetch" without changing any other behaviour — the orchestrator and downstream code see no shape change.
+    BLS, RBI, and MoSPI remain unsupported sources. Adding them must not change the orchestrator or downstream contract shape.
 
 4. **Dedup — strict preservation of co-writer and user-owned rows.** For each new event from the helper or `pasted_dates`:
 

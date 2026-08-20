@@ -95,7 +95,7 @@ Retires a workspace and updates the registry. Used when a position is sold or ex
 
 Invokes the `news-researcher` subagent ([`redundant/agents/news-researcher.md`](../redundant/agents/news-researcher.md)) once per held position, in sequence, to refresh `holdings/<slug>/news/<quarter>.md` for the current calendar quarter. Used when the user wants a quarterly catch-up across the entire portfolio without asking a per-position question.
 
-**Why this is a command, not background work.** Per [ROADMAP.md](../ROADMAP.md) Tier 1.5, Veda is local-first with no scheduler and no daemon. Background polling is deferred to Tier 3 (hosted). Until then, batch news refresh is an explicit user-invoked command.
+**Why this is a command, not background work.** Veda is local-first with no scheduler or daemon. Batch news refresh is therefore an explicit user-invoked command.
 
 **Two-turn pattern.** Plan-then-confirm, mirroring `sync`. On the first turn, Veda prints the plan; no subagent invocations happen until the user confirms.
 

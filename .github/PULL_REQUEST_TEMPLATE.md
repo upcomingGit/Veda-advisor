@@ -14,7 +14,6 @@ If a section genuinely doesn't apply, write "N/A — [reason]" rather than leavi
 - [ ] Fix (typo, broken link, small correction)
 - [ ] Framework edit (changes decision logic inside `frameworks/<investor>.md`)
 - [ ] New framework (adds a new file under `frameworks/`)
-- [ ] Worked example (adds or edits a file under `examples/`)
 - [ ] Docs (README, CONTRIBUTING, setup, onboarding)
 - [ ] Other: ____
 
@@ -28,14 +27,6 @@ If a section genuinely doesn't apply, write "N/A — [reason]" rather than leavi
 <!-- Book + page, essay + year, interview + date, or letter + year.
      "Peter Lynch, One Up on Wall Street, ch. 8" — yes.
      "Common investing wisdom" — no.
-     Delete this section only if the change is a pure typo fix or docs edit. -->
-
-## Worked example (required if the change affects decision logic)
-
-<!-- Show a concrete question where the old text gave a wrong answer and the new text
-     gives a right answer. Use the shape of examples/01-hold-check-winner.md — doesn't
-     need to be that long, but it must include: the question, what the old logic said,
-     what the new logic says, and why the new answer is better.
      Delete this section only if the change is a pure typo fix or docs edit. -->
 
 ## Self-check

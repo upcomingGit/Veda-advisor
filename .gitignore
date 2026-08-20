@@ -231,6 +231,7 @@ clients/*/concentration/
 clients/*/rebalance/
 clients/*/tax/
 clients/*/research-seen.json
+clients/*/research-requests.md
 
 # Legacy single-client layout (still ignored at the repo root if present):
 # Your personal profile — contains net worth %, goals, risk tolerance, etc.

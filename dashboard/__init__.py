@@ -4,9 +4,6 @@ A read-only Flask app that renders every artifact the chat-side subagents have
 written into a Veda workspace. Filesystem-only — no network calls except the
 opt-in `[refresh live price]` button which shells out to scripts/fetch_quote.py.
 
-See ROADMAP.md Tier 14 ("Local workspace dashboard") and the dashboard's own
-README inline below for entry points.
-
 Run with:
 
     python -m dashboard [--port 8765] [--no-open] [--workspace .] [--debug]

@@ -134,32 +134,16 @@ Router cap: 4 frameworks per question. If your row exceeds 4, justify why — us
 
 Edit [setup/profile.template.md](../../setup/profile.template.md). Default weight 0.05–0.10 for new frameworks (established ones sit at 0.15–0.18).
 
-Also add to [setup/profile.example-aggressive.md](../../setup/profile.example-aggressive.md).
-
 The validator loads the framework list dynamically; no script change needed.
 
-## Step 6 — Write a worked example
+## Step 6 — Describe the changed decision
 
-This is the highest-value part. A real or realistic question your framework answers materially differently from the existing 11. Copy the structure of [examples/01-hold-check-winner.md](../../examples/01-hold-check-winner.md).
-
-Must show:
-
-- The question.
-- All 9 stages narrated, with your framework's verdict in Stage 6.
-- A complete decision block.
-
-No worked example, no merge.
+State one concrete question your framework answers materially differently from the existing 11, the old answer, the new answer, and the source-backed rule that changes it.
 
 ## Step 7 — Validate and submit
 
 1. Compare your file side-by-side with `lynch.md` for depth and citation specificity.
-2. Run the validator on edited example profiles:
-
-   ```powershell
-   python scripts/validate_profile.py setup/profile.example-aggressive.md
-   python scripts/validate_profile.py setup/profile.example-aggressive.md
-   ```
-3. PR description: question types your framework answers, the two existing frameworks it is closest to and why it is not redundant, and a link to your worked example.
+2. PR description: question types your framework answers and the two existing frameworks it is closest to and why it is not redundant.
 
 Voice: no hedging, no *"consult a financial advisor"*, cite the book.
 

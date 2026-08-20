@@ -81,8 +81,6 @@ Try one of these to start:
 
 That's it. From here on, Veda is just a conversation. Every time you have a money decision to make, ask Veda first.
 
-For a full walked-through example of one decision, see [examples/01-hold-check-winner.md](examples/01-hold-check-winner.md).
-
 ---
 
 ## See your portfolio at a glance — local dashboard
@@ -129,12 +127,10 @@ Plain-English guides written for finance people, not coders.
 
 | Page | Read this if you want to |
 |---|---|
-| [How Veda thinks](docs/how-veda-thinks.md) | Walk through the 9 stages Veda runs every question, in plain English. |
 | [Customize Veda for you](docs/customization.md) | Tune your profile, framework weights, guardrails, hard constraints, markets. |
 | [Local dashboard setup](INSTALL.md#optional--local-workspace-dashboard) | Start the read-only browser dashboard, change its port/theme/event window, and understand what it can and cannot write. |
-| [Company workspaces (design)](docs/design/company-workspaces.md) | How Veda's per-position institutional memory is structured. |
+| [Holding workspace schema](internal/holdings-schema.md) | How Veda's per-position records are structured. |
 | [Add an investor framework](docs/extending/add-a-framework.md) | Add a 12th investor's decision rules. No coding required. |
-| [Add a specialist worker](docs/extending/add-a-subagent.md) | Advanced. Build a subagent for one focused job. |
 
 For the full orchestrator playbook (long, dense, technical), read [SKILL.md](SKILL.md).
 
@@ -145,7 +141,6 @@ For the full orchestrator playbook (long, dense, technical), read [SKILL.md](SKI
 Veda is early. The bottleneck is other investors stress-testing it. Three entry points by time budget:
 
 - **5 minutes — [open an issue](CONTRIBUTING.md#1-issues-highest-value).** Wrong framework routed? Onboarding felt off? A rule contradicts the source book?
-- **1 hour — add a worked example.** Real decision where a framework helped. Use [examples/01-hold-check-winner.md](examples/01-hold-check-winner.md) as the template.
 - **1 day — deepen a framework.** All eleven are shipped, but each is a working draft. Pick one, mirror [frameworks/lynch.md](frameworks/lynch.md), deepen citations by page, add worked examples. See [CONTRIBUTING.md](CONTRIBUTING.md#2-framework-edits).
 
 Full guide and voice rules: [CONTRIBUTING.md](CONTRIBUTING.md). Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

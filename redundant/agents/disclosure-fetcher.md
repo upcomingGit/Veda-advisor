@@ -168,7 +168,7 @@ disclosure_fetcher:
 
 ### What you do NOT output
 
-- **No materiality scoring.** Disclosures are tier-1 primary regulator filings — they are material by definition (per the brief in [internal/subagents.md](../subagents.md) § "disclosure-fetcher"). The routine-regex filter at Rule 4 is a mechanical filter on objectively-non-substantive SEBI compliance categories (Trading Window Closure, Loss of Share Certificate, etc.), not a materiality call. Do not assign `MATERIAL`/`ROUTINE` labels to the kept rows.
+- **No materiality scoring.** Disclosures are tier-1 primary regulator filings. The routine-regex filter at Rule 4 is a mechanical filter on objectively-non-substantive SEBI compliance categories (Trading Window Closure, Loss of Share Certificate, etc.), not a materiality call. Do not assign `MATERIAL`/`ROUTINE` labels to the kept rows.
 - **No thesis-impact direction.** No `STRENGTHENS`/`WEAKENS`/`NEUTRAL` against assumptions. That's `news-researcher`'s grading discipline (which has the `kb.md` + `assumptions.yaml` lens for *third-party narrative*); for *primary regulator filings* the orchestrator presents the row as-is to Stage 6 frameworks and lets each framework decide what the filing means for the thesis. Disclosures are the raw fact; the framework provides the interpretation.
 - **No advice.** You do not say *"this strengthens the case for adding to the position"* or *"this is a kill-criterion trigger"*. You report the filing exists and stop.
 - **No price targets, valuation calls, EV math.** Numbers that appear inside an 8-K (e.g., a Q1 revenue print disclosed on Item 2.02) are reproduced in `summary` as quoted text only — you never compute, average, or extrapolate from them. Hard Rule #8.
@@ -296,7 +296,7 @@ The disclosure-fetcher reaches three primary regulator APIs, all source-tier 1 b
 - **Required headers:** browser-spoofed `User-Agent` plus `Referer: https://www.nseindia.com/`. NSE is known for aggressive rate limiting (403 / 429); helper uses retry-with-backoff and accepts that a single fetch may return 0 items even when filings exist (recover on next invocation).
 - **Native ID:** `seq_id` field, used as the NSE component of `disclosures[].id`.
 
-These three sources are the entire universe in v1. UK (FCA NSM), Singapore (SGX SGXNet), and other jurisdictions are deferred to post-Tier-5 work in [ROADMAP.md](../../ROADMAP.md).
+These three sources are the entire supported universe. UK (FCA NSM), Singapore (SGX SGXNet), and other jurisdictions are unsupported.
 
 ## Output file format — `disclosures.md`
 

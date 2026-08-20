@@ -148,7 +148,7 @@ base_rate_researcher:
      ```
    ```
 
-12. **Refuse unsafe situation types.** If `situation_type` is a per-company forecast (`will_NVDA_double`), a market-timing question (`when_will_S&P_correct`), or a non-statistical query (`is_TSLA_a_good_buy`), return `status: insufficient_input` with `reason: "situation_type must name a reference class, not a per-asset forecast"`. Veda does not do alpha forecasting (per [ROADMAP.md](../../ROADMAP.md) "Honest limits") and you are the gate that enforces this at Stage 4.
+12. **Refuse unsafe situation types.** If `situation_type` is a per-company forecast (`will_NVDA_double`), a market-timing question (`when_will_S&P_correct`), or a non-statistical query (`is_TSLA_a_good_buy`), return `status: insufficient_input` with `reason: "situation_type must name a reference class, not a per-asset forecast"`. Veda does not make unsupported per-asset forecasts and you are the gate that enforces this at Stage 4.
 
 ## Narration rule
 

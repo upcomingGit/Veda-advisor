@@ -2,7 +2,7 @@
 
 This file defines what goes inside `holdings/<instance_key>/` for
 `instrument_class: equity`. Non-equity classes (ETF, SGB, FD) are out of
-scope for v1; see [company-workspaces.md](../docs/design/company-workspaces.md) Phase 6.
+scope for v1.
 
 ---
 
@@ -97,7 +97,7 @@ On workspace scaffold (orchestrator, lazy):
 - `decisions/` — created as empty directory.
 - All other files — not created; added when data arrives.
 
-The orchestrator scaffolds a **minimal** workspace so the decision pipeline can proceed immediately. Richer content (business-model summary, first-draft thesis, governance notes, fundamentals) is produced by subagents on first encounter or on subsequent turns — see [internal/subagents.md](subagents.md) § "Subagent write targets". Until a subagent populates them, `kb.md` and `thesis.md` remain stubs and the decision pipeline falls back to general knowledge.
+The orchestrator scaffolds a **minimal** workspace so the decision pipeline can proceed immediately. Richer content (business-model summary, first-draft thesis, governance notes, fundamentals) is produced by the uncovered-name fallback on first encounter or on subsequent turns. Until then, `kb.md` and `thesis.md` remain stubs and the decision pipeline falls back to general knowledge.
 
 #### Registry row
 
@@ -188,7 +188,7 @@ When `company-kb-builder` upgrades a monoline to composite (or proposes to):
 
 ### Word caps and absorption
 
-Absorption controls workspace bloat by condensing or merging files that exceed their word caps. Per Q3 in [company-workspaces.md](../docs/design/company-workspaces.md).
+Absorption controls workspace bloat by condensing or merging files that exceed their word caps.
 
 #### When absorption fires
 
@@ -218,7 +218,7 @@ Two behaviour types:
 | `earnings/<quarter>.md` | 2,500 | Append per-assumption grades to `assumptions.yaml` (create if absent); summarise narrative into `kb.md` "Recent earnings" section; delete original | Absorb and delete |
 | `decisions/*.md` | no cap | Never absorbed | Exempt (audit trail) |
 
-**thesis.md special handling.** Because thesis is user-editable (see [subagents.md](subagents.md) § "Orchestrator-written and derived files"), Veda does NOT rewrite it. Instead, it appends a `## Proposed condensation` section with a shorter draft the user can adopt. The oversized version stays until the user edits. The sync plan marks these as "flag for user revision" rather than "condense".
+**thesis.md special handling.** Because thesis is user-editable, Veda does NOT rewrite it. Instead, it appends a `## Proposed condensation` section with a shorter draft the user can adopt. The oversized version stays until the user edits. The sync plan marks these as "flag for user revision" rather than "condense".
 
 **Files without word caps.** All YAML files (`_meta.yaml`, `fundamentals.yaml`, `valuation.yaml`, `indicators.yaml`, `insiders.yaml`, `shareholding.yaml`, `calendar.yaml`, `performance.yaml`, `assumptions.yaml`) and `_absorption_log.md` have no word cap and are never absorbed.
 
@@ -287,7 +287,7 @@ _(revenue growth, margins, backlog, etc.)_
 Plain markdown. Must include a **kill criterion** — the condition under which
 the position should be exited regardless of price.
 
-**Ownership.** First draft is produced by `company-kb-builder` (see [internal/subagents.md](subagents.md)). The user edits it to reflect their personal conviction — the draft is a starting point, not a final answer. On subsequent refresh passes, `company-kb-builder` does NOT overwrite the user's edits; it appends a `## Proposed updates` section with any new research findings for the user to reconcile.
+**Ownership.** For an uncovered name, the first draft is produced by the backup `company-kb-builder`. The user edits it to reflect their personal conviction — the draft is a starting point, not a final answer. On subsequent refresh passes, `company-kb-builder` does NOT overwrite the user's edits; it appends a `## Proposed updates` section with any new research findings for the user to reconcile.
 
 ```markdown
 # <display_name> — Investment Thesis
@@ -347,7 +347,7 @@ _(which investor frameworks informed the decision)_
 
 ## `fundamentals.yaml` — optional
 
-Structured financials. Quarterly snapshots covering P&L, cash flow, and balance-sheet summary, plus annual records, latest-period derived ratios, dated TTM PE history, and month-end close prices. Populated by `fundamentals-fetcher` (see [subagents.md](subagents.md)) or manually. All monetary values in millions (reporting currency of the company) unless suffixed otherwise.
+Structured financials. Quarterly snapshots covering P&L, cash flow, and balance-sheet summary, plus annual records, latest-period derived ratios, dated TTM PE history, and month-end close prices. Populated by the backup `fundamentals-fetcher` or manually. All monetary values in millions (reporting currency of the company) unless suffixed otherwise.
 
 **Top-level sections.** The file may contain any of these top-level keys: `fetched_at`, `source`, `as_of`, `currency`, `quarters`, `annuals`, `derived_ratios`, `pe_history`, `prices`. `currency` and `quarters` are the load-bearing pair; the others are populated when the script returns them.
 
@@ -842,7 +842,7 @@ _(capex projects, integrations, key-person dependency)_
 
 Corporate calendar. Dates that matter **for this specific position** — earnings, AGM, dividends, splits, regulatory filings. Macro events (FOMC, CPI, budget) do NOT belong here; see [`global_calendar.yaml`](#global_calendaryaml--root-level-optional).
 
-**Ownership.** Written by `calendar-tracker` (see [subagents.md](subagents.md)) or manually. Also written by `earnings-grader` when a quarter is graded with transcript anchors still pending — it appends a single `Transcript grading pending — <period>` follow-up event and clears it on the transcript regrade. See [`assumptions.yaml` § Transcript-gap signalling](#assumptionsyaml--optional). Updated as announcements are made. Stale entries (past dates) can be pruned quarterly, or moved to the `past:` section for audit reference.
+**Ownership.** Written by `calendar-tracker` or manually. Also written by `earnings-grader` when a quarter is graded with transcript anchors still pending — it appends a single `Transcript grading pending — <period>` follow-up event and clears it on the transcript regrade. See [`assumptions.yaml` § Transcript-gap signalling](#assumptionsyaml--optional). Updated as announcements are made. Stale entries (past dates) can be pruned quarterly, or moved to the `past:` section for audit reference.
 
 ```yaml
 as_of: 2026-04-21
@@ -1273,7 +1273,7 @@ Portfolio-wide macro calendar. One file at the workspace root (sibling of `holdi
 
 **Rationale.** Duplicating "FOMC May 6" across 20 per-instance `calendar.yaml` files is wrong. Macro events have their own cadence, their own sources, and are consumed by `macro`-type questions rather than single-position questions.
 
-**Ownership.** Written by `calendar-tracker` (scope covers per-instance `calendar.yaml` and this root-level file; see [subagents.md](subagents.md)) or manually.
+**Ownership.** Written by `calendar-tracker` (scope covers per-instance `calendar.yaml` and this root-level file) or manually.
 
 **Load trigger.** The orchestrator loads `global_calendar.yaml` in Stage 1.5 when the question type is `macro`, `risk`, or `portfolio`, or when any upcoming event in the file falls within 14 days. For `buy` / `sell` / `hold_check` on a single name, load only if the instrument is directly sensitive to an imminent macro event (e.g., a bank position days before an FOMC decision).
 
