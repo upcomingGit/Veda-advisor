@@ -218,8 +218,8 @@ _SCREENER_PRICE_RE = re.compile(
 HTTP_TIMEOUT_SECONDS = 10
 
 
-def _fetch_us_batch(tickers: list[str]) -> dict[str, Any]:
-    """Fetch many US tickers in ONE HTTP call via Yahoo's spark endpoint.
+def _fetch_yahoo_batch(tickers: list[str], *, market: str = "us") -> dict[str, Any]:
+    """Fetch exact Yahoo symbols in one HTTP call for a specified market.
 
     The spark response's ``meta.regularMarketPrice`` is the most-recent
     traded price (intraday) or, after market close, the official closing
@@ -232,6 +232,14 @@ def _fetch_us_batch(tickers: list[str]) -> dict[str, Any]:
     Tickers the spark response omits (or returns null for) get an error
     entry; the rest still go through. Output preserves input order.
     """
+    # The endpoint rejects requests above 20 symbols; retain order and per-symbol
+    # errors while keeping each HTTP request within that limit.
+    if len(tickers) > 20:
+        quotes = []
+        for start in range(0, len(tickers), 20):
+            quotes.extend(_fetch_yahoo_batch(tickers[start:start + 20], market=market)["quotes"])
+        return {"quotes": quotes}
+
     import requests  # local import; aligns with the yfinance local-import pattern
 
     params = {
@@ -258,7 +266,7 @@ def _fetch_us_batch(tickers: list[str]) -> dict[str, Any]:
                 "input_ticker": t,
                 "error": f"yahoo spark request failed: {type(exc).__name__}: {exc}",
                 "source": "yahoo-spark",
-                "market": "us",
+                "market": market,
             }
             for t in tickers
         ]}
@@ -281,7 +289,11 @@ def _fetch_us_batch(tickers: list[str]) -> dict[str, Any]:
             "resolved_ticker": symbol,
             "last_close": float(price),
             "as_of": as_of,
-            "currency": meta.get("currency") or "USD",
+            "currency": meta.get("currency") or ("USD" if market == "us" else None),
+            "currency_verified": bool(meta.get("currency")),
+            "provider_timestamp": market_time,
+            "stock_name": meta.get("longName") or meta.get("shortName"),
+            "instrument_type": meta.get("instrumentType"),
         }
 
     results: list[dict[str, Any]] = []
@@ -292,12 +304,12 @@ def _fetch_us_batch(tickers: list[str]) -> dict[str, Any]:
                 "input_ticker": ticker,
                 "error": "yahoo spark returned no data for symbol",
                 "source": "yahoo-spark",
-                "market": "us",
+                "market": market,
             })
             continue
         entry["input_ticker"] = ticker
         entry["source"] = "yahoo-spark"
-        entry["market"] = "us"
+        entry["market"] = market
         results.append(entry)
 
     return {"quotes": results}
@@ -425,7 +437,7 @@ def resolve_equities(
     source, ...) or (input_ticker, error, source).
 
     Dispatch:
-      - ``market='us'``    -> :func:`_fetch_us_batch` (Yahoo spark, one HTTP).
+      - ``market='us'``    -> :func:`_fetch_yahoo_batch` (Yahoo spark, one HTTP).
       - ``market='india'`` -> :func:`_fetch_india_batch` (Screener.in,
          parallel HTTPs).
       - ``market`` None    -> auto-route via the bundled ticker_market
@@ -436,7 +448,7 @@ def resolve_equities(
          slowest group, not the sum.
     """
     if market == "us":
-        return _fetch_us_batch(tickers)
+        return _fetch_yahoo_batch(tickers)
     if market == "india":
         return _fetch_india_batch(tickers)
 
@@ -465,7 +477,7 @@ def resolve_equities(
             return list(pool.map(_one, ts))
 
     def _us(ts: list[str]) -> list[dict[str, Any]]:
-        return _fetch_us_batch(ts)["quotes"] if ts else []
+        return _fetch_yahoo_batch(ts)["quotes"] if ts else []
 
     def _india(ts: list[str]) -> list[dict[str, Any]]:
         return _fetch_india_batch(ts)["quotes"] if ts else []

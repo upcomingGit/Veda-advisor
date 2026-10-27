@@ -318,6 +318,18 @@ def _authed_kite() -> Any:
         def holdings(self) -> list:
             return self._get("/portfolio/holdings")
 
+        def mf_holdings(self) -> list:
+            return self._get("/mf/holdings")
+
+        def instruments(self, exchange: str) -> list:
+            import csv
+            import io
+            if exchange not in {"NSE", "BSE"}:
+                raise ValueError("Unsupported exchange")
+            response = requests.get(self._BASE + "/instruments/" + exchange, headers=self._HEADERS, timeout=30)
+            response.raise_for_status()
+            return list(csv.DictReader(io.StringIO(response.text)))
+
         def margins(self, segment: str = "equity") -> dict:
             return self._get(f"/user/margins/{segment}")
 

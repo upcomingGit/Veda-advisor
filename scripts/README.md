@@ -1,5 +1,18 @@
 # Veda utility scripts
 
+The Google Sheets portfolio tracker is a single script: [`portfolio.py`](portfolio.py).
+From the repository root with the existing Python environment active, run
+`python scripts/portfolio.py login` when the Kite session expires, then
+`python scripts/portfolio.py update` for the daily refresh after StockClarity.
+Settings load automatically from `private/portfolio-sync/settings.json`.
+Only `update` writes the sheet; `check`, `review` and the default `preview` are
+read-only. The script reuses `kite.py` for login and holdings, `fetch_quote.py`
+for stock prices, AMFI for fund NAVs, Screener for Indian fundamentals, and
+StockClarity's saved daily research. Manual columns, including Sector and
+Review Reason, are preserved.
+One self-contained regression file, `test_portfolio.py`, covers the tracker.
+See [Portfolio tracker](../docs/portfolio-tracker.md) for usage and the US CSV header.
+
 Helper scripts for Veda. Seven categories:
 
 1. **`calc.py` — required.** Veda's Hard Rule #8 forbids LLM arithmetic. Every EV, p_loss, PEG, Kelly, FX, or weight-sum number comes from this script. See SKILL.md Hard Rule #8.
