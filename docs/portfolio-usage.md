@@ -17,6 +17,11 @@ If the Kite session has expired, log in, complete the browser step, then run the
 .\.venv\Scripts\python.exe scripts\portfolio.py login
 ```
 
+The command asks: `Update US portfolio market values too? ... [y/N]`.
+Enter `y` or `yes` to include the US refresh. Enter `n` or press Enter to update
+India only. Without an answer, US is skipped. US refreshes use the quantities,
+purchase costs and cash you maintain in the sheet; Zerodha supplies India only.
+
 This routine updates the sheet. It does not run a portfolio review or place trades.
 
 ## 2. Know what to maintain
@@ -24,7 +29,7 @@ This routine updates the sheet. It does not run a portfolio review or place trad
 | Where | What you do |
 | --- | --- |
 | **Portfolio Summary** | Nothing required. Use **B2** to choose INR or USD. Totals, allocations and exchange rate update automatically. |
-| **India Portfolio** | Holdings, purchase costs and broker cash come from Zerodha/Coin. Maintain your Status, Sector, My Thesis Conviction, My Sell Condition and My Action. |
+| **India Portfolio** | Zerodha/Coin is authoritative for holdings, Status, purchase costs and broker cash. Held positions become Invested; absent or zero-quantity positions become Exited with zero quantity. Maintain Sector, My Thesis Conviction, My Sell Condition and My Action. |
 | **US Portfolio** | When holdings change, update quantities and USD average purchase prices. Update combined Vested + Fidelity cash in **D5**, and the date you confirmed holdings/cash in **P8**. Maintain the same personal fields as India. |
 
 Prices/NAVs, market cap and P/E update where applicable. Funds and ETFs do not receive company P/E figures. US broker exports are not needed for daily updates.
@@ -51,7 +56,7 @@ It uses your conviction, thesis notes and sell conditions. StockClarity's thesis
 
 ## 5. Avoid accidental problems
 
-- Update Status after buying or exiting; the script does not decide this for you.
+- India Status follows Zerodha/Coin automatically. Maintain US Status after buying or exiting.
 - Keep existing column headers and formulas intact. Ask before sorting portfolio rows: the ideas-tab conviction links use cell addresses.
 - If you see **Unavailable** or an update error, check the message or ask for help. Do not fill gaps with guessed values.
 - Check refresh/source dates. Prices and NAVs may predate the update; the FX calculation date is not the quote's timestamp.

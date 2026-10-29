@@ -531,6 +531,8 @@ def validate_sheet(sheet: dict[str, Any], market: str) -> tuple[dict[str, int], 
 
 
 def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, Any]:
+    # Only the fully fetched and validated stocks + Coin source owns India status.
+    broker_authoritative = source.market == "IN" and source.source == "Zerodha + Coin"
     mapping, rows = validate_sheet(sheet, source.market)
     headers = sheet["headers"]
     field_header = {field: headers[i] for field, i in mapping.items()}
@@ -558,13 +560,14 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
     changes, positions, gaps, matched_rows = [], [], [], set()
     total = Decimal(0)
     values_complete = True
-    if not source.holdings:
+    if not source.holdings and not broker_authoritative:
         gaps.append("Empty holdings input: verify the source; no existing rows will be cleared.")
     if source.cash is None:
         gaps.append("Broker cash is missing; portfolio total and weights are unavailable.")
 
     def propose(row_number: int, field: str, value: str | Decimal, existing: dict[str, Any]) -> None:
-        if field not in SOURCE_FIELDS or field in MANUAL_FIELDS | DERIVED_FIELDS:
+        broker_status = broker_authoritative and field == "status"
+        if not broker_status and (field not in SOURCE_FIELDS or field in MANUAL_FIELDS | DERIVED_FIELDS):
             raise ValidationError("Attempt to change a protected field.")
         header = field_header[field]
         previous = existing.get(header)
@@ -598,6 +601,8 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
             matched_rows.add(row_number)
         inputs = {"ticker": holding.ticker, "quantity": holding.quantity,
                   "average_price": holding.average_price if holding.average_price is not None else ""}
+        if broker_authoritative:
+            inputs["status"] = "Invested" if holding.quantity > 0 else "Exited"
         if holding.stock_name and not existing.get(field_header["stock_name"]):
             inputs["stock_name"] = holding.stock_name
         if holding.current_price is not None:
@@ -613,9 +618,9 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
             reasons.append("StockClarity: " + holding.thesis_status + ".")
         if holding.research_as_of and holding.research_as_of != datetime.now(IST).date().isoformat():
             reasons.append("StockClarity snapshot as of " + holding.research_as_of + "; run StockClarity for newer research.")
-        if holding.quantity > 0 and existing.get(field_header["status"]) != "Invested":
+        if not broker_authoritative and holding.quantity > 0 and existing.get(field_header["status"]) != "Invested":
             reasons.append("Set/review manual Status: positive quantity is held.")
-        if holding.quantity == 0 and existing.get(field_header["status"]) == "Invested":
+        if not broker_authoritative and holding.quantity == 0 and existing.get(field_header["status"]) == "Invested":
             reasons.append("Review manual Status: quantity is zero; no automatic exit is inferred.")
         value = holding.quantity * holding.current_price if holding.current_price is not None else None
         if holding.quantity == 0:
@@ -641,7 +646,7 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
     if rows_needed:
         gaps.append(f"Table expansion needed: {rows_needed} additional holding rows; no cells are proposed for these positions yet.")
     missing = [key for key, row in by_ticker.items() if row["row"] not in matched_rows]
-    if missing:
+    if missing and not broker_authoritative:
         gaps.append("Existing securities absent from this input are retained for reconciliation; none are zeroed or marked Exited.")
     if not values_complete:
         gaps.append("At least one held security has no dated price; portfolio total and all weights are unavailable.")
@@ -656,11 +661,15 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
             held = decimal_value(raw_qty, "Existing quantity") > 0
         except ValidationError:
             held = state == "Invested" or raw_qty not in (None, "")
-        if held:
+        if broker_authoritative and (held or state == "Invested"):
+            propose(row["row"], "quantity", Decimal(0), row["values"])
+            propose(row["row"], "status", "Exited", row["values"])
+            gaps.append(f"{key}: absent from Zerodha/Coin; quantity set to zero and Status set to Exited.")
+        elif held:
             unresolved_held.append(key)
     if unresolved_held:
         gaps.append("Unmatched existing holdings need reconciliation; portfolio total and all weights are unavailable.")
-    complete = bool(source.holdings) and values_complete and not unresolved_held
+    complete = (bool(source.holdings) or broker_authoritative) and values_complete and not unresolved_held
     portfolio_total = total + source.cash if complete and source.cash is not None else None
     if portfolio_total is not None and portfolio_total > 0:
         for position in positions:
@@ -701,7 +710,8 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
             "cash_weight_pct": _text_number(source.cash / portfolio_total * 100)
             if portfolio_total is not None and portfolio_total > 0 else None,
             "proposed_updates": changes, "proposed_summary_updates": summary_updates,
-            "positions": positions, "additional_rows_needed": rows_needed, "retained_unmatched_tickers": missing,
+            "positions": positions, "additional_rows_needed": rows_needed,
+            "retained_unmatched_tickers": [] if broker_authoritative else missing,
             "unresolved_existing_holdings": unresolved_held, "gaps": gaps}
 
 
@@ -1149,7 +1159,7 @@ def add_mutual_funds(source: PortfolioInput, client: Any, evidence: dict, *, nav
     if not isinstance(records, list):
         raise ValidationError("Unexpected Coin holdings response.")
     if not records:
-        return source
+        return replace(source, source="Zerodha + Coin")
     if nav_text is None:
         import requests
         try:
@@ -1567,6 +1577,16 @@ def run_live(settings: dict[str, Any], command: str) -> int:
         raise ValidationError("sheets must map IN and/or US to explicit title/table_name settings.")
     if any(not isinstance(v, dict) or not all(isinstance(v.get(k), str) and v[k] for k in ("title", "table_name")) for v in selections.values()):
         raise ValidationError("Each selected market needs title and table_name.")
+    if command == "update" and "US" in selections and settings.get("us_holdings") is not None:
+        try:
+            answer = input("Update US portfolio market values too? Holdings, purchase costs and cash remain your sheet inputs. [y/N]: ")
+        except (EOFError, OSError):
+            answer = ""
+        if answer.strip().casefold() not in {"y", "yes"}:
+            print("US portfolio skipped; updating India only.")
+            selections = {market: selection for market, selection in selections.items() if market != "US"}
+            settings = {key: value for key, value in settings.items()
+                        if key not in {"us_holdings", "us_cash", "us_cash_as_of", "us_holdings_as_of"}}
     cash_field, us_source = None, None
     us_from_sheet = settings.get("us_holdings") == "sheet"
     if command != "check" and "IN" not in selections:

@@ -48,6 +48,12 @@ review. CNC alone does not prove a holding is a stock rather than an ETF.
 
 US daily updates use the existing US Portfolio tab as the source of truth. Settings contain `us_holdings: "sheet"`; no retained CSV/XLSX or duplicate per-broker inputs are required. Uploaded broker exports are one-time import sources and can be removed after import.
 
+Each `update` asks whether to refresh US market values. Only `y` or `yes`
+includes US; any other answer, Enter or unavailable stdin skips US entirely
+and updates India only. Approval is requested on every run and is not saved.
+US refreshes preserve sheet holdings, purchase costs, cash and personal inputs.
+The read-only `preview` command continues to show both configured markets.
+
 Maintain US quantities and USD average purchase prices in the table, combined broker cash in D5, and the confirmed Holdings & Cash As Of date in P8. Daily updates preserve those inputs and manual decisions, while refreshing prices, company market cap, trailing P/E and available StockClarity data. The input date does not advance merely because quotes refresh. If quantities, cost or cash change while the script is fetching, it stops rather than overwriting them.
 
 The Fidelity screenshot supplied 109.0087 owned MSFT shares and $85.98 FYIXX cash; FYIXX is counted once as broker cash, not also an investment row. Combined Vested + Fidelity cash was confirmed at $8,675.98 on 26 October 2026. Microsoft is owned stock, not an unexercised-option position. Its USD cost basis was not provided, so average cost and unrealised return remain blank. Its market value and portfolio weight still calculate. Once the USD total cost is provided, divide it by the held quantity to enter the per-share average in the sheet. No INR-to-USD conversion or exercise price is inferred.
@@ -57,8 +63,11 @@ The existing standard CSV and Vested XLSX readers remain available for explicit 
 ## Behaviour
 
 Columns are located by header. Manual decisions, personal notes, additional
-columns and existing formulas are protected. Missing source positions are
-retained for reconciliation; exits are not inferred.
+columns and existing formulas are protected. Zerodha/Coin is authoritative for
+India quantities and Status: held positions become Invested; zero or absent
+positions become Exited with zero quantity. Historical rows and notes remain.
+This applies only after both broker stocks and Coin have been read and validated.
+US Status remains manual; missing file-import positions require reconciliation.
 
 India and US use separate currencies. India weights include stocks + Coin mutual funds + broker cash. US weights use US stocks + ETFs + US broker cash. US quantities, average costs, combined broker cash and the confirmed holdings/cash date are maintained in the US sheet. Daily quote refreshes do not re-import or re-date those inputs. Missing cash or any held position's dated price blocks complete
 weights. Quotes retain source dates; fetch time does not imply price freshness.
@@ -85,7 +94,7 @@ holding count. Daily thesis status and signals are matched to portfolio identifi
 python -B -m unittest discover -s scripts -p test_portfolio.py -q
 ```
 
-The one self-contained test file covers 105 checks with mocked network/broker
+The one self-contained test file covers 109 checks with mocked network/broker
 responses. It creates and cleans its own temporary inputs. Normal runs save no
 temporary output and generate no helper bytecode caches.
 
@@ -97,7 +106,7 @@ The combined India table has been updated and verified with 21 stocks and one Co
 
 The same `update` command refreshes Indian stock market cap (INR crore) and P/E from Screener.in. Consolidated figures are preferred, with standalone used when consolidated data is absent. P/E is the provider's displayed Stock P/E. These are company figures as fetched, not recalculated from the Yahoo price. BSE codes are resolved from Kite's official instrument master when a symbol route is unavailable. Missing or non-applicable figures preserve previous cells and produce a visible console gap; source URLs, fetch times and missing fields are saved in the Last Refreshed note. US company market cap (USD million) and positive trailing P/E use Yahoo's public quote endpoint with an in-memory public cookie/crumb session, using the existing requests dependency. Only public ticker symbols are sent; holdings, costs, cash and broker credentials are not. Company P/E and company market cap are not inferred for ETFs. Negative or missing P/E is a gap; the initial OKLO P/E is blank because trailing earnings are negative. Source URLs, fetch times and missing fields are retained in the Last Refreshed note. No files, CLI options or extra runtime dependencies were added.
 
-Sector is always manual and never overwritten. Status, conviction, sell condition, action and personal notes are also preserved. Stock names fill only blank cells; quantities, average costs, prices, cash, market cap and P/E are refreshed automatically when supplied.
+Sector is always manual and never overwritten. Conviction, sell condition, action and personal notes are also preserved. India Status follows authoritative Zerodha/Coin holdings; US Status remains manual. Stock names fill only blank cells; quantities, average costs, prices, cash, market cap and P/E are refreshed automatically when supplied.
 
 Coin holdings join the existing India table as `MF:<ISIN>`; no extra tab or runtime file is needed. Quantity means units and Current Market Price means NAV for these rows. Fractional units are retained. AMFI's public NAV file is matched by exact ISIN and supplies both NAV and its actual date. Coin can return an undated NAV, so it is not treated as fresh. If Coin or a matching dated AMFI NAV is unavailable, the combined refresh stops before writing. Pledged/discrepant fund holdings require reconciliation. Market cap and P/E remain blank for new fund rows; no fund-level P/E is inferred.
 
@@ -113,7 +122,7 @@ Matching uses Indian company symbols across NSE/BSE, the official Kite BSE code 
 
 The two automatic columns contain `StockClarity Thesis Status` and `StockClarity Signal`. Stocks outside coverage show `Not covered`; mutual funds and ETFs show `Not applicable`. Existing company records without daily results show `No snapshot`. An unavailable database, invalid result or missing signal shows `Unavailable` rather than carrying an old Buy/Hold/Sell forward as current. Snapshots dated before today include their source date in the visible status/signal. The actual research date, company ID and source explanation are retained in the Last Refreshed cell note alongside the separate price/NAV dates.
 
-Sector, Status, My Thesis Conviction, My Sell Condition, My Action, notes and existing formulas remain protected. The two StockClarity columns are source-managed and will be overwritten on refresh. Research is attached to imported portfolio positions; this does not automatically add StockClarity's other monitored companies to your holdings.
+Sector, My Thesis Conviction, My Sell Condition, My Action, notes and existing formulas remain protected. India Status follows Zerodha/Coin; US Status remains manual. The two StockClarity columns are source-managed and will be overwritten on refresh. Research is attached to imported portfolio positions; this does not automatically add StockClarity's other monitored companies to your holdings.
 
 ## India completion review
 
@@ -121,7 +130,7 @@ The agreed India workflow is implemented in `scripts/portfolio.py`: stocks and C
 
 Review Reason is deliberately left blank and is not a calculated field. Its legacy India template formulas were removed; future row expansion copies only the three financial calculation formulas. Any later manual content in Review Reason is preserved.
 
-A zero-quantity source position still manually marked Invested now stops before writing, because the sheet's totals intentionally reject that status/quantity mismatch. Missing source holdings also require reconciliation; sold positions are not silently cleared. Login is still required when the Kite session expires. Pending/T1, pledged or discrepant quantities stop for review. Fundamentals gaps preserve existing cells and are reported in the console and source notes. Source fetch time is never substituted for the underlying quote/NAV/research date; no maximum quote-age policy is configured. Run StockClarity before updating the portfolio to consume its latest completed snapshot.
+India Status and quantities reconcile automatically to validated Zerodha/Coin holdings, including exits and new holdings. The US workflow still stops for a zero-quantity position manually marked Invested or unresolved missing holdings. Login is still required when the Kite session expires. Pending/T1, pledged or discrepant quantities stop for review. Fundamentals gaps preserve existing cells and are reported in the console and source notes. Source fetch time is never substituted for the underlying quote/NAV/research date; no maximum quote-age policy is configured. Run StockClarity before updating the portfolio to consume its latest completed snapshot.
 
 ## India layout and original thesis notes
 

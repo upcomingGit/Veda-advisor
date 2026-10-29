@@ -277,11 +277,70 @@ class PortfolioSyncTests(FixtureTests):
         self.assertIsNone(result["portfolio_total"])
         self.assertFalse(any(u["row"] == 14 for u in result["proposed_updates"]))
 
+    def test_update_includes_us_only_after_explicit_confirmation(self):
+        india = tracker.PortfolioInput("IN", (), "2026-10-23", "Zerodha + Coin", Decimal(500), "2026-10-23")
+        settings = {"spreadsheet_id": "test", "google_credentials": "key.json", "us_holdings": "sheet"}
+        for answer, included in (("yes", True), (" Y ", True), ("no", False), ("", False), ("maybe", False), (EOFError(), False), (OSError(), False)):
+            with self.subTest(answer=answer), contextlib.ExitStack() as stack:
+                prompt = stack.enter_context(patch("builtins.input", **({"side_effect": answer} if isinstance(answer, Exception) else {"return_value": answer})))
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                stack.enter_context(patch.object(tracker, "GoogleSheets"))
+                capture = stack.enter_context(patch.object(tracker, "capture_google", return_value=self.layout))
+                load_us = stack.enter_context(patch.object(tracker, "load_us_sheet", return_value=self.us))
+                stack.enter_context(patch.object(tracker, "kite_client"))
+                stack.enter_context(patch.object(tracker, "read_kite", return_value=({}, {})))
+                stack.enter_context(patch.object(tracker, "kite_reconciliation", return_value={}))
+                stack.enter_context(patch.object(tracker, "parse_kite_payload", return_value=india))
+                stack.enter_context(patch.object(tracker, "add_mutual_funds", side_effect=lambda s, *a: s))
+                stack.enter_context(patch.object(tracker, "add_market_quotes", side_effect=lambda s, **kw: (s, [])))
+                stack.enter_context(patch.object(tracker, "add_fundamentals", side_effect=lambda s, *a, **kw: (s, [])))
+                stack.enter_context(patch.object(tracker, "read_stockclarity", return_value=[]))
+                stack.enter_context(patch.object(tracker, "add_stockclarity", side_effect=lambda s, *a, **kw: (s, [])))
+                write = stack.enter_context(patch.object(tracker, "apply_updates"))
+                self.assertEqual(tracker.run_live(settings, "update"), 0)
+                prompt.assert_called_once()
+                markets = [s.market for s in write.call_args.args[3]]
+                self.assertEqual(markets, ["IN", "US"] if included else ["IN"])
+                self.assertEqual("US" in capture.call_args.args[2], included)
+                self.assertEqual(load_us.called, included)
+                self.assertEqual(settings["us_holdings"], "sheet")
+
     def test_missing_watchlist_does_not_block_denominator(self):
         self.layout["sheets"]["US"]["rows"].append({"row": 14, "values": {"Exchange:Ticker": "NYSE:WATCH", "Status": "Watchlist", "Quantity": 0}})
         result = self.preview()
         self.assertEqual(result["unresolved_existing_holdings"], [])
         self.assertIsNotNone(result["portfolio_total"])
+
+    def test_zerodha_authority_exits_absent_holdings_and_preserves_decisions(self):
+        sheet = self.layout["sheets"]["IN"]
+        sheet["rows"].append({"row": 14, "values": {
+            "Exchange:Ticker": "NSE:SOLD", "Status": "Invested", "Quantity": 3,
+            "My Action": "Hold", "My Thesis Conviction": "High"}})
+        sheet["rows"][0]["values"]["Status"] = "Exited"
+        source = tracker.PortfolioInput("IN", (
+            tracker.Holding("NSE:DEMOIND", "Demo", Decimal(10), Decimal(100), Decimal(120), "2026-10-23"),
+        ), "2026-10-23", "Zerodha + Coin", Decimal(500), "2026-10-23")
+        result = tracker.preview_market(source, sheet)
+        changes = {(u["row"], u["header"]): u["value"] for u in result["proposed_updates"]}
+        self.assertEqual(changes[(14, "Quantity")], "0")
+        self.assertEqual(changes[(14, "Status")], "Exited")
+        self.assertEqual(changes[(11, "Status")], "Invested")
+        self.assertEqual(result["portfolio_total"], "1700")
+        self.assertEqual(result["unresolved_existing_holdings"], [])
+        self.assertFalse(any(u["header"] in {"My Action", "My Thesis Conviction"} for u in result["proposed_updates"]))
+
+    def test_validated_empty_zerodha_portfolio_exits_holdings_and_keeps_cash(self):
+        source = tracker.PortfolioInput("IN", (), "2026-10-23", "Zerodha + Coin",
+                                        Decimal(500), "2026-10-23")
+        result = tracker.preview_market(source, self.layout["sheets"]["IN"])
+        self.assertEqual(result["portfolio_total"], "500")
+        self.assertTrue(any(u["header"] == "Quantity" and u["value"] == "0" for u in result["proposed_updates"]))
+
+    def test_empty_coin_response_still_confirms_authoritative_broker_source(self):
+        client = Mock()
+        client.mf_holdings.return_value = []
+        source = tracker.PortfolioInput("IN", (), "2026-10-23", "kite_live")
+        self.assertEqual(tracker.add_mutual_funds(source, client, {}).source, "Zerodha + Coin")
 
     def test_source_formula_is_preserved_by_rejecting_replacement(self):
         self.layout["sheets"]["US"]["rows"][0]["values"]["Current Market Price ($)"] = '=GOOGLEFINANCE("NASDAQ:DEMOUS")'
