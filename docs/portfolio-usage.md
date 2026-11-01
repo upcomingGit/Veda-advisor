@@ -29,7 +29,7 @@ This routine updates the sheet. It does not run a portfolio review or place trad
 | Where | What you do |
 | --- | --- |
 | **Portfolio Summary** | Nothing required. Use **B2** to choose INR or USD. Totals, allocations and exchange rate update automatically. |
-| **India Portfolio** | Zerodha/Coin is authoritative for holdings, Status, purchase costs and broker cash. Held positions become Invested; absent or zero-quantity positions become Exited with zero quantity. Maintain Sector, My Thesis Conviction, My Sell Condition and My Action. |
+| **India Portfolio** | Zerodha/Coin is authoritative for holdings, Status, purchase costs and broker cash. Held positions become Invested; absent or zero-quantity positions are reconciled as Exited, then their rows are removed after verification. Maintain Sector, My Thesis Conviction, My Sell Condition and My Action. |
 | **US Portfolio** | When holdings change, update quantities and USD average purchase prices. Update combined Vested + Fidelity cash in **D5**, and the date you confirmed holdings/cash in **P8**. Maintain the same personal fields as India. |
 
 Prices/NAVs, market cap and P/E update where applicable. Funds and ETFs do not receive company P/E figures. US broker exports are not needed for daily updates.
@@ -63,3 +63,7 @@ It uses your conviction, thesis notes and sell conditions. StockClarity's thesis
 - Ask for classification support when adding a different ETF or a new asset class.
 
 Detailed rules: [portfolio-review skill](../.agents/skills/portfolio-review/SKILL.md). Technical reference: [portfolio tracker](portfolio-tracker.md).
+
+US market-price cells use GOOGLEFINANCE formulas and refresh through Google Sheets. The script preserves these formulas and verifies current values, weights and returns against their calculated prices. Holdings, costs and cash remain manual inputs.
+
+India stock prices also use GOOGLEFINANCE where supported. Sacheerome currently has no Google quote and retains a dated script price. Mutual funds retain dated AMFI NAVs. Run the update script to refresh these exceptions, holdings, cash, fundamentals and research.

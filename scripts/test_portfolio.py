@@ -211,6 +211,21 @@ class PortfolioSyncTests(FixtureTests):
     def preview(self, source=None, sheet=None):
         return tracker.preview_market(source or self.us, sheet or self.layout["sheets"]["US"])
 
+    def test_calculation_mismatch_identifies_cell_ticker_and_written_state(self):
+        sheet = self.layout["sheets"]["IN"]
+        mapping = tracker.mapped_headers(sheet["headers"], tracker.sheet_headers("IN"))
+        values = [{} for _ in sheet["headers"]]
+        values[mapping["return"]] = {"effectiveValue": {"numberValue": 0.0266}}
+        actual = {"data": [{"startRow": 24, "rowData": [{"values": values}]}]}
+        before = {"title": "India Portfolio", "header_row": 10, "native": {}}
+        plan = {"market": "IN", "proposed_updates": [], "proposed_summary_updates": [],
+                "positions": [{"ticker": "NSE:DEMOIND", "sheet_row": 25,
+                               "market_value": None, "weight_pct": None,
+                               "unrealised_return_pct": "-14.9"}]}
+        with self.assertRaisesRegex(tracker.ValidationError,
+                r"India Portfolio!K25 \(NSE:DEMOIND\): calculated return.*Source cells were written"):
+            tracker.verify_update(before, actual, sheet, plan)
+
     def test_fractional_shares_and_cash_inclusive_weights(self):
         result = self.preview()
         self.assertEqual(Decimal(result["equity_value"]), Decimal("300"))
@@ -328,6 +343,23 @@ class PortfolioSyncTests(FixtureTests):
         self.assertEqual(result["portfolio_total"], "1700")
         self.assertEqual(result["unresolved_existing_holdings"], [])
         self.assertFalse(any(u["header"] in {"My Action", "My Thesis Conviction"} for u in result["proposed_updates"]))
+
+    def test_confirmed_exits_are_deleted_bottom_up_only_for_authoritative_india(self):
+        sheet = self.layout["sheets"]["IN"]
+        source = tracker.PortfolioInput("IN", (
+            tracker.Holding("NSE:DEMOIND", "Demo", Decimal(10), Decimal(100)),
+        ), "2026-10-23", "Zerodha + Coin")
+        for rn, ticker, status, qty in ((14, "NSE:SOLD", "Exited", 0),
+                                       (16, "NSE:OLD", "Exited", 0),
+                                       (17, "NSE:WATCH", "Watchlist", 0),
+                                       (18, "NSE:POSITIVE", "Exited", 3),
+                                       (19, "NSE:DEMOIND", "Exited", 0)):
+            sheet["rows"].append({"row": rn, "values": {
+                "Exchange:Ticker": ticker, "Status": status, "Quantity": qty}})
+        requests = tracker.exited_row_deletions(sheet, source)
+        self.assertEqual([r["deleteDimension"]["range"]["startIndex"] for r in requests], [15, 13])
+        self.assertEqual(tracker.exited_row_deletions(sheet, replace(source, source="kite_live")), [])
+        self.assertEqual(tracker.exited_row_deletions(sheet, replace(source, market="US")), [])
 
     def test_validated_empty_zerodha_portfolio_exits_holdings_and_keeps_cash(self):
         source = tracker.PortfolioInput("IN", (), "2026-10-23", "Zerodha + Coin",
@@ -502,6 +534,84 @@ class PortfolioSyncTests(FixtureTests):
         with self.assertRaisesRegex(tracker.ValidationError, "Conflicting"):
             tracker.parse_amfi_navs(text)
 
+    def test_india_google_tickers_use_exact_bse_codes_and_preserve_amfi_nav(self):
+        source = tracker.PortfolioInput("IN", (
+            tracker.Holding("NSE:DEMO-SM", "Demo", Decimal(10), Decimal(100), Decimal(120)),
+            tracker.Holding("BSE:OTHER", "Other", Decimal(5), Decimal(100), Decimal(120)),
+            tracker.Holding("MF:INF000A01010", "Fund", Decimal("1.5"), Decimal(80), Decimal(100),
+                            "2026-10-22", "INF000A01010", "Mutual Fund"),
+        ), "2026-10-23", "Zerodha + Coin", Decimal(500), "2026-10-23")
+        client = Mock()
+        client.instruments.return_value = [{"tradingsymbol": "OTHER", "exchange_token": 500001}]
+        evidence = {}
+        resolved = tracker.add_google_finance_tickers(source, client, evidence)
+        self.assertEqual([h.google_ticker for h in resolved.holdings], ["NSE:DEMO", "BOM:500001", None])
+        self.assertEqual(resolved.holdings[-1].current_price, Decimal(100))
+        client.instruments.assert_called_once_with("BSE")
+        plan = tracker.preview_market(resolved, self.layout["sheets"]["IN"])
+        prices = [u["cell_value"] for u in plan["proposed_updates"] if u["header"] == "Current Market Price (₹)"]
+        self.assertTrue(any(v.get("formulaValue") == '=GOOGLEFINANCE("NSE:DEMO","price")' for v in prices))
+        self.assertTrue(any(v.get("formulaValue") == '=GOOGLEFINANCE("BOM:500001","price")' for v in prices))
+        self.assertTrue(any(v.get("numberValue") == 100 for v in prices))
+        client.instruments.return_value = []
+        with self.assertRaisesRegex(tracker.ValidationError, "exact BSE code"):
+            tracker.add_google_finance_tickers(source, client, {})
+
+    def test_unsupported_google_listing_keeps_dated_script_quote(self):
+        holding = tracker.Holding("NSE:SACHEEROME-SM", "Demo", Decimal(600), Decimal(484),
+                                  Decimal(412), "2026-10-30")
+        source = tracker.PortfolioInput("IN", (holding,), "2026-10-31", "Zerodha + Coin")
+        evidence = {}
+        resolved = tracker.add_google_finance_tickers(source, Mock(), evidence)
+        self.assertIsNone(resolved.holdings[0].google_ticker)
+        self.assertEqual(resolved.holdings[0].current_price, Decimal(412))
+        self.assertEqual(resolved.holdings[0].price_as_of, "2026-10-30")
+        self.assertTrue(evidence[holding.ticker]["googlefinance_unavailable"])
+
+    def test_india_live_stock_and_script_prices_and_nav_share_one_denominator(self):
+        expected = {**self.layout["sheets"]["IN"], "table_id": "test", "last_prepared_row": 14}
+        mapping = tracker.mapped_headers(expected["headers"], tracker.sheet_headers("IN"))
+        positions, row_data = [], []
+        for rn, ticker, qty, price, avg, formula in (
+                (11, "NSE:DEMO", 2, 150, 100, '=GOOGLEFINANCE("NSE:DEMO","price")'),
+                (12, "NSE:SACHEEROME-SM", 2, 100, 100, None),
+                (13, "MF:INF000A01010", 5, 20, 10, None)):
+            values = [{} for _ in expected["headers"]]
+            values[mapping["current_price"]] = {
+                "userEnteredValue": {"formulaValue": formula} if formula else {"numberValue": price},
+                "effectiveValue": {"numberValue": price}}
+            for field, number in (("market_value", qty*price), ("weight", qty*price/1100),
+                                  ("return", price/avg-1)):
+                values[mapping[field]] = {"effectiveValue": {"numberValue": number}}
+            row_data.append({"values": values})
+            positions.append({"ticker": ticker, "sheet_row": rn, "quantity": str(qty),
+                              "average_price": str(avg), "price_formula": formula,
+                              "market_value": "1", "weight_pct": "1", "unrealised_return_pct": "1"})
+        actual = {"data": [{"startRow": 10, "rowData": row_data},
+                           {"startRow": 4, "startColumn": 3, "rowData": [{"values": [
+                               {"userEnteredValue": {"numberValue": 500}}]}]}],
+                  "tables": [{"tableId": "test", "range": {"endRowIndex": 14}}]}
+        expected["summary_cells"] = {"broker_cash": {"a1": "D5", "value": 500}}
+        plan = {"market": "IN", "proposed_updates": [], "proposed_summary_updates": [], "positions": positions}
+        before = {"title": "India Portfolio", "header_row": 10, "native": {}}
+        tracker.verify_update(before, actual, expected, plan)
+        row_data[-1]["values"][mapping["weight"]]["effectiveValue"]["numberValue"] = 0.9
+        with self.assertRaisesRegex(tracker.ValidationError, "calculated weight"):
+            tracker.verify_update(before, actual, expected, plan)
+
+    def test_amfi_unheld_future_nav_does_not_block_held_funds(self):
+        text = "1;INF000B01010;-;Other;20;01-Jan-2999\n2;INF000A01010;-;Held;43;22-Oct-2026"
+        self.assertEqual(tracker.parse_amfi_navs(text, {"INF000A01010"}),
+                         {"INF000A01010": (Decimal(43), "2026-10-22")})
+        self.assertEqual(tracker.parse_amfi_navs(text, set()), {})
+
+    def test_amfi_held_future_nav_still_blocks_with_identity_and_date(self):
+        text = "1;INF000A01010;-;Held;43;01-Jan-2999"
+        for wanted in (None, {"INF000A01010"}):
+            with self.subTest(wanted=wanted), self.assertRaisesRegex(
+                    tracker.ValidationError, r"future NAV date \(2999-01-01\) for INF000A01010"):
+                tracker.parse_amfi_navs(text, wanted)
+
     def test_coin_fractional_units_use_amfi_nav_and_combined_weight(self):
         client = Mock()
         client.mf_holdings.return_value = [{"tradingsymbol": "INF000A01010", "fund": "Demo Fund", "quantity": "2.5", "average_price": "80", "last_price_date": "", "last_price": 1}]
@@ -659,7 +769,7 @@ class PortfolioSyncTests(FixtureTests):
         self.assertIsNone(source.holdings[0].current_price)
         self.assertIsNone(source.cash)
 
-    def test_kite_pending_sold_pledged_short_mtf_and_fractional_fail(self):
+    def test_kite_unreconciled_pending_sold_pledged_short_mtf_and_fractional_fail(self):
         original = tracker.read_json(self.root / "kite-holdings.example.json")
         changes = [{field: 1} for field in ("t1_quantity", "used_quantity", "short_quantity", "collateral_quantity")]
         changes += [{"mtf": {"quantity": 1}}, {"quantity": 0.5}, {"discrepancy": True}, {"product": "MIS"}]
@@ -689,6 +799,35 @@ class PortfolioSyncTests(FixtureTests):
         value["holdings"][0].update(quantity=60, opening_quantity=100, used_quantity=40, realised_quantity=0)
         source = tracker.parse_kite_payload(value)
         self.assertEqual(source.holdings[0].quantity, Decimal(60))
+
+    def test_t1_is_included_once_and_preserves_broker_cost(self):
+        for settled, t1, used, opening, expected in (
+            (13884, 2000, 0, 15884, 15884),
+            (239, 26, 0, 265, 265),
+            (0, 20, 0, 20, 20),
+            (10, 40, 50, 100, 50),
+            (30, 0, 0, 30, 30),  # Previously T1 shares have settled.
+        ):
+            with self.subTest(settled=settled, t1=t1, used=used):
+                value = tracker.read_json(self.root / "kite-holdings.example.json")
+                row = value["holdings"][0]
+                row.update(quantity=settled, realised_quantity=settled,
+                           t1_quantity=t1, used_quantity=used, opening_quantity=opening)
+                holding = tracker.parse_kite_payload(value).holdings[0]
+                self.assertEqual(holding.quantity, Decimal(expected))
+                self.assertEqual(holding.average_price, Decimal(row["average_price"]))
+
+    def test_t1_requires_valid_whole_quantity_and_reconciled_opening(self):
+        for changes in ({"t1_quantity": None}, {"t1_quantity": -1},
+                        {"t1_quantity": 0.5}, {"t1_quantity": True},
+                        {"opening_quantity": None}, {"opening_quantity": 10},
+                        {"opening_quantity": 13}, {"opening_quantity": 12.5}):
+            with self.subTest(changes=changes):
+                value = tracker.read_json(self.root / "kite-holdings.example.json")
+                value["holdings"][0].update(t1_quantity=2, opening_quantity=12)
+                value["holdings"][0].update(changes)
+                with self.assertRaises(tracker.ValidationError):
+                    tracker.parse_kite_payload(value)
 
     def test_unreconciled_sale_is_not_subtracted_or_imported(self):
         for opening in (None, 99, 20):
@@ -1210,6 +1349,46 @@ class USSheetTests(FixtureTests):
 
     def preview(self, source=None, sheet=None):
         return tracker.preview_market(source or self.us, sheet or self.layout["sheets"]["US"])
+
+    def test_us_price_formula_is_installed_then_preserved(self):
+        sheet = self.layout["sheets"]["US"]
+        plan = self.preview(sheet=sheet)
+        prices = [u for u in plan["proposed_updates"] if u["header"] == "Current Market Price ($)"]
+        self.assertTrue(prices)
+        self.assertEqual(prices[0]["cell_value"], {"formulaValue": '=GOOGLEFINANCE($B11,"price")'})
+        for row in sheet["rows"]:
+            row["values"]["Current Market Price ($)"] = f'=GOOGLEFINANCE($B{row["row"]},"price")'
+        self.assertFalse(any(u["header"] == "Current Market Price ($)" and u["row"] == 11
+                             for u in self.preview(sheet=sheet)["proposed_updates"]))
+
+    def test_live_formula_readback_uses_current_price_and_rejects_wrong_calculations(self):
+        expected = {**self.layout["sheets"]["US"], "table_id": "test", "last_prepared_row": 12}
+        mapping = tracker.mapped_headers(expected["headers"], tracker.sheet_headers("US"))
+        values = [{} for _ in expected["headers"]]
+        for field, value in (("market_value", 300), ("weight", 0.375), ("return", 0.5)):
+            values[mapping[field]] = {"effectiveValue": {"numberValue": value}}
+        values[mapping["current_price"]] = {"userEnteredValue": {"formulaValue": '=GOOGLEFINANCE($B11,"price")'},
+                                          "effectiveValue": {"numberValue": 150}}
+        cash_address = expected["summary_cells"]["broker_cash"]["a1"]
+        import re
+        match = re.fullmatch(r"([A-Z]+)([0-9]+)", cash_address)
+        cash_column = 0
+        for char in match[1]: cash_column = cash_column * 26 + ord(char) - 64
+        actual = {"data": [{"startRow": 10, "rowData": [{"values": values}]},
+                           {"startRow": int(match[2])-1, "startColumn": cash_column-1,
+                            "rowData": [{"values": [{"userEnteredValue": {"numberValue": 500}}]}]}],
+                  "tables": [{"tableId": "test", "range": {"endRowIndex": 12}}]}
+        before = {"title": "US Portfolio", "header_row": 10, "native": {}}
+        plan = {"market": "US", "proposed_updates": [], "proposed_summary_updates": [],
+                "positions": [{"ticker": "NASDAQ:DEMOUS", "sheet_row": 11, "quantity": "2", "average_price": "100",
+                               "market_value": "200", "weight_pct": "28.57", "unrealised_return_pct": "0"}]}
+        tracker.verify_update(before, actual, expected, plan)
+        values[mapping["return"]]["effectiveValue"]["numberValue"] = 0.1
+        with self.assertRaisesRegex(tracker.ValidationError, "calculated return"):
+            tracker.verify_update(before, actual, expected, plan)
+        values[mapping["current_price"]]["effectiveValue"] = {"errorValue": {"type": "N_A"}}
+        with self.assertRaisesRegex(tracker.ValidationError, "GOOGLEFINANCE price"):
+            tracker.verify_update(before, actual, expected, plan)
 
     def test_unknown_usd_cost_clears_a_previous_cost_and_keeps_weights_available(self):
         source = replace(self.us, holdings=(replace(self.us.holdings[0], average_price=None), self.us.holdings[1]))

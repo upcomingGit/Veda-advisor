@@ -83,7 +83,12 @@ additional rows needed; it proposes no cells beyond the existing table.
 The user confirmed the live cash balance; settings now select
 `available.live_balance`. Executed sales retain Kite's already-reduced quantity
 when opening quantity equals remaining plus sold quantity; they are not subtracted
-again. Other quantity discrepancies still stop for reconciliation.
+again. T1 shares are included alongside settled shares: imported quantity is
+`quantity + t1_quantity`. When T1 or sold shares are present, `opening_quantity`
+must equal `quantity + t1_quantity + used_quantity`. Missing, negative or fractional
+T1 quantities and unreconciled totals stop the import. Broker average purchase
+price is retained; realised quantity is not added again. Other quantity
+discrepancies still stop for reconciliation.
 
 StockClarity's 11 monitored securities are research coverage, not a confirmed
 holding count. Daily thesis status and signals are matched to portfolio identifiers. Personal sell/review conditions are recorded in the sheet; the chat review applies them without changing My Action. Missing research never implies Hold.
@@ -94,7 +99,7 @@ holding count. Daily thesis status and signals are matched to portfolio identifi
 python -B -m unittest discover -s scripts -p test_portfolio.py -q
 ```
 
-The one self-contained test file covers 109 checks with mocked network/broker
+The one self-contained test file covers 120 checks with mocked network/broker
 responses. It creates and cleans its own temporary inputs. Normal runs save no
 temporary output and generate no helper bytecode caches.
 
@@ -130,7 +135,7 @@ The agreed India workflow is implemented in `scripts/portfolio.py`: stocks and C
 
 Review Reason is deliberately left blank and is not a calculated field. Its legacy India template formulas were removed; future row expansion copies only the three financial calculation formulas. Any later manual content in Review Reason is preserved.
 
-India Status and quantities reconcile automatically to validated Zerodha/Coin holdings, including exits and new holdings. The US workflow still stops for a zero-quantity position manually marked Invested or unresolved missing holdings. Login is still required when the Kite session expires. Pending/T1, pledged or discrepant quantities stop for review. Fundamentals gaps preserve existing cells and are reported in the console and source notes. Source fetch time is never substituted for the underlying quote/NAV/research date; no maximum quote-age policy is configured. Run StockClarity before updating the portfolio to consume its latest completed snapshot.
+India Status and quantities reconcile automatically to validated Zerodha/Coin holdings, including exits and new holdings. The US workflow still stops for a zero-quantity position manually marked Invested or unresolved missing holdings. Login is still required when the Kite session expires. T1 shares are included after opening/settled/T1/sold quantities reconcile; pledged or discrepant quantities still stop for review. Fundamentals gaps preserve existing cells and are reported in the console and source notes. Source fetch time is never substituted for the underlying quote/NAV/research date; no maximum quote-age policy is configured. Run StockClarity before updating the portfolio to consume its latest completed snapshot.
 
 ## India layout and original thesis notes
 
@@ -169,3 +174,15 @@ Portfolio Summary is a three-column formula view of the India and US tabs. B2 se
 B15 uses `GOOGLEFINANCE("CURRENCY:USDINR")` for automatic conversion. The workbook recalculates on changes and hourly. Google controls the external quote's availability and timing; B16 is the calculation date, not a guaranteed quote timestamp. Missing rates or incomplete source totals display Unavailable instead of a partial portfolio total. Source refresh dates remain visible separately.
 
 Mutual funds are identified by MF: tickers. The current gold allocation covers BATS:AAAU. If another ETF or a new asset class is introduced, its classification must be added; the current residual stocks calculation does not distinguish other ETF types.
+
+AMFI NAV validation is scoped to exact ISINs held in Coin. Unrelated future-dated feed records do not block refresh; future-dated NAVs for held funds still stop the update with the affected ISIN and date.
+
+Post-write calculation mismatches report the tab, cell, ticker, field and actual/expected values. Such failures can occur after source cells have been written; Last Refreshed advances only after the calculations verify.
+
+Confirmed zero-quantity Exited rows are removed from the India holdings list after authoritative Zerodha/Coin source writes and calculations verify. Rows are deleted bottom-up, then the remaining holdings, formulas and table are re-read and verified before Last Refreshed advances. US rows and watchlist rows are not removed by this cleanup.
+
+US current market prices are managed GOOGLEFINANCE formulas referencing each row ticker. Updates install missing formulas and preserve existing managed formulas; other price formulas stop for review. Post-write values, weights and returns are verified against effective prices from the same Sheets readback, so live price movements do not cause false mismatches against the Yahoo preview. Price metadata identifies GOOGLEFINANCE and does not claim the preview quote timestamp is the live formula timestamp. User-confirmed combined US cash is $4,977.98 (Vested $4,892.00 plus Fidelity $85.98), confirmed 31 October 2026.
+
+India stock prices also use managed GOOGLEFINANCE formulas. NSE SME segment suffixes are removed for Google lookup; BSE listings use exact numeric BOM codes resolved from the official Kite BSE instrument master. Coin mutual funds continue to use exact-ISIN dated AMFI NAVs. Verification uses live stock prices plus fund NAVs from one grid readback, including their shared cash-inclusive denominator.
+
+Sacheerome (NSE:SACHEEROME-SM) is an explicit Google coverage exception: both its NSE symbol forms returned no data during verification on 31 October 2026. Its price remains a dated Yahoo snapshot updated by the script, with this exception documented in the cell note and price evidence. The other 18 currently held India stocks returned valid GOOGLEFINANCE quotes.

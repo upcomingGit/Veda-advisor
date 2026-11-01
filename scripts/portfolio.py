@@ -30,6 +30,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 SETTINGS = ROOT / "private" / "portfolio-sync" / "settings.json"
 US_SHEET_SOURCE = "Google Sheets · manual holdings"
+GOOGLEFINANCE_UNSUPPORTED = {"NSE:SACHEEROME-SM"}  # Both NSE symbol formats return no data.
 
 MANUAL_FIELDS = {"status", "conviction", "sell_condition", "action", "sector", "review_reason"}
 DERIVED_FIELDS = {"market_value", "weight", "return"}
@@ -81,6 +82,7 @@ class Holding:
     thesis_status: str | None = None
     signal: str | None = None
     research_as_of: str | None = None
+    google_ticker: str | None = None
 
 
 @dataclass(frozen=True)
@@ -419,7 +421,7 @@ def parse_kite_payload(payload: dict[str, Any], *, funds: dict[str, Any] | None 
         if not isinstance(row, dict) or row.get("product") != "CNC":
             raise ValidationError("India input must contain CNC delivery holdings only.")
         key = security_key(f"{row.get('exchange', '')}:{row.get('tradingsymbol', '')}", "IN")
-        for field in ("t1_quantity", "short_quantity", "collateral_quantity"):
+        for field in ("short_quantity", "collateral_quantity"):
             if field not in row or decimal_value(row[field], f"{key} {field}") != 0:
                 raise ValidationError(f"{key}: {field} is missing or non-zero; reconcile broker quantity semantics before importing.")
         mtf = row.get("mtf", {})
@@ -428,15 +430,22 @@ def parse_kite_payload(payload: dict[str, Any], *, funds: dict[str, Any] | None 
         qty = decimal_value(row.get("quantity"), key + " quantity")
         if qty != qty.to_integral_value():
             raise ValidationError(f"{key}: Indian delivery quantity must be whole shares.")
+        t1 = decimal_value(row.get("t1_quantity"), key + " T1 quantity")
+        if t1 != t1.to_integral_value():
+            raise ValidationError(f"{key}: T1 quantity must be whole shares.")
         used = decimal_value(row.get("used_quantity"), key + " used quantity")
         if used != used.to_integral_value():
             raise ValidationError(f"{key}: used quantity must be whole shares.")
-        if used:
+        if t1 or used:
+            if row.get("opening_quantity") is None:
+                raise ValidationError(f"{key}: opening_quantity is missing; reconcile broker quantity semantics before importing.")
             opening = decimal_value(row.get("opening_quantity"), key + " opening quantity")
-            # Kite quantity already reflects CNC sales. Check the opening
-            # balance rather than subtracting used_quantity a second time.
-            if opening != qty + used:
-                raise ValidationError(f"{key}: opening, remaining and sold quantities do not reconcile.")
+            # Kite reports settled and T1 shares separately; quantity already
+            # reflects CNC sales. Reconcile the opening total without either
+            # adding realised_quantity or subtracting used_quantity again.
+            if opening != qty + t1 + used:
+                raise ValidationError(f"{key}: opening, settled, T1 and sold quantities do not reconcile.")
+        qty += t1
         if row.get("discrepancy") not in (None, False):
             raise ValidationError(f"{key}: broker reports a holdings discrepancy.")
         isin = row.get("isin") or None
@@ -605,7 +614,8 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
             inputs["status"] = "Invested" if holding.quantity > 0 else "Exited"
         if holding.stock_name and not existing.get(field_header["stock_name"]):
             inputs["stock_name"] = holding.stock_name
-        if holding.current_price is not None:
+        live_price = source.market == "US" or holding.google_ticker is not None
+        if holding.current_price is not None and not live_price:
             inputs["current_price"] = holding.current_price
         for field in ("market_cap", "pe", "thesis_status", "signal"):
             if getattr(holding, field) is not None:
@@ -613,6 +623,19 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
         if row_number is not None:
             for field, value in inputs.items():
                 propose(row_number, field, value, existing)
+            if live_price and holding.quantity > 0:
+                column = mapping["current_price"] + sheet.get("start_column", 1)
+                ticker_column = mapping["ticker"] + sheet.get("start_column", 1)
+                formula = (f'=GOOGLEFINANCE("{holding.google_ticker}","price")' if source.market == "IN"
+                           else f'=GOOGLEFINANCE(${_column_letter(ticker_column)}{row_number},"price")')
+                previous = existing.get(field_header["current_price"])
+                if isinstance(previous, str) and previous.startswith("=") and previous != formula:
+                    raise ValidationError(f"{source.market} row {row_number}: market price contains a formula that is not the managed GOOGLEFINANCE formula; review before replacing it.")
+                if previous != formula:
+                    changes.append({"row": row_number, "column": column,
+                                    "a1": f"{_column_letter(column)}{row_number}",
+                                    "header": field_header["current_price"], "previous_value": previous,
+                                    "value": formula, "cell_value": {"formulaValue": formula}})
         reasons = []
         if holding.thesis_status in {"Not covered", "Unavailable", "No snapshot", "Ambiguous match"} or holding.signal == "Unavailable":
             reasons.append("StockClarity: " + holding.thesis_status + ".")
@@ -635,6 +658,7 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
         if holding.quantity > 0 and holding.average_price is None:
             reasons.append("USD cost basis is missing; average purchase price and return are unavailable.")
         positions.append({"ticker": holding.ticker, "sheet_row": row_number, "isin": holding.isin,
+                          "price_formula": formula if live_price and holding.quantity > 0 and row_number is not None else None,
                           "quantity": _text_number(holding.quantity), "average_price": _text_number(holding.average_price),
                           "current_price": _text_number(holding.current_price), "price_as_of": holding.price_as_of,
                           "thesis_status": holding.thesis_status, "signal": holding.signal, "research_as_of": holding.research_as_of,
@@ -1136,18 +1160,21 @@ def parse_amfi_navs(text: str, wanted: set[str] | None = None) -> dict[str, tupl
     for row in csv.reader(io.StringIO(text), delimiter=";"):
         if len(row) not in (6, 8) or not row[0].strip().isdigit():
             continue
+        isins = [isin for isin in row[1:3]
+                 if re.fullmatch(r"INF[A-Z0-9]{9}", isin) and (wanted is None or isin in wanted)]
+        if not isins:
+            continue
         try:
             nav = decimal_value(row[-2], "AMFI NAV", positive=True)
             as_of = datetime.strptime(row[-1].strip(), "%d-%b-%Y").date().isoformat()
         except (ValidationError, ValueError):
             continue
         if as_of > datetime.now(IST).date().isoformat():
-            raise ValidationError("AMFI supplied a future NAV date.")
-        for isin in row[1:3]:
-            if re.fullmatch(r"INF[A-Z0-9]{9}", isin) and (wanted is None or isin in wanted):
-                if isin in result and result[isin] != (nav, as_of):
-                    raise ValidationError("Conflicting AMFI NAV records for one ISIN.")
-                result[isin] = (nav, as_of)
+            raise ValidationError(f"AMFI supplied a future NAV date ({as_of}) for {', '.join(isins)}.")
+        for isin in isins:
+            if isin in result and result[isin] != (nav, as_of):
+                raise ValidationError("Conflicting AMFI NAV records for one ISIN.")
+            result[isin] = (nav, as_of)
     return result
 
 
@@ -1278,6 +1305,36 @@ def add_fundamentals(source: PortfolioInput, evidence: dict, fetcher=None, *, cl
         if any(v is None for v in values.values()):
             gaps.append(holding.ticker + ": missing/non-applicable " + ", ".join(k for k, v in values.items() if v is None) + "; previous cells preserved.")
     return replace(source, holdings=tuple(updated)), gaps
+
+
+def add_google_finance_tickers(source: PortfolioInput, client: Any, evidence: dict) -> PortfolioInput:
+    """Resolve Indian Google listings using exact Kite symbols/BSE codes."""
+    if source.market != "IN":
+        return source
+    bse = {}
+    if any(h.ticker.startswith("BSE:") and h.quantity > 0 for h in source.holdings):
+        bse = {r["tradingsymbol"]: str(r["exchange_token"]) for r in client.instruments("BSE")}
+    holdings = []
+    for holding in source.holdings:
+        if holding.asset_type == "Mutual Fund" or holding.quantity <= 0:
+            holdings.append(holding)
+            continue
+        if holding.ticker in GOOGLEFINANCE_UNSUPPORTED:
+            # Keep an independently dated script quote when Google has no listing.
+            holdings.append(replace(holding, google_ticker=None))
+            evidence.setdefault(holding.ticker, {})["googlefinance_unavailable"] = True
+            continue
+        exchange, symbol = holding.ticker.split(":", 1)
+        if exchange == "NSE":
+            ticker = "NSE:" + symbol.removesuffix("-SM")
+        else:
+            code = bse.get(symbol)
+            if not code or not code.isdigit():
+                raise ValidationError(f"{holding.ticker}: exact BSE code required for GOOGLEFINANCE.")
+            ticker = "BOM:" + code
+        holdings.append(replace(holding, google_ticker=ticker))
+        evidence.setdefault(holding.ticker, {})["google_ticker"] = ticker
+    return replace(source, holdings=tuple(holdings))
 
 
 def add_market_quotes(source: PortfolioInput, fetcher=None, *, evidence: dict | None = None) -> tuple[PortfolioInput, list[str]]:
@@ -1488,19 +1545,78 @@ def verify_update(before: dict, actual: dict, expected: dict, plan: dict) -> Non
             raise ValidationError("A cell note changed during the data write. Inspect the sheet before retrying.")
     mapping = mapped_headers(expected["headers"], sheet_headers(plan["market"]))
     start = expected.get("start_column", 1) - 1
+    live_positions = {}
+    if plan["market"] == "US" or any(p.get("price_formula") for p in plan["positions"]):
+        # GOOGLEFINANCE can change between preview and readback. Verify the
+        # dependent calculations against prices from this same grid response.
+        cash_address = expected["summary_cells"]["broker_cash"]["a1"]
+        match = re.fullmatch(r"([A-Z]+)([0-9]+)", cash_address)
+        cash_col = 0
+        for char in match[1]:
+            cash_col = cash_col * 26 + ord(char) - 64
+        cash_cell = cells.get((int(match[2]) - 1, cash_col - 1), {})
+        cash = decimal_value(_entered(cash_cell), "Broker cash")
+        for position in plan["positions"]:
+            row = position["sheet_row"] - 1
+            price_cell = cells.get((row, start + mapping["current_price"]), {})
+            formula = position.get("price_formula")
+            if plan["market"] == "US" and not formula:
+                formula = f'=GOOGLEFINANCE(${_column_letter(start + mapping["ticker"] + 1)}{row + 1},"price")'
+            if formula and _entered(price_cell) != formula:
+                raise ValidationError(f"{plan['market']} row {row + 1}: GOOGLEFINANCE price formula was not preserved.")
+            price = decimal_value(price_cell.get("effectiveValue", {}).get("numberValue"),
+                                  f"{position['ticker']} {'GOOGLEFINANCE price' if formula else 'script price/NAV'}", positive=True)
+            qty = decimal_value(position["quantity"], "Holding quantity")
+            avg = position["average_price"]
+            live_positions[position["ticker"]] = {
+                "market_value": qty * price,
+                "unrealised_return_pct": (price / Decimal(avg) - 1) * 100 if avg is not None and Decimal(avg) > 0 else None}
+        total = sum(p["market_value"] for p in live_positions.values()) + cash
+        for position in live_positions.values():
+            position["weight_pct"] = position["market_value"] / total * 100
     for position in plan["positions"]:
         for field, key, divisor in (("market_value", "market_value", 1), ("weight", "weight_pct", 100), ("return", "unrealised_return_pct", 100)):
             cell = cells.get((position["sheet_row"] - 1, start + mapping[field]), {})
-            value = position[key]
+            value = live_positions[position["ticker"]][key] if live_positions else position[key]
             if value is not None and not same(cell.get("effectiveValue", {}).get("numberValue"), float(Decimal(value) / divisor)):
-                raise ValidationError("A calculated value/weight/return does not match the preview. No refresh timestamp was advanced.")
+                address = f"{_column_letter(start + mapping[field] + 1)}{position['sheet_row']}"
+                got = cell.get("effectiveValue", {}).get("numberValue")
+                want = Decimal(value) / divisor
+                raise ValidationError(
+                    f"{before['title']}!{address} ({position['ticker']}): calculated {field} "
+                    f"is {got!r}, expected {want}. Source cells were written, but no refresh "
+                    "timestamp was advanced; inspect the cell formula before retrying.")
     table = next(t for t in actual.get("tables", []) if t["tableId"] == expected["table_id"])
     if table["range"]["endRowIndex"] != expected["last_prepared_row"]:
         raise ValidationError("Native table expansion was not verified.")
 
 
+def exited_row_deletions(sheet: dict, source: PortfolioInput) -> list[dict]:
+    """Remove only confirmed zero-quantity exits from the authoritative India list."""
+    if source.market != "IN" or source.source != "Zerodha + Coin":
+        return []
+    mapping, rows = validate_sheet(sheet, source.market)
+    headers = sheet["headers"]
+    held = {h.ticker for h in source.holdings if h.quantity > 0}
+    deletions = []
+    for row in rows:
+        values = row["values"]
+        ticker = values.get(headers[mapping["ticker"]])
+        if (ticker and ticker not in held
+                and values.get(headers[mapping["status"]]) == "Exited"
+                and decimal_value(values.get(headers[mapping["quantity"]]), "Exited quantity") == 0):
+            deletions.append({"deleteDimension": {"range": {
+                "sheetId": sheet["sheet_id"], "dimension": "ROWS",
+                "startIndex": row["row"] - 1, "endIndex": row["row"]}}})
+    # Delete bottom-up so earlier row indexes remain valid.
+    return sorted(deletions, key=lambda r: r["deleteDimension"]["range"]["startIndex"], reverse=True)
+
+
 def apply_updates(reader: GoogleSheets, spreadsheet_id: str, selections: dict,
                   sources: list[PortfolioInput], evidence: dict) -> None:
+    sources = [replace(source, holdings=tuple(h for h in source.holdings if h.quantity > 0))
+               if source.market == "IN" and source.source == "Zerodha + Coin" else source
+               for source in sources]
     selected = {source.market: selections[source.market] for source in sources}
     layout = capture_google(reader, spreadsheet_id, selected)  # Re-read immediately before planning writes.
     requests, plans = [], []
@@ -1517,12 +1633,32 @@ def apply_updates(reader: GoogleSheets, spreadsheet_id: str, selections: dict,
     for source, before, expanded, plan in plans:
         actual = next(s for s in result["sheets"] if s["properties"]["sheetId"] == before["sheet_id"])
         verify_update(before, actual, expanded, plan)
+        # Source writes and calculations have passed. Re-read before deleting
+        # exits, then rebuild row coordinates and verify the remaining holdings.
+        if source.market == "IN" and source.source == "Zerodha + Coin":
+            selection = {source.market: selections[source.market]}
+            current = capture_google(reader, spreadsheet_id, selection)["sheets"][source.market]
+            deletions = exited_row_deletions(current, source)
+            if deletions:
+                reader.batch_update(spreadsheet_id, deletions)
+                cleaned = capture_google(reader, spreadsheet_id, selection)["sheets"][source.market]
+                clean_plan = preview_market(source, cleaned)
+                if (clean_plan["proposed_updates"] or clean_plan["additional_rows_needed"]
+                        or exited_row_deletions(cleaned, source)):
+                    raise ValidationError("Exited-row removal did not reconcile; freshness was not advanced.")
+                verify_update(cleaned, cleaned["native"], cleaned, clean_plan)
         # Advance freshness only after source cells and dependent formulas verify.
         r, c, cell = label_cell(before, "Last Refreshed")
         metadata = sync_metadata(cell.get("note", ""))
         metadata.update(holdings_as_of=source.holdings_as_of, cash_as_of=source.cash_as_of, cash_source=source.cash_source,
                         isins={**metadata.get("isins", {}), **{h.ticker: h.isin for h in source.holdings if h.isin}},
                         prices={h.ticker: evidence.get(h.ticker) for h in source.holdings if h.quantity > 0})
+        if source.market == "US" or any(h.google_ticker for h in source.holdings):
+            formula_tickers = {h.ticker for h in source.holdings if h.google_ticker or source.market == "US"}
+            for ticker, item in metadata["prices"].items():
+                if item is not None and ticker in formula_tickers:
+                    item.update(source="GOOGLEFINANCE live sheet formula", price_as_of=None)
+                    item.pop("provider_timestamp", None)
         base = SYNC_NOTE.sub("", cell.get("note", "")).rstrip()
         note = base + "\n\n[Portfolio sync]\n" + json.dumps(metadata, ensure_ascii=False) + "\n[/Portfolio sync]"
         instant = datetime.now(IST)
@@ -1643,6 +1779,7 @@ def run_live(settings: dict[str, Any], command: str) -> int:
         india = add_mutual_funds(india, client, evidence)
         india, quote_gaps["IN"] = add_market_quotes(india, evidence=evidence)
         india, fundamental_gaps = add_fundamentals(india, evidence, client=client)
+        india = add_google_finance_tickers(india, client, evidence)
         quote_gaps["IN"].extend(fundamental_gaps)
         sources = [india]
         if us_source is not None:
