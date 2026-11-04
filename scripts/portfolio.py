@@ -566,7 +566,7 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
                 raise ValidationError("Duplicate sheet ISIN metadata.")
             by_isin[row["isin"]] = row
     free = iter(r for r in range(sheet["header_row"] + 1, sheet["last_prepared_row"] + 1) if r not in occupied)
-    changes, positions, gaps, matched_rows = [], [], [], set()
+    changes, positions, gaps, matched_rows, formula_warnings = [], [], [], set(), []
     total = Decimal(0)
     values_complete = True
     if not source.holdings and not broker_authoritative:
@@ -630,8 +630,11 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
                            else f'=GOOGLEFINANCE(${_column_letter(ticker_column)}{row_number},"price")')
                 previous = existing.get(field_header["current_price"])
                 if isinstance(previous, str) and previous.startswith("=") and previous != formula:
-                    raise ValidationError(f"{source.market} row {row_number}: market price contains a formula that is not the managed GOOGLEFINANCE formula; review before replacing it.")
-                if previous != formula:
+                    # Preserve formulas the updater does not own. Continue updating
+                    # other source cells and verify calculations against its live value.
+                    formula_warnings.append(f"{source.market} row {row_number}: preserved unmanaged market price formula; review before changing it.")
+                    formula = None
+                if formula is not None and previous != formula:
                     changes.append({"row": row_number, "column": column,
                                     "a1": f"{_column_letter(column)}{row_number}",
                                     "header": field_header["current_price"], "previous_value": previous,
@@ -735,6 +738,7 @@ def preview_market(source: PortfolioInput, sheet: dict[str, Any]) -> dict[str, A
             if portfolio_total is not None and portfolio_total > 0 else None,
             "proposed_updates": changes, "proposed_summary_updates": summary_updates,
             "positions": positions, "additional_rows_needed": rows_needed,
+            "warnings": formula_warnings,
             "retained_unmatched_tickers": [] if broker_authoritative else missing,
             "unresolved_existing_holdings": unresolved_held, "gaps": gaps}
 
@@ -1308,12 +1312,20 @@ def add_fundamentals(source: PortfolioInput, evidence: dict, fetcher=None, *, cl
 
 
 def add_google_finance_tickers(source: PortfolioInput, client: Any, evidence: dict) -> PortfolioInput:
-    """Resolve Indian Google listings using exact Kite symbols/BSE codes."""
+    """Prefer the NSE identity for dual-listed holdings; resolve BSE-only codes exactly."""
     if source.market != "IN":
         return source
     bse = {}
     if any(h.ticker.startswith("BSE:") and h.quantity > 0 for h in source.holdings):
         bse = {r["tradingsymbol"]: str(r["exchange_token"]) for r in client.instruments("BSE")}
+    nse_by_isin = {}
+    if any(h.ticker.startswith("BSE:") and h.quantity > 0 and h.isin for h in source.holdings):
+        for instrument in client.instruments("NSE"):
+            isin = instrument.get("isin")
+            symbol = instrument.get("tradingsymbol")
+            if (instrument.get("instrument_type") == "EQ" and isinstance(isin, str) and isin
+                    and isinstance(symbol, str) and symbol):
+                nse_by_isin[isin] = symbol
     holdings = []
     for holding in source.holdings:
         if holding.asset_type == "Mutual Fund" or holding.quantity <= 0:
@@ -1328,11 +1340,22 @@ def add_google_finance_tickers(source: PortfolioInput, client: Any, evidence: di
         if exchange == "NSE":
             ticker = "NSE:" + symbol.removesuffix("-SM")
         else:
-            code = bse.get(symbol)
-            if not code or not code.isdigit():
-                raise ValidationError(f"{holding.ticker}: exact BSE code required for GOOGLEFINANCE.")
-            ticker = "BOM:" + code
-        holdings.append(replace(holding, google_ticker=ticker))
+            nse_symbol = nse_by_isin.get(holding.isin) if holding.isin else None
+            if nse_symbol:
+                canonical_ticker = "NSE:" + nse_symbol
+                ticker = "NSE:" + nse_symbol
+            else:
+                code = bse.get(symbol)
+                if not code or not code.isdigit():
+                    raise ValidationError(f"{holding.ticker}: exact BSE code required for GOOGLEFINANCE.")
+                canonical_ticker = holding.ticker
+                ticker = "BOM:" + code
+        old_ticker = holding.ticker
+        holding = replace(holding, ticker=canonical_ticker if exchange == "BSE" else holding.ticker,
+                          google_ticker=ticker)
+        if old_ticker != holding.ticker and old_ticker in evidence:
+            evidence[holding.ticker] = evidence.pop(old_ticker)
+        holdings.append(holding)
         evidence.setdefault(holding.ticker, {})["google_ticker"] = ticker
     return replace(source, holdings=tuple(holdings))
 
@@ -1694,6 +1717,9 @@ def apply_updates(reader: GoogleSheets, spreadsheet_id: str, selections: dict,
         if cell.get("userEnteredValue") != wanted["userEnteredValue"] or ("note" in wanted and cell.get("note") != wanted["note"]):
             raise ValidationError("Refresh metadata verification failed; inspect the sheet before retrying.")
     print("Sheets updated and verified: " + ", ".join(f"{s['title']} ({len(plan['positions'])} positions)" for _, _, s, plan in plans))
+    for _, _, _, plan in plans:
+        for warning in plan.get("warnings", []):
+            print("Review: " + warning)
 
 
 def local_path(value: object, label: str) -> Path:
